@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from techrag import tls
-from techrag.api import APIClient, check_service, configure_tls
+from techrag.api import check_service, configure_tls
 from techrag.config import ServiceConfig, TLSConfig
 
 CERTS = Path(__file__).parent / "certs"
