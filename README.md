@@ -1,8 +1,13 @@
 # TechRAG — Arayüz ve Tasarım Standartları için Doğrulamalı Asistan
 
 Kullanıcının arayüz/standart sorularını (ARINC, JEDEC DDR, PCIe, Ethernet, DisplayPort, USB, RS-422, I²C,
-genel tasarım standartları …) **yalnızca yüklü dokümanlardan** cevaplayan, her ifadeyi **[n] atfıyla sayfasına**
-bağlayan ve cevabı kullanıcıya göstermeden önce **kaynaklara karşı denetleyen** bir masaüstü uygulaması.
+genel tasarım standartları …) **yalnızca yüklü dokümanlardan** cevaplayan, her ifadeyi **[n] atfıyla kaynağına**
+bağlayan, ifadeleri kullanıcıya göstermeden önce **kaynaklara karşı denetleyen** ve atfa tıklanınca dayanılan
+cümleyi / tablo hücresini **PDF sayfası üzerinde vurgulayan** bir masaüstü uygulaması.
+
+Öncelik doğruluktur: kanıt yetersizse uygulama "bulunamadı" der; doğrulanamayan bir ifadeyi kesin bilgi olarak
+göstermez. Bu, hatasızlık garantisi değildir — denetimler yanlışların bir kısmını yakalar, bir kısmı kaçabilir
+(bkz. "Bilinen sınırlar"). Doğruluk ancak kendi dokümanlarınızla, uzman onaylı bir soru setiyle ölçülebilir (§5).
 
 * Windows için tek `TechRAG.exe` (tarayıcı açılmaz; yerel pencere — Microsoft Edge WebView2).
 * Tüm modeller kurum içindeki **vLLM / SGLang** sunucularından (OpenAI uyumlu API) kullanılır:
@@ -16,48 +21,63 @@ bağlayan ve cevabı kullanıcıya göstermeden önce **kaynaklara karşı denet
 ```mermaid
 flowchart TB
     subgraph Ingest["İndeksleme (bir kez, kütüphaneyi hazırlayan kişi)"]
-        A["PDF / DOCX / MD"] --> B["PyMuPDF: metin, yer imleri, cetvelli tablolar,<br/>sayfa istatistikleri (çizim/görsel)"]
+        A["PDF / DOCX / MD"] --> B["PyMuPDF: metin, yer imleri, cetvelli tablolar,<br/>her sayfanın kelime konumları (döndürme + CropBox ile)"]
         B --> C["Temizlik: üst/alt bilgi, sayfa no, içindekiler sayfaları"]
-        C --> M["Meta veri: standart + sürüm varlığı (DDR5, PCIe 5.0 …),<br/>revizyon, tarih, tür (base / errata / ECN), eski revizyon tespiti"]
-        C --> V["Tablo sayfası skorlama -> yalnızca tablo sayfaları VLM'e<br/>(görüntü + metin katmanı), değerler metin katmanına karşı doğrulanır"]
-        V --> P[("Tipli parametre deposu<br/>parameter / symbol / min / typ / max / unit / conditions / notes + SI")]
-        C --> D["Bölüm yolu + bölüm sınırına saygılı parçalar"]
+        C --> M["Meta veri: standart/sürüm varlığı (DDR5, PCIe 5.0 …), doküman serisi,<br/>sürüm, revizyon, tür (base / errata / ECN / guide), eski revizyon tespiti"]
+        C --> V["Tablo sayfaları -> VLM (görüntü + metin katmanı)<br/>-> her değer HÜCRE düzeyinde metin katmanına bağlanır<br/>(satır etiketi + sütun başlığı + birim + koşul)"]
+        V --> P[("Tipli parametre deposu: yalnızca doğrulanmış satırlar cevapta kullanılır")]
+        C --> D["Bölüm yolu + bölüm sınırına saygılı parçalar<br/>(doğrulanmamış VLM tablosu = yalnızca arama içeriği)"]
         D --> E["Embedding (API)"]
-        E --> F[("library/index.sqlite<br/>FTS5-BM25 + vektörler + tablolar + parametreler")]
+        E --> F[("library/index.sqlite<br/>FTS5-BM25 + vektörler + tablolar + parametreler + sayfa geometrisi")]
     end
     subgraph Ask["Soru"]
-        Q["Soru + sohbet geçmişi"] --> PL["Planlayıcı (LLM): bağımsız soru, İngilizce terminoloji,<br/>parametreler, soru tipi, düşünme gerekli mi"]
-        PL --> R["Varlık önce: soruda adı geçen standart/sürüme KESİN filtre<br/>(eski revizyonlar hariç)"]
-        R --> S["BM25 + vektör -> RRF -> cross-encoder rerank (API)<br/>-> bölüme genişletme + şekil sayfası görüntüsü"]
+        Q["Soru + sohbet geçmişi"] --> PL["Planlayıcı (LLM): bağımsız soru, İngilizce terminoloji, parametreler"]
+        PL --> R["Kapsam: soruda adı geçen standart/sürüme KESİN filtre; yüklü değilse açıkça söylenir;<br/>belirsiz kapsamda kullanıcıya soru sorulur"]
+        R --> S["BM25 + vektör -> RRF -> rerank (API) -> bölüme genişletme;<br/>karşılaştırmalarda her standart için ayrı kanıt"]
         F --> S
         P --> S
-        S --> AG["Ajan (Qwen, tool calling): search_docs, get_parameter,<br/>get_table, get_page_image, calculate"]
-        AG --> VE["Doğrulama: birim normalize sayısal kontrol + atıf kontrolü<br/>-> bağımsız denetçi (taze bağlam) -> 1 kez yeniden üretim<br/>-> doğrulanamayan ifadeler çıkarılır/işaretlenir"]
-        VE --> X["Cevap: 'Kaynaklarda belirtilen' + 'Mühendislik yorumu'<br/>[n] atıfları, sayfa görüntüsü, doğrulama özeti"]
+        S --> AG["Ajan (tool calling): search_docs, get_parameter, get_table,<br/>get_page_image, calculate - hepsi aynı kapsamda"]
+        AG --> VE["Doğrulama: atıf + birim duyarlı sayı kontrolü (soru kanıt sayılmaz)<br/>-> katı bağımsız denetçi -> 1 kez yeniden üretim<br/>-> cevap yalnızca doğrulanmış ifadelerden yeniden kurulur"]
+        VE --> L["Kanıt konumu: her ifade/atıf için cümle veya hücre koordinatları"]
+        L --> X["Cevap + doğrulama durumu + [n] -> PDF sayfasında vurgu"]
     end
 ```
 
-### Halüsinasyona karşı katmanlar
+### Hatalara karşı katmanlar
 
 | Hata kaynağı | Önlem |
 |---|---|
-| Yanlış standart / sürüm (DDR4 değeri DDR5 cevabında) | Her doküman standart+sürüm varlığıyla etiketlenir; soruda adı geçen standart aramayı **kesin** olarak o dokümanlara daraltır. Araç çağrıları da bu kapsamı miras alır. Eski revizyonlar (aynı standardın daha yeni sürümü varsa) aramadan çıkarılır; errata/ECN kaynakları "base dokümanı geçersiz kılar" diye işaretlenir. |
-| Tablo satırının bölünmesi, OCR bozulması | Tablo sayfaları **görsel modele** (VLM) gönderilir; birleşik hücreler çözülür, hız sınıfı / mod sütunları satırlara açılır, dipnotlar satıra eklenir. VLM'in yazdığı **her sayı sayfanın metin katmanında aranır**; tutmayan satırlar "doğrulanmamış" olur, çoğu tutmayan tablo hiç kullanılmaz. |
-| Sayısal değer uydurma | Sayısal sorular önce **tipli parametre deposundan** (min/typ/max/birim/koşul) cevaplanır. Hesaplar `calculate` aracıyla yapılır (modelin kafadan aritmetiği yasak). |
-| Bağlam kaybı | Küçük parça ile bulunur, **bölümün tamamı** (kısaysa) bağlama verilir; şekil/zamanlama diyagramı içeren sayfalar **görüntü olarak** modele eklenir. Bağlam ~16K token ile sınırlı tutulur (ham sayfa yığını değil, rerank edilmiş içerik). |
-| Model "biliyorum" diye uyduruyor | Cevap sözleşmesi: her ifade [n] atıflı; "Kaynaklarda belirtilen" ile "Mühendislik yorumu" ayrı; "yüklü dokümanlarda bulunamadı" cevabı her zaman kabul. |
-| Yine de hatalı ifade | **Deterministik doğrulayıcı**: her sayı+birim, *atıf yapılan* kaynakta (birim dönüşümüyle: 0,35 µs = 350 ns) aranır; yanlış kaynağa atıf yakalanır. **Bağımsız denetçi**: aynı model, taze bağlamda yalnızca iddia + atıf yapılan kaynakla "destekleniyor / kısmen / desteklenmiyor" der (yanlış koşula bağlanmış değerleri yakalar). Hatalı ifadeler bir kez yeniden üretilir; hâlâ hatalıysa cevaptan **çıkarılır** (veya ayarla ⚠ ile işaretlenir) ve kullanıcıya listelenir. |
+| Yanlış standart / sürüm (DDR4 değeri DDR5 cevabında) | Dokümanlar standart+sürüm varlığıyla etiketlenir. Soruda adı geçen standart aramayı **kesin** olarak o etiketi taşıyan dokümanlara daraltır; **etiketsiz dokümanlar kesin eşleşme sayılmaz**. İstenen standart/sürüm yüklü değilse kapsam **genişletilmez**: cevap "yüklü dokümanlarda yok" der ve ilgili yüklü dokümanları listeler. Araçlar (arama, parametre, tablo, sayfa görüntüsü) aynı kapsamı ve kullanıcının doküman/koleksiyon seçimini uygular; başka bir sürüme kaçamaz. Karşılaştırmalarda her standardın kanıtı ayrı toplanır. Standart adı verilmemişse ve kanıt kardeş sürümlerden (DDR4/DDR5 …) geliyorsa sistem cevap yerine **hangi sürümü kastettiğinizi sorar**. |
+| Revizyon / belge türü karışması | Kimlik alanları ayrıdır: standart, doküman serisi (JESD79-5, "PCI Express Base", "PCI Express CEM"), sürüm, revizyon, tür. Yalnızca **aynı serinin aynı sürümünün** eski revizyonu yenisiyle geçersiz olur; Base ile CEM veya bir tasarım kılavuzu birbirinin revizyonu sayılmaz. Guide/appnote "bilgilendirici, spesifikasyonu geçersiz kılmaz" diye işaretlenir. Errata/ECN yalnızca ilgili serinin ilgili sürümüne bağlanır ve mümkünse maddeye (§4.2.6.3) bağlanır. Eski bir revizyonu soruda açıkça adlandırırsanız (ör. "JESD79-4B") o revizyon kullanılır. Kaynaklar farklı değer veriyorsa model çelişkiyi iki atıfla belirtmek zorundadır. |
+| Tablo hücresinin yanlış okunması (min/max yer değişimi, yanlış birim, yanlış satır) | VLM yalnızca yapı önerir. Her değer, PDF metin katmanında **parametre satırı ile sütun başlığının (ve çok seviyeli başlıkta grup başlığının) kesiştiği tek hücrede** bulunmalı; birim satırda/başlıkta yazmalı; koşullar (8 Gb, DDR4-3200 …) sayfada ve gerekiyorsa aynı satırda olmalı. Sayfada başka yerde geçen aynı sayı kabul edilmez; iki eşit aday varsa belirsizdir. Doğrulanamayan satır **cevapta kullanılmaz** (araçla da geri alınamaz). `max(10 ns, 4 tCK)` gibi ifadeler tek sayıya indirgenmez; bilinmeyen birimler ve "1,200" gibi belirsiz sayı biçimleri SI değerine çevrilmez. |
+| VLM birleştirmesinde veri kaybı | Birleştirme **tablo bazındadır**: yalnızca doğrulanmış ve içerik + konum + başlıkla güvenilir eşleşen PDF tablosu değiştirilir. Doğrulanmayan VLM tablosu hiçbir şeyin yerine geçmez; orijinal PDF metni kanıt olarak kalır, VLM sürümü yalnızca aramada kullanılır. |
+| Model "biliyorum" diye uyduruyor | Cevap sözleşmesi: giriş cümlesi dahil her teknik ifade [n] atıflı; mühendislik yorumu dayandığı kaynakları ve varsayımlarını gösterir. Atıfsız teknik ifade (başlıktan önce veya sonra, sayılı veya sayısız) denetimden kaçamaz. |
+| Sorudaki değerin "standart değeri" gibi sunulması | Kullanıcının verdiği değerler ayrı bir **kullanıcı girdisi** kaynağıdır; belgeye dayanan ifadeler yalnızca atıf yapılan belge metniyle doğrulanır. Kullanıcı değeri hesapta kullanılabilir ama standart değeri gibi sunulamaz. |
+| Hesap hatası / kaynaksız girdi | Hesaplar `calculate` aracıyla yapılır; ifadedeki her sayı bir kaynağa veya kullanıcı girdisine **izlenir**. Kaynaksız girdi içeren hesap, aritmetiği doğru olsa da doğrulanmış ifadeyi desteklemez. |
+| Yine de hatalı ifade | **Deterministik kontrol** (atıf var mı, sayı+birim atıf yapılan kaynakta mı — 0,35 µs = 350 ns) → **bağımsız denetçi** (taze bağlam: yalnızca iddia + atıf yapılan kaynak). Denetçinin yalnızca o iddia kimliği için açık ve geçerli bir "supported" kararı onay sayılır; zaman aşımı, API hatası, bozuk/eksik/tekrarlı karar **onay değildir** (bir kez yeniden denenir). Desteklenmeyen ifadeler bir kez yeniden ürettirilir; cevap yalnızca **doğrulanmış ifadelerden** yeniden kurulur. |
+
+### Doğrulama durumları
+
+Her ifade için: **destekleniyor** · **desteklenmiyor** · **doğrulanamadı** (kontrol tamamlanamadı, ör. denetçi
+hata verdi) · **uygulanmadı** (doğrulama veya denetçi Ayarlar'da kapalı). Cevap düzeyinde: tümü doğrulandı /
+bazıları çıkarıldı / bulunamadı / doğrulama tamamlanamadı / uygulanmadı / kapsam soruldu. "Denetçi çağrıldı" ile
+"denetçi başarıyla tamamlandı" ayrı alanlardır; arayüz yalnızca kontrol denendi diye "doğrulandı" demez.
+Akış sırasında yazılan taslak yalnızca ilerleme olarak (katlanmış, "doğrulanmamış" etiketiyle) gösterilir.
 
 ### Yerel hesaplama bütçesi
 
 | Yerelde (exe) | Sunucuda (vLLM) |
 |---|---|
-| PDF ayrıştırma (PyMuPDF), sayfa render (yalnızca VLM sayfaları ve görüntülenen sayfalar), SQLite FTS5, numpy ile vektör arama (100 bin parçaya kadar ms düzeyi), birim/sayı doğrulama | Sohbet + görsel model, embedding, reranker |
+| PDF ayrıştırma (PyMuPDF), kelime konumlarının çıkarılması (~2 ms/sayfa, indekslemede bir kez), sayfa render (yalnızca VLM sayfaları ve görüntülenen sayfalar), SQLite FTS5, numpy ile vektör arama, birim/sayı doğrulama, hücre eşleştirme ve kanıt konumu (cevap başına onlarca ms) | Sohbet + görsel model, embedding, reranker |
 
-Exe ~65 MB (tek dosya); GPU, torch veya model dosyası gerektirmez.
+Exe ~65 MB (tek dosya); GPU, torch veya model dosyası gerektirmez. Sayfa geometrisi indekste sayfa başına
+yaklaşık 4–8 KB yer kaplar (1000 sayfalık bir standart ≈ 5–8 MB). Vurgulama için tıklama başına model çağrısı
+yapılmaz; konumlar indekslemede bir kez çıkarılır.
 
 **Soru başına LLM çağrısı (doğruluk öncelikli mod):** planlayıcı 1 + cevap 1 (+ araç turları, en fazla 4) +
-denetçi 1–2 (paralel) + gerekirse yeniden üretim 1 + yeniden denetim. Embedding 1, rerank 1 istek.
+denetçi 1–2 (paralel; geçerli karar gelmeyen iddialar için en fazla 1 tekrar) + gerekirse yeniden üretim 1 +
+yeniden denetim. Embedding 1, rerank 1 istek (karşılaştırma sorularında standart başına 1). Standart yüklü
+değilse veya kapsam soruluyorsa cevap modeli hiç çağrılmaz.
 
 ---
 
@@ -126,8 +146,19 @@ hesabına bağlı şifrelenir.
   Errata/ECN dosyalarının adında "Errata"/"ECN" geçsin.
 * Standart/sürüm kalıpları `techrag/resources/domains.yaml` içindedir (koleksiyon klasörleri, desenler,
   kısaltma sözlüğü, Türkçe→İngilizce terimler). Yeni bir standart ailesi bir YAML bloğu ile eklenir.
-* Taranmış PDF'ler önce OCR'dan geçirilmeli (`ocrmypdf`); VLM metin katmanı olmayan sayfaların değerlerini
-  doğrulayamaz.
+* Taranmış PDF'ler önce OCR'dan geçirilmeli (`ocrmypdf`); metin katmanı olmayan sayfalarda ne tablo
+  değerleri doğrulanabilir ne de kanıt konumu gösterilebilir (uygulama sahte konum üretmez).
+* Orijinal PDF'ler değiştirilmez: vurgular yalnızca arayüz katmanında çizilir, PDF'e annotation yazılmaz.
+
+**Eski sürümle indekslenmiş kütüphane (0.1.x):** açılışta şema yerinde güncellenir; eski sürümün sayfa
+düzeyi kontrolle "doğrulanmış" saydığı parametre satırları ve VLM tabloları güvenilmez kabul edilir (cevapta
+kullanılmaz). Arayüzde uyarı çıkar. **Kütüphane → "Konum verisini oluştur (hızlı geçiş)"** (veya
+`TechRAG.exe migrate`) kaynak PDF'lerden sayfa geometrisini çıkarır ve önbellekteki VLM tablolarını hücre
+düzeyinde yeniden doğrular — **yeniden embedding ve VLM çağrısı yapmaz**. Eski sürüm, doğrulanan VLM tablosunun
+orijinal PDF metnini indekse koymuyordu; hücre düzeyinde doğrulanamayan bu tür tablolar için geçiş raporu tam
+yeniden indeksleme önerir (`ingest --rebuild`: VLM sonuçları önbellekten gelir, yalnızca embedding yeniden
+hesaplanır). Salt-okunur paylaşılan kütüphaneler yerinde güncellenemez: hazırlayan kişi geçişi yapıp yeniden
+yayımlamalıdır.
 
 **Paylaşım:** kütüphaneyi hazırlayan kişi **Kütüphane → Yayımla** ile temiz bir kopya üretir (tek dosya
 indeks + kaynaklar + VLM önbelleği). Diğer kullanıcılar bu klasörü (ağ paylaşımı dahil, `\\sunucu\paylaşım\...`)
@@ -138,13 +169,35 @@ kullanıcıların onu açması önerilir (açıkken üzerine yazmayın).
 
 ## 4. Kullanım
 
-* **Soru:** Sorunuzu yazın. Soruda geçen standart/sürüm kapsamı belirler ("kapsam: DDR5"); soldan doküman
-  seçerek kapsamı elle de daraltabilirsiniz.
-* **Cevap akışı:** önce taslak (soluk) akar, araç çağrıları ve isteğe bağlı model düşünmesi görünür; doğrulama
-  bitince taslak, **doğrulanmış son cevapla** değişir.
-* **Doğrulama kutusu:** "12/12 ifade doğrulandı", "1 ifade çıkarıldı" (gerekçesiyle), "bulunamadı".
-* **Kaynak görüntüleyici:** [n]'e tıklayın → kaynak metni + **ilgili sayfanın görüntüsü** (önceki/sonraki,
-  yakınlaştırma, orijinal dosyayı sistem PDF görüntüleyicisinde açma).
+* **Soru:** Sorunuzu yazın. Soruda geçen standart/sürüm kapsamı belirler ("kapsam: DDR5"); soldan doküman veya
+  koleksiyon seçerek kapsamı elle de daraltabilirsiniz (seçim araç çağrılarında da korunur). Standart yüklü
+  değilse "yüklü değil: DDR5" görünür ve cevap uydurulmaz. Kapsam belirsizse seçenek düğmeleri çıkar.
+* **Cevap akışı:** taslak, "doğrulanmamış" etiketli katlanmış bir alanda ilerleme olarak görünür; araç
+  çağrıları ve isteğe bağlı model düşünmesi listelenir. Doğrulama bitince yalnızca doğrulanmış ifadelerden
+  kurulan son cevap gösterilir.
+* **Doğrulama kutusu:** cevap durumu, denetçinin tamamlanıp tamamlanmadığı, çıkarılan/işaretlenen ifadeler
+  (gerekçesiyle) ve "İfade ayrıntıları" (her ifadenin durumu; kullanıcı girdisi / hesap içerip içermediği).
+
+### PDF'de kanıt vurgulama
+
+1. Cevaptaki **[n]** atfına tıklayın: sağdaki kaynak paneli doğru dokümanı ve sayfayı açar.
+2. O ifadeyi destekleyen **cümle**, ya da tablo değerlerinde **değer hücresi + parametre adı + sütun başlığı
+   (+ birim, grup başlığı, dipnot)** sayfa üzerinde renkli kutularla işaretlenir. Aynı sayı sayfada birkaç yerde
+   geçiyorsa yalnızca satır/sütun ilişkisiyle eşleşen hücre işaretlenir; eşleşme belirsizse hiçbiri.
+3. **‹ Önceki kanıt / Sonraki kanıt ›** ile bölgeler (başka sayfalardakiler dahil) arasında gezinin;
+   **Vurgu** kutusu vurguyu gizler/gösterir; **− / +** yakınlaştırır (vurgu hizası korunur).
+4. Panelde iki ayrı durum görünür: **Doğrulama** (ifade kaynakla destekleniyor mu) ve **Konum** (kanıt sayfada
+   bulundu mu). Konum bulunması ifadenin doğru olduğu anlamına gelmez.
+5. Kesin yer bulunamazsa "Kaynak sayfası bulundu, kesin konum eşleştirilemedi" yazar; metin katmanı yoksa veya
+   kütüphane eski sürümle indekslenmişse bu da açıkça söylenir. PDF olmayan kaynaklarda kanıt metin içinde
+   işaretlenir. **Hesap** kaynaklarında sonuç PDF'te aranmaz; girdileri ve her girdinin kaynağı listelenir
+   (tıklanınca o girdinin konumu gösterilir). **Kullanıcı girdisi** kaynağı bir doküman değildir.
+6. Sayfa göstergesi fiziksel sayfa indeksini ve PDF'in basılı sayfa etiketini ayrı gösterir
+   ("Sayfa 23 / 300 (basılı: 21)").
+
+Kaynak kayıtları kalıcı bilgiler taşır: doküman SHA-256'sı, fiziksel sayfa, basılı etiket, eşleşen metin ve
+hem ekran (0–1, döndürme/CropBox uygulanmış) hem PDF kullanıcı uzayı koordinatları.
+
 * **Notlar:** cevapları kaydedin, Markdown olarak dışa aktarın.
 
 ### Komut satırı (aynı exe)
@@ -153,7 +206,8 @@ kullanıcıların onu açması önerilir (açıkken üzerine yazmayın).
 TechRAG.exe doctor                    :: uç noktalar, modeller, indeks kontrolü
 TechRAG.exe models                    :: her uç noktanın sunduğu modeller
 TechRAG.exe ingest                    :: artımlı indeksleme (VLM tablo çıkarımı dahil)
-TechRAG.exe ingest --rebuild          :: embedding modeli değişince
+TechRAG.exe ingest --rebuild          :: embedding modeli değişince / eski indeksin tam yenilenmesi
+TechRAG.exe migrate                   :: eski (0.1.x) indeksi yerinde güncelle (embedding/VLM çağrısı yok)
 TechRAG.exe inspect dosya.pdf --table-pages   :: parçalama ve VLM'e gidecek sayfalar
 TechRAG.exe search "DDR5 tRFC 16Gb"   :: yalnızca arama (kapsam, pasajlar, parametre satırları)
 TechRAG.exe ask "PCIe 5.0 LTSSM Polling alt durumları?"
@@ -169,17 +223,31 @@ Kaynak koddan: `pip install -r requirements-desktop.txt` → `python -m techrag.
 ## 5. Doğruluğu ölçme
 
 ```bat
-TechRAG.exe eval --retrieval-only     :: LLM'siz: recall@1/3/5/8, MRR (doğru sayfa geldi mi?)
-TechRAG.exe eval                      :: + cevap doğruluğu, faithfulness, çıkarılan ifade oranı
+TechRAG.exe eval --retrieval-only     :: LLM'siz: recall@1/3/5/8, MRR (doğru doküman/sayfa geldi mi?)
+TechRAG.exe eval                      :: + cevap metrikleri
 ```
 
-`eval/questions.yaml` örnek bir settir; her maddeye `expected_doc` ve `expected_pages` ekleyin. Önerilen döngü:
-mühendislerin gerçek sorularıyla birkaç yüz soruluk altın set → önce **recall@k** (ayrıştırma, parçalama,
-VLM sayfa eşiği `vision.min_page_score`, rerank aday sayısı) → sonra **faithfulness**. Yanlış cevapların
-kökü neredeyse her zaman ayrıştırma veya varlık (standart/sürüm) etiketlemesindedir: `TechRAG.exe docs` ve
-`inspect` ile kontrol edin.
+Soru şeması (`eval/questions.yaml`, ayrıntı `techrag/evaluation.py`): doküman, revizyon, fiziksel sayfa ve
+**olgular** (parametre, değer, birim, min/typ/max, koşullar). `answerable: false` ile cevabı kütüphanede
+olmayan sorular eklenir; bunlarda doğru davranış cevap vermemektir. Rapor ayrı ayrı verir:
 
----
+* cevaplanan soru oranı ve cevap vermeme oranı (gereksiz cevap vermeme dahil),
+* cevaplananlarda olgu doğruluğu ve **hatalı cevap oranı** ("100 değil 999" gibi bir ifade, beklenen 100 olsa da
+  yanlıştır; aynı parametre için ikinci bir değer de yanlış sayılır),
+* cevapsız sorularda doğru şekilde cevap vermeme oranı,
+* doğru kaynak, doğru sayfa ve **kanıt konumu** doğruluğu,
+* sistemin kendi doğrulama geçiş oranı — ayrı ve açıkça "bağımsız doğruluk değildir" notuyla.
+
+Depodaki `eval/questions.yaml` **doğrulanmış bir benchmark değildir**: maddeler `status: draft`'tır, değerler
+kamuya açık bilgilerdir ama sizin doküman revizyonlarınıza karşı kontrol edilmemiştir; rapor bunu
+(`"benchmark": false`) belirtir. Gerçek ölçüm için mühendislerin gerçek sorularından, kendi PDF'lerinize karşı
+uzman tarafından kontrol edilmiş (`status: expert_verified`) birkaç yüz soruluk bir set hazırlayın; önce
+**recall@k** (ayrıştırma, parçalama, VLM sayfa eşiği `vision.min_page_score`, rerank aday sayısı), sonra
+hatalı cevap ve cevap vermeme oranlarını izleyin. Yanlış cevapların kökü çoğunlukla ayrıştırma veya
+standart/sürüm etiketlemesindedir: `TechRAG.exe docs` ve `inspect` ile kontrol edin.
+
+Testler (`tests/`) sentetik PDF'ler ve sahte bir OpenAI uyumlu sunucuyla çalışır: mekanizmaları (kapsam,
+doğrulama, hücre eşleştirme, konum, geçiş) sınar, gerçek bir modelin doğruluğunu **ölçmez**.
 
 ## 6. Sorun giderme
 
@@ -190,8 +258,12 @@ kökü neredeyse her zaman ayrıştırma veya varlık (standart/sürüm) etiketl
 | "indexed with embedding model …" | Embedding modeli değişti: Kütüphane → "Tamamen yeniden oluştur" veya `ingest --rebuild` |
 | Araç kullanılmıyor | vLLM'i `--enable-auto-tool-choice --tool-call-parser …` ile başlatın |
 | Cevapta `<think>` / düşünme metni | vLLM'de `--reasoning-parser` kullanın veya Ayarlar → Düşünme `off` |
-| Tablolar boş / "failed value verification" | Görsel model tanımlı mı, metin katmanı var mı (OCR)? `inspect --table-pages` |
-| Soru yanlış standarda gidiyor | `TechRAG.exe docs` ile doküman etiketlerini kontrol edin; dosya adına standart/sürüm yazın veya `domains.yaml` desenlerini genişletin |
+| Tablolar/parametreler "doğrulanmadı" | Görsel model tanımlı mı, sayfada metin katmanı var mı (OCR)? Doküman uyarılarında hangi hücrenin neden eşleşmediği yazar (yanlış sütun, birim, satır koşulu). `inspect --table-pages` |
+| "Kaynak sayfası bulundu, kesin konum eşleştirilemedi" | Kaynak metni sayfada tek bir yere eşlenemedi (tekrarlanan metin, metin katmanı farklı). Sayfa yine de doğrudur; ifadenin doğruluğu "Doğrulama" durumundadır. |
+| "Eski indeks" uyarısı / vurgu yok | Kütüphane → "Konum verisini oluştur" veya `TechRAG.exe migrate` |
+| "Doğrulama tamamlanamadı" | Denetçi (sohbet modeli) hata verdi veya geçerli karar döndürmedi; sunucuyu/`techrag.log`'u kontrol edin. Bu durumda ifadeler bilerek gösterilmez. |
+| Sürekli kapsam sorusu | Soruya standart/sürümü yazın ya da soldan doküman seçin; istenmiyorsa `retrieval.clarify_ambiguous: false` |
+| Soru yanlış standarda gidiyor / "yüklü değil" | `TechRAG.exe docs` ile doküman etiketlerini kontrol edin; etiketsiz dokümanlar adı geçen standarda dahil edilmez. Dosya adına standart/sürüm yazın veya `domains.yaml` desenlerini genişletin |
 | `SSL: CERTIFICATE_VERIFY_FAILED` | Aşağıdaki "HTTPS sertifika hataları" bölümü |
 
 ### HTTPS sertifika hataları (`SSL: CERTIFICATE_VERIFY_FAILED`)
@@ -215,26 +287,50 @@ girerek açıyorsa model sunucuları için **"Sistem proxy ayarlarını kullan"*
 
 ---
 
-## 7. Proje yapısı
+## 7. Bilinen sınırlar (gerçek PDF/VLM ile henüz doğrulanmayanlar)
+
+* Hücre eşleştirme metin katmanındaki kelime konumlarına ve sütun başlığı yakınlığına dayanır. Sentetik
+  tablolarla (cetvelli, çok seviyeli başlık, birleşik satır etiketi, sayfaya taşan tablo, ayrı sayfada dipnot)
+  test edildi; gerçek JEDEC/PCI-SIG tablolarında (dönük sütun başlıkları, iç içe birleşik hücreler, sayfa
+  kenarına taşan tablolar) bazı doğru satırlar "doğrulanmadı" kalabilir. Bu bilinçli bir tercihtir: emin
+  olunamayan satır onaylanmaz, orijinal PDF metni kanıt olarak kalır.
+* Şekil/zamanlama diyagramlarındaki ve yalnızca görüntüde bulunan bilgiler metin katmanında yoksa
+  doğrulanamaz; bu tür ifadeler "doğrulanamadı" olarak çıkarılır.
+* Denetçi aynı (veya ayarlanan) LLM'dir; deterministik kontroller sayı/birim/atıf hatalarını yakalar ama
+  anlamsal hataların yakalanması denetçi modelinin kalitesine bağlıdır.
+* Standart/sürüm etiketleme `domains.yaml` desenleri + LLM meta verisiyle yapılır; olağan dışı dosya adları
+  yanlış/eksik etiketlenebilir (`TechRAG.exe docs` ile kontrol edin).
+* Errata'nın maddeye bağlanması, errata metninde "Section 4.2.6.3" gibi açık madde numarası varsa yapılır.
+* Kapsam sorusu sezgiseldir: standart adı geçmeyen sayısal sorularda kanıt kardeş sürümlerden geliyorsa sorulur.
+* Değerlendirme betiğindeki olgu eşleştirme sezgiseldir (parametre adı, değer+birim, koşul kelimeleri,
+  olumsuzlama); şüpheli durumlarda yanlış sayar.
+
+---
+
+## 8. Proje yapısı
 
 ```
 techrag/
   desktop.py       exe giriş noktası: süreç içi FastAPI + pywebview penceresi, argümanla CLI
-  server.py        API: ayarlar (model listesi/test), kütüphane, dokümanlar, sayfa görüntüsü, SSE soru akışı
-  engine.py        plan -> kapsamlı arama -> ajan döngüsü -> doğrulama/denetçi/yeniden üretim
-  tools.py         ajan araçları + atıf kayıt defteri + güvenli hesap makinesi
-  verify.py        iddia ayırma, birim duyarlı deterministik kontrol, çıkarma/işaretleme
-  retrieval.py     varlık kapsamı, BM25+vektör+RRF+rerank, bölüme genişletme, şekil sayfaları
+  server.py        API: ayarlar, kütüphane (yayımla, geçiş), dokümanlar, sayfa görüntüsü/bilgisi, SSE soru akışı
+  engine.py        plan -> kapsam -> arama -> ajan döngüsü -> doğrulama/denetçi/yeniden üretim -> kanıt konumu
+  tools.py         ajan araçları (ortak kapsam) + atıf kayıt defteri + izlenebilir hesap makinesi
+  verify.py        çerçeve/teknik ifade ayrımı, deterministik kontrol, katı denetçi ayrıştırma, cevabı yeniden kurma
+  evidence.py      ifade -> kaynak cümlesi/hücresi -> sayfa koordinatları
+  geometry.py      sayfa kelime konumları, ekran/PDF dönüşümleri, metin ve hücre eşleştirme
+  retrieval.py     varlık kapsamı (sessiz genişletme yok), BM25+vektör+RRF+rerank, standart başına kanıt
   query.py         planlayıcı;  domains.py  koleksiyon/standart varlıkları, TR->EN terimler
-  ingest/          loaders, cleaning, structure, chunker, metadata, vlm (tablo çıkarımı), pipeline
-  store.py         SQLite indeks, parametre deposu, salt-okunur açma, yayımlama
+  ingest/          loaders, cleaning, structure, chunker, metadata (seri/sürüm/revizyon), vlm (hücre doğrulama),
+                   pipeline (tablo bazında birleştirme, eski indeks geçişi)
+  store.py         SQLite indeks (şema v3 + yerinde geçiş), parametre deposu, sayfa geometrisi, yayımlama
+  evaluation.py    olgu tabanlı değerlendirme şeması ve metrikler
   api.py, llm.py, embeddings.py, reranker.py   OpenAI uyumlu istemciler (vLLM)
-  units.py         nicelik ayrıştırma ve SI normalizasyonu
+  units.py         nicelik ayrıştırma ve SI normalizasyonu (bilinmeyen birim / ifade / belirsiz sayı ayrı)
   config.py, settings.py   katmanlı ayarlar, DPAPI ile şifreli API anahtarları
-  web/             çevrimdışı arayüz (TR/EN);  resources/domains.yaml
+  web/             çevrimdışı arayüz (TR/EN, PDF vurgu katmanı);  resources/domains.yaml
 packaging/         PyInstaller spec + giriş;  .github/workflows/windows-build.yml
 deploy/            vLLM örnek komutları
-tests/             79 test (sahte OpenAI uyumlu sunucu ile uçtan uca)
+tests/             sentetik PDF'ler + sahte OpenAI uyumlu sunucu; Playwright ile arayüz testi (Chromium varsa)
 ```
 
 > Standart dokümanları lisanslı içeriktir; kütüphane klasörü git'e eklenmez.

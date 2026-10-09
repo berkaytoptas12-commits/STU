@@ -50,14 +50,15 @@ reranker:
 retrieval:
   final_top_k: 8
   section_expand_tokens: 1800        # small-to-big: expand hits to their section up to this size
-  entity_filter: true                # hard filter on standards/versions named in the question
+  entity_filter: true                # hard filter on standards/versions named in the question (never widened)
+  clarify_ambiguous: true            # ask back when no standard is named and sibling versions' values may differ
   domain_routing: true
   query_rewrite: true
   parameter_rows: 12
 
 answer:
-  verify: true                       # deterministic number/unit/citation check
-  judge: true                        # fresh-context entailment judge
+  verify: true                       # deterministic number/unit/citation check (off -> answers are "not checked")
+  judge: true                        # fresh-context entailment judge (off -> statements are "not checked")
   regenerate: true                   # one correction pass for failing claims
   failed_claims: strip               # strip | flag
 

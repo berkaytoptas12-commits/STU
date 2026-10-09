@@ -1,5 +1,31 @@
 ## TechRAG — Windows masaüstü uygulaması
 
+### 0.2.0 — doğruluk ve PDF'de kanıt vurgulama
+- **Atfa tıklayınca kanıt PDF'te vurgulanır**: ifadeyi destekleyen cümle ya da tablo değer hücresi (parametre
+  adı, sütun başlığı, birim, dipnot ile) sayfa üzerinde işaretlenir; kanıtlar arasında gezinme, vurguyu
+  gizleme ve yakınlaştırma. Döndürülmüş/kırpılmış sayfalarda hizalı; fiziksel sayfa ile basılı sayfa etiketi
+  ayrı. Konum bulunamazsa bu açıkça yazılır; orijinal PDF'e hiçbir şey yazılmaz.
+- **Doğrulama sertleşti**: denetçi hatası, zaman aşımı, bozuk/eksik/tekrarlı karar artık onay sayılmıyor
+  ("doğrulanamadı"); sorudaki sayılar kanıt sayılmıyor (ayrı "kullanıcı girdisi"); atıfsız teknik ifadeler
+  başlıktan bağımsız denetleniyor; hesap girdileri kaynağa izleniyor; cevap yalnızca doğrulanmış ifadelerden
+  kuruluyor; taslak son cevap gibi gösterilmiyor. Durumlar: destekleniyor / desteklenmiyor / doğrulanamadı / uygulanmadı.
+- **Kapsam korunuyor**: adı geçen standart/sürüm yüklü değilse başka sürümle cevap verilmiyor ("yüklü değil");
+  etiketsiz dokümanlar kesin eşleşme sayılmıyor; araçlar aynı kapsamı ve kullanıcının seçimini uyguluyor;
+  karşılaştırmalarda kanıt standart başına toplanıyor; belirsiz kapsamda kullanıcıya soruluyor.
+- **Tablolar hücre düzeyinde doğrulanıyor**: değer, parametre satırı + sütun başlığı (+ grup başlığı) kesişiminde,
+  birimi ve koşuluyla bulunmalı. Min/max yer değişimi, yanlış birim veya yanlış satır onaylanmıyor; doğrulanmamış
+  satırlar cevapta (araçla da) kullanılmıyor. `max(10 ns, 4 tCK)` gibi ifadeler ve bilinmeyen birimler SI'ye
+  çevrilmiyor.
+- **VLM tablo birleştirme tablo bazında**: aynı sayfadaki başka bir tablo artık kaybolmuyor.
+- **Belge önceliği**: doküman serisi/sürüm/revizyon/tür ayrı; Base ile CEM veya tasarım kılavuzu birbirinin
+  revizyonu sayılmıyor; guide/appnote spesifikasyonu geçersiz kılmıyor; errata ilgili belgeye (ve mümkünse
+  maddeye) bağlanıyor; eski revizyon soruda adlandırılırsa kullanılıyor; çelişen değerler belirtiliyor.
+- **Değerlendirme**: olgu tabanlı şema, cevapsız sorular, hatalı cevap / cevap vermeme oranları, kaynak/sayfa/
+  konum doğruluğu ayrı; örnek set "doğrulanmış benchmark değil" olarak işaretli.
+- **Eski kütüphaneler**: açılışta şema güncellenir; eski sürümün "doğrulanmış" saydığı tablo satırları güvenilmez
+  kabul edilir. Kütüphane → "Konum verisini oluştur" (veya `TechRAG.exe migrate`) yeniden embedding ve VLM çağrısı
+  yapmadan konum verisini ekler ve tabloları yeniden doğrular. Gerekirse `ingest --rebuild` önerilir.
+
 ### 0.1.2 — kapalı ağda HTTPS sertifika hatası (`SSL: CERTIFICATE_VERIFY_FAILED`)
 - Uygulama artık **Windows sertifika deposuna** güveniyor: BT'nin dağıttığı şirket CA'sıyla imzalı model
   sunucuları ek ayar gerektirmeden çalışır (önceden yalnızca Python'un kendi genel CA listesi kullanılıyordu).

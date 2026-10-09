@@ -25,6 +25,8 @@ def _engine(cfg: Config):
 def _src_line(s: dict) -> str:
     if s.get("kind") == "calc":
         return f"  [{s['n']}] calc: {s['text']}"
+    if s.get("kind") == "user":
+        return f"  [{s['n']}] user input (from the question, not a document)"
     pages = f"p.{s['page_start']}" if s["page_start"] == s["page_end"] else f"p.{s['page_start']}-{s['page_end']}"
     std = f" [{', '.join(s.get('entities') or [])}]" if s.get("entities") else ""
     kind = f" ({s['kind']})" if s.get("kind") not in (None, "passage") else ""
@@ -108,12 +110,17 @@ def _stream(e, question: str, history: list, args) -> str:
             answer = ev["answer"]
             _print("\n" + answer + "\n")
             v = ev["verification"]
-            _print(f"verification: {v['status']} — {v['supported']}/{v['checked']} statements supported"
-                   + (f", {len(v['removed'])} removed" if v["removed"] else "")
+            j = v.get("judge", {})
+            judge = ("judge off" if not j.get("enabled") else "judge completed" if j.get("completed")
+                     else "judge NOT completed" if j.get("called") else "judge not needed")
+            _print(f"verification: {v['status']} — {v['supported']} supported, {v['unsupported']} unsupported, "
+                   f"{v['unverified']} unverified, {v['not_checked']} not checked; {judge}"
+                   + (f"; {len(v['removed'])} removed" if v["removed"] else "")
                    + (" (regenerated once)" if v["regenerated"] else ""))
             for c in v["details"]:
-                if c["status"] in ("removed", "fail"):
-                    _print(f"  - removed: {c['text']}\n      reason: {'; '.join(c['reasons'])}")
+                if c.get("outcome") in ("removed", "flagged"):
+                    _print(f"  - {c['outcome']} ({c['status']}): {c['text']}\n      reason: "
+                           f"{'; '.join(c['reasons']) or c['judge'].get('error', '')}")
             cited = [s for s in ev["sources"] if s.get("cited")]
             if cited:
                 _print("Sources:")
@@ -121,6 +128,9 @@ def _stream(e, question: str, history: list, args) -> str:
                     _print(_src_line(s))
             if args.verbose:
                 _print(f"(timings: {ev['timings']})")
+        elif kind == "clarify":
+            for o in ev["options"]:
+                _print(f"  ? {o['label']}: {o['question']}")
         elif kind == "error":
             _print(f"ERROR: {ev['message']}")
     return answer
@@ -177,8 +187,26 @@ def cmd_docs(cfg: Config, args) -> int:
             flags.append(f"superseded by #{d.superseded_by}")
         if d.warnings:
             flags.append(f"{len(d.warnings)} warning(s)")
+        if d.legacy:
+            flags.append("legacy index (run: techrag migrate)")
         _print(f"{d.id:>4} [{d.domain:<11}] {', '.join(d.entities) or '-':<16} {d.title} "
                f"(rev {d.revision or '-'}, {d.n_pages} p., {d.n_chunks} chunks) {' | '.join(flags)}")
+    return 0
+
+
+def cmd_migrate(cfg: Config, args) -> int:
+    from techrag.ingest.pipeline import migrate_index
+    from techrag.store import Store
+
+    if cfg.read_only:
+        _print("The library is configured read-only; migrate a writable copy, then publish it again.")
+        return 2
+    store = Store(cfg.db_path)
+    rep = migrate_index(cfg, store, _print)
+    _print(json.dumps(rep, ensure_ascii=False, indent=2))
+    if rep["needs_reindex"]:
+        _print("Some content needs a full re-index (techrag ingest --rebuild; VLM results come from the cache, "
+               "only embeddings are recomputed).")
     return 0
 
 
@@ -282,8 +310,12 @@ def cmd_doctor(cfg: Config, args) -> int:
         from techrag.store import Store
 
         st = Store(cfg.db_path, read_only=True).stats()
-        check("index", st["chunks"] > 0, f"{st['documents']} docs, {st['chunks']} chunks, {st['parameters']} parameters, "
+        check("index", st["chunks"] > 0, f"{st['documents']} docs, {st['chunks']} chunks, "
+                                        f"{st['verified_parameters']}/{st['parameters']} parameters verified, "
                                         f"embedding={st['embedding_model']}")
+        check("index format", not st["legacy_documents"],
+              f"{st['legacy_documents']} document(s) from an older version: run 'techrag migrate'"
+              if st["legacy_documents"] else "current")
         if st["embedding_model"] and cfg.embedding.model:
             check("index matches embedding setting", st["embedding_model"] == f"api:{cfg.embedding.model}",
                   f"index={st['embedding_model']} setting=api:{cfg.embedding.model}")
@@ -373,6 +405,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--host")
     s.add_argument("--port", type=int)
     s.set_defaults(func=cmd_serve)
+
+    sub.add_parser("migrate", help="update an index from an older version in place (page geometry for highlights, "
+                                   "cell-level table grounding; no re-embedding, no VLM calls)").set_defaults(func=cmd_migrate)
 
     s = sub.add_parser("publish", help="write a clean, shareable copy of the library")
     s.add_argument("dest")

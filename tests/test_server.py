@@ -40,7 +40,7 @@ def test_ask_stream_events(client):
     kinds = [e["type"] for e in events]
     assert kinds[0] == "status" and "plan" in kinds and "tool" in kinds and kinds[-1] == "final"
     fin = events[-1]
-    assert "295 ns" in fin["answer"] and fin["verification"]["status"] == "ok"
+    assert "295 ns" in fin["answer"] and fin["verification"]["status"] == "supported"
 
 
 def test_search_endpoint(client):
@@ -99,3 +99,18 @@ def test_token_auth(cfg, engine):
         assert c.get("/api/info", headers={"Authorization": "Bearer t0k"}).status_code == 200
         d = c.get("/api/documents?token=t0k").json()[0]
         assert c.get(f"/api/documents/{d['id']}/page/1.png?token=t0k").status_code == 200
+
+
+def test_page_info_and_migrate_endpoint(client):
+    d = next(x for x in client.get("/api/documents").json() if x["path"].endswith(".pdf"))
+    info = client.get(f"/api/documents/{d['id']}/page/6/info").json()
+    assert info["geometry"] and info["has_text"] and not info["legacy"] and info["sha256"] == d["sha256"]
+    assert client.get(f"/api/documents/{d['id']}/page/999/info").status_code == 404
+    assert "page_labels" in client.get(f"/api/documents/{d['id']}").json()
+    job = client.post("/api/library/migrate").json()["job"]
+    for _ in range(200):
+        st = client.get(f"/api/jobs/{job}").json()
+        if st["status"] in ("done", "failed"):
+            break
+        time.sleep(0.05)
+    assert st["status"] == "done" and st["report"]["documents"] == 0, "nothing to migrate in a current index"

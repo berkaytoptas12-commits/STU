@@ -136,3 +136,27 @@ def engine(cfg, sources, registry, clients):
     assert not report.failed, report.failed
     return RAGEngine(cfg, store=store, embedder=clients["embedder"], reranker=clients["reranker"],
                      llm=clients["llm"], vision=clients["vision"], domains=registry)
+
+
+@pytest.fixture()
+def make_engine(cfg, registry, clients):
+    """Ingest whatever is under cfg.sources_dir and return an engine (for custom libraries)."""
+    def build():
+        from techrag.engine import RAGEngine
+        from techrag.ingest.pipeline import Ingestor
+        from techrag.store import Store
+
+        store = Store(cfg.db_path)
+        report = Ingestor(cfg, store, clients["embedder"], registry, llm=clients["llm"], vision=clients["vision"]).run()
+        assert not report.failed, report.failed
+        return RAGEngine(cfg, store=store, embedder=clients["embedder"], reranker=clients["reranker"],
+                         llm=clients["llm"], vision=clients["vision"], domains=registry)
+    return build
+
+
+def answer_calls(fake) -> list:
+    return [c for c in fake.calls if "ANSWER CONTRACT" in str(c["body"].get("messages", [{}])[0].get("content", ""))]
+
+
+def judge_calls(fake) -> list:
+    return [c for c in fake.calls if "strict fact checker" in str(c["body"].get("messages", [{}])[0].get("content", ""))]

@@ -85,10 +85,10 @@ domains:
       - '\b(tlp|dllp)s?\b'
       - '\b(\d+(\.\d+)?)\s?gt/s\b'
     standards:
-      - {id: "PCIe 3.x", patterns: ['\bpci[\s-]?e(?:xpress)?[\s-]*(?:gen[\s-]*)?3(?:\.\d)?\b', 'pci express base specification[^\n]{0,30}revision\s*3\.\d']}
-      - {id: "PCIe 4.0", patterns: ['\bpci[\s-]?e(?:xpress)?[\s-]*(?:gen[\s-]*)?4(?:\.0)?\b', 'pci express base specification[^\n]{0,30}revision\s*4\.0']}
-      - {id: "PCIe 5.0", patterns: ['\bpci[\s-]?e(?:xpress)?[\s-]*(?:gen[\s-]*)?5(?:\.0)?\b', 'pci express base specification[^\n]{0,30}revision\s*5\.0']}
-      - {id: "PCIe 6.x", patterns: ['\bpci[\s-]?e(?:xpress)?[\s-]*(?:gen[\s-]*)?6(?:\.\d)?\b', 'pci express base specification[^\n]{0,30}revision\s*6\.\d']}
+      - {id: "PCIe 3.x", patterns: ['\bpci[\s_-]?e(?:xpress)?(?:[\s_-]+(?:base|specification|spec))*[\s_-]*(?:gen[\s-]*)?3(?:\.\d)?\b', 'pci express base specification[^\n]{0,30}revision\s*3\.\d']}
+      - {id: "PCIe 4.0", patterns: ['\bpci[\s_-]?e(?:xpress)?(?:[\s_-]+(?:base|specification|spec))*[\s_-]*(?:gen[\s-]*)?4(?:\.0)?\b', 'pci express base specification[^\n]{0,30}revision\s*4\.0']}
+      - {id: "PCIe 5.0", patterns: ['\bpci[\s_-]?e(?:xpress)?(?:[\s_-]+(?:base|specification|spec))*[\s_-]*(?:gen[\s-]*)?5(?:\.0)?\b', 'pci express base specification[^\n]{0,30}revision\s*5\.0']}
+      - {id: "PCIe 6.x", patterns: ['\bpci[\s_-]?e(?:xpress)?(?:[\s_-]+(?:base|specification|spec))*[\s_-]*(?:gen[\s-]*)?6(?:\.\d)?\b', 'pci express base specification[^\n]{0,30}revision\s*6\.\d']}
       - {id: "PCIe CEM", patterns: ['\bcem\b', 'card electromechanical']}
       - {id: "M.2", patterns: ['\bm\.2\b', 'ngff']}
     glossary:

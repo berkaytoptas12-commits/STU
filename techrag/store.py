@@ -14,14 +14,17 @@ import shutil
 import sqlite3
 import threading
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Iterator, Optional, Sequence
 
 import numpy as np
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
+# Documents ingested with this format carry metadata["index_format"]; older ones lack page geometry and
+# cell-level table grounding (see Store.legacy_documents / `techrag migrate`).
+INDEX_FORMAT = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -54,7 +57,8 @@ CREATE TABLE IF NOT EXISTS chunks (
     kind TEXT,
     overlap INTEGER DEFAULT 0,
     text TEXT NOT NULL,
-    embedding BLOB
+    embedding BLOB,
+    evidence INTEGER DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_doc ON chunks(doc_id, ordinal);
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
@@ -69,7 +73,9 @@ CREATE TABLE IF NOT EXISTS tables (
     markdown TEXT,
     data TEXT,
     source TEXT,
-    verified_ratio REAL
+    verified_ratio REAL,
+    status TEXT DEFAULT '',
+    grounding TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_tables_doc ON tables(doc_id, page);
 CREATE TABLE IF NOT EXISTS parameters (
@@ -88,9 +94,20 @@ CREATE TABLE IF NOT EXISTS parameters (
     notes TEXT,
     min_si REAL, typ_si REAL, max_si REAL,
     base_unit TEXT,
-    verified INTEGER DEFAULT 0
+    verified INTEGER DEFAULT 0,
+    status TEXT DEFAULT '',
+    evidence TEXT DEFAULT '',
+    value_kind TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_params_doc ON parameters(doc_id);
+CREATE TABLE IF NOT EXISTS pages (
+    doc_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    page INTEGER NOT NULL,
+    label TEXT DEFAULT '',
+    geom TEXT,
+    words BLOB,
+    PRIMARY KEY (doc_id, page)
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS params_fts USING fts5(
     parameter, symbol, conditions, notes, caption, section, title,
     tokenize = 'porter unicode61 remove_diacritics 2'
@@ -121,6 +138,7 @@ class ChunkRow:
     text: str
     doc_title: str = ""
     doc_path: str = ""
+    evidence: bool = True     # False: search-only content (an unverified VLM table), never cited directly
 
 
 @dataclass
@@ -146,7 +164,25 @@ class DocumentRow:
         d = asdict(self)
         if not with_toc:
             d.pop("toc")
+        d.update(doc_key=self.doc_key, version=self.version, part=self.part, legacy=self.legacy)
         return d
+
+    @property
+    def doc_key(self) -> str:
+        return str(self.metadata.get("doc_key") or "")
+
+    @property
+    def version(self) -> str:
+        return str(self.metadata.get("version") or "")
+
+    @property
+    def part(self) -> str:
+        return str(self.metadata.get("part") or "")
+
+    @property
+    def legacy(self) -> bool:
+        """Indexed before page geometry / cell-level grounding existed: re-index for highlights."""
+        return int(self.metadata.get("index_format") or 0) < INDEX_FORMAT
 
 
 @dataclass
@@ -168,14 +204,20 @@ class ParameterRow:
     notes: str
     verified: bool
     doc_title: str = ""
+    status: str = ""
+    evidence: dict = field(default_factory=dict)
+    value_kind: str = ""
 
     def line(self) -> str:
         vals = " | ".join(f"{k}={v}" for k, v in (("min", self.min), ("typ", self.typ), ("max", self.max)) if v)
         parts = [self.parameter + (f" ({self.symbol})" if self.symbol else ""), vals or "-", self.unit or ""]
         if self.conditions:
             parts.append(f"conditions: {self.conditions}")
-        if self.notes:
-            parts.append(f"notes: {self.notes}")
+        notes = self.notes if (self.evidence or {}).get("notes_located", True) else ""
+        if notes:
+            parts.append(f"notes: {notes}")
+        for flag in (self.evidence or {}).get("flags", []):
+            parts.append(f"[{flag}]")
         return " ; ".join(p for p in parts if p)
 
 
@@ -190,6 +232,11 @@ class TableRow:
     source: str
     verified_ratio: float
     doc_title: str = ""
+    status: str = ""
+
+    @property
+    def grounded(self) -> bool:
+        return self.status == "grounded"
 
 
 def sqlite_ro_uri(path: Path) -> str:
@@ -258,6 +305,7 @@ class Store:
         self._vectors: Optional[VectorIndex] = None
         self._vectors_version: Optional[str] = None
         self._lock = threading.Lock()
+        self._geom_cache: dict[tuple[int, int], object] = {}
         if read_only:
             if not self.db_path.exists():
                 raise FileNotFoundError(f"library index not found: {self.db_path}")
@@ -265,9 +313,46 @@ class Store:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
             with self.connect() as con:
                 con.execute("PRAGMA journal_mode=WAL")
+                self._migrate(con)
                 con.executescript(SCHEMA)
                 if not con.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone():
                     con.execute("INSERT INTO meta VALUES('schema_version', ?)", (SCHEMA_VERSION,))
+        with self.connect() as con:
+            self.columns = {t: {r[1] for r in con.execute(f"PRAGMA table_info({t})")}
+                            for t in ("chunks", "tables", "parameters", "pages")}
+
+    @staticmethod
+    def _migrate(con: sqlite3.Connection) -> None:
+        """Bring an index from an older version up to the current schema, in place.
+
+        * new columns/tables are added (chunks.evidence, tables.status, parameters.status/evidence, pages);
+        * parameter rows that were "verified" by the old page-level number check are demoted to
+          'legacy_unchecked' (not citable) until the document is re-indexed with cell-level grounding;
+        * table chunks that came from old VLM tables become search-only, for the same reason.
+        Embeddings and chunk texts are untouched; page geometry is filled by `techrag migrate`.
+        """
+        have = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if "chunks" not in have:
+            return  # new library
+        cols = {t: {r[1] for r in con.execute(f"PRAGMA table_info({t})")} for t in ("chunks", "tables", "parameters")}
+        if "evidence" not in cols["chunks"]:
+            con.execute("ALTER TABLE chunks ADD COLUMN evidence INTEGER DEFAULT 1")
+        for col in ("status", "grounding"):
+            if col not in cols["tables"]:
+                con.execute(f"ALTER TABLE tables ADD COLUMN {col} TEXT DEFAULT ''")
+        for col in ("status", "evidence", "value_kind"):
+            if col not in cols["parameters"]:
+                con.execute(f"ALTER TABLE parameters ADD COLUMN {col} TEXT DEFAULT ''")
+        legacy_tables = con.execute("SELECT id, doc_id, page, markdown FROM tables WHERE status = ''").fetchall()
+        for t in legacy_tables:
+            lines = [ln for ln in (t[3] or "").split("\n") if ln.startswith("|")]
+            if lines:
+                con.execute("UPDATE chunks SET evidence = 0 WHERE doc_id = ? AND kind = 'table' AND page_start = ?"
+                            " AND instr(text, ?) > 0", (t[1], t[2], lines[0]))
+        con.execute("UPDATE tables SET status = 'legacy_unchecked' WHERE status = ''")
+        con.execute("UPDATE parameters SET verified = 0, status = 'legacy_unchecked' WHERE status = ''")
+        con.execute("INSERT INTO meta(key, value) VALUES('schema_version', ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (SCHEMA_VERSION,))
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -321,7 +406,7 @@ class Store:
     def reset(self, embedding_name: str, dim: int) -> None:
         self._writable()
         with self.connect() as con:
-            for t in ("params_fts", "parameters", "tables", "chunks_fts", "chunks", "documents"):
+            for t in ("params_fts", "parameters", "tables", "pages", "chunks_fts", "chunks", "documents"):
                 con.execute(f"DELETE FROM {t}")
             self.set_meta("embedding_model", embedding_name, con)
             self.set_meta("embedding_dim", str(dim), con)
@@ -362,6 +447,7 @@ class Store:
             c.execute("DELETE FROM params_fts WHERE rowid IN (SELECT id FROM parameters WHERE doc_id=?)", (doc_id,))
             c.execute("DELETE FROM parameters WHERE doc_id=?", (doc_id,))
             c.execute("DELETE FROM tables WHERE doc_id=?", (doc_id,))
+            c.execute("DELETE FROM pages WHERE doc_id=?", (doc_id,))
             c.execute("DELETE FROM chunks WHERE doc_id=?", (doc_id,))
             c.execute("UPDATE documents SET superseded_by=NULL WHERE superseded_by=?", (doc_id,))
             c.execute("DELETE FROM documents WHERE id=?", (doc_id,))
@@ -376,16 +462,22 @@ class Store:
     def replace_document(self, *, path: str, title: str, domain: str, sha256: str, n_pages: int,
                          toc: list, metadata: dict, warnings: list, chunks: Sequence[dict],
                          embeddings: np.ndarray, entities: Sequence[str] = (), doc_type: str = "base",
-                         revision: str = "", doc_date: str = "", tables: Sequence[dict] = ()) -> int:
-        """Atomically (re)write a document with chunks, FTS rows, embeddings, tables and parameters.
+                         revision: str = "", doc_date: str = "", tables: Sequence[dict] = (),
+                         pages: Sequence[tuple] = ()) -> int:
+        """Atomically (re)write a document with chunks, FTS rows, embeddings, tables, parameters and page
+        geometry.
 
-        tables: [{"page", "caption", "section", "markdown", "data", "source", "verified_ratio",
-                  "parameters": [{"parameter", "symbol", "min", "typ", "max", "unit", "conditions", "notes",
-                                  "min_si", "typ_si", "max_si", "base_unit", "verified"}]}]
+        chunks: [{"ordinal", "section", "page_start", "page_end", "kind", "overlap", "text", "evidence"}]
+        tables: [{"page", "caption", "section", "markdown", "data", "source", "verified_ratio", "status",
+                  "grounding", "parameters": [{"parameter", "symbol", "min", "typ", "max", "unit", "conditions",
+                  "notes", "min_si", "typ_si", "max_si", "base_unit", "verified", "status", "evidence",
+                  "value_kind"}]}]
+        pages:  [(page, label, geom_json, words_blob)]
         """
         self._writable()
         if len(chunks) != len(embeddings):
             raise ValueError("chunks/embeddings length mismatch")
+        metadata = dict(metadata, index_format=INDEX_FORMAT)
         with self.connect() as con:
             old = con.execute("SELECT id FROM documents WHERE path=?", (path,)).fetchone()
             if old:
@@ -402,30 +494,32 @@ class Store:
             for c, vec in zip(chunks, emb16):
                 cur = con.execute(
                     "INSERT INTO chunks(doc_id, ordinal, domain, section, page_start, page_end, kind, overlap, text,"
-                    " embedding) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    " embedding, evidence) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                     (doc_id, c["ordinal"], domain, c["section"], c["page_start"], c["page_end"], c["kind"],
-                     c.get("overlap", 0), c["text"], vec.tobytes()),
+                     c.get("overlap", 0), c["text"], vec.tobytes(), 1 if c.get("evidence", True) else 0),
                 )
                 con.execute("INSERT INTO chunks_fts(rowid, text, section, title) VALUES(?,?,?,?)",
                             (cur.lastrowid, c["text"], c["section"], title))
             for t in tables:
                 cur = con.execute(
-                    "INSERT INTO tables(doc_id, page, caption, section, markdown, data, source, verified_ratio)"
-                    " VALUES(?,?,?,?,?,?,?,?)",
+                    "INSERT INTO tables(doc_id, page, caption, section, markdown, data, source, verified_ratio, status,"
+                    " grounding) VALUES(?,?,?,?,?,?,?,?,?,?)",
                     (doc_id, t["page"], t.get("caption", ""), t.get("section", ""), t.get("markdown", ""),
-                     json.dumps(t.get("data"), ensure_ascii=False), t.get("source", ""), t.get("verified_ratio")),
+                     json.dumps(t.get("data"), ensure_ascii=False), t.get("source", ""), t.get("verified_ratio"),
+                     t.get("status", ""), json.dumps(t.get("grounding") or {}, ensure_ascii=False)),
                 )
                 table_id = cur.lastrowid
                 for p in t.get("parameters", []):
                     cur = con.execute(
                         "INSERT INTO parameters(doc_id, table_id, domain, page, section, caption, parameter, symbol,"
-                        " min, typ, max, unit, conditions, notes, min_si, typ_si, max_si, base_unit, verified)"
-                        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        " min, typ, max, unit, conditions, notes, min_si, typ_si, max_si, base_unit, verified, status,"
+                        " evidence, value_kind) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (doc_id, table_id, domain, t["page"], t.get("section", ""), t.get("caption", ""),
                          p.get("parameter", ""), p.get("symbol", ""), p.get("min", ""), p.get("typ", ""),
                          p.get("max", ""), p.get("unit", ""), p.get("conditions", ""), p.get("notes", ""),
                          p.get("min_si"), p.get("typ_si"), p.get("max_si"), p.get("base_unit", ""),
-                         1 if p.get("verified") else 0),
+                         1 if p.get("verified") else 0, p.get("status", "unchecked"),
+                         json.dumps(p.get("evidence") or {}, ensure_ascii=False), p.get("value_kind", "")),
                     )
                     con.execute(
                         "INSERT INTO params_fts(rowid, parameter, symbol, conditions, notes, caption, section, title)"
@@ -433,8 +527,85 @@ class Store:
                         (cur.lastrowid, p.get("parameter", ""), p.get("symbol", ""), p.get("conditions", ""),
                          p.get("notes", ""), t.get("caption", ""), t.get("section", ""), title),
                     )
+            for page, label, geom_json, blob in pages:
+                con.execute("INSERT INTO pages(doc_id, page, label, geom, words) VALUES(?,?,?,?,?)",
+                            (doc_id, page, label, geom_json, blob))
             self._bump_version(con)
+        self._geom_cache.clear()
         return doc_id
+
+    def set_pages(self, doc_id: int, pages: Sequence[tuple], metadata: Optional[dict] = None) -> None:
+        """Store page geometry for an already indexed document (migration of a legacy index)."""
+        self._writable()
+        with self.connect() as con:
+            con.execute("DELETE FROM pages WHERE doc_id=?", (doc_id,))
+            for page, label, geom_json, blob in pages:
+                con.execute("INSERT INTO pages(doc_id, page, label, geom, words) VALUES(?,?,?,?,?)",
+                            (doc_id, page, label, geom_json, blob))
+            if metadata is not None:
+                con.execute("UPDATE documents SET metadata=? WHERE id=?",
+                            (json.dumps(metadata, ensure_ascii=False, default=str), doc_id))
+            self._bump_version(con)
+        self._geom_cache.clear()
+
+    def update_grounding(self, tables: Sequence[tuple] = (), params: Sequence[tuple] = (),
+                         chunk_evidence: Sequence[tuple] = ()) -> None:
+        """Migration: write re-computed grounding results without touching texts or embeddings.
+        tables: (id, status, grounding_json, ratio); params: (id, verified, status, evidence_json, value_kind,
+        min_si, typ_si, max_si, base_unit); chunk_evidence: (chunk_id, 0|1)."""
+        self._writable()
+        with self.connect() as con:
+            con.executemany("UPDATE tables SET status=?, grounding=?, verified_ratio=? WHERE id=?",
+                            [(st, g, r, i) for i, st, g, r in tables])
+            con.executemany("UPDATE parameters SET verified=?, status=?, evidence=?, value_kind=?, min_si=?, typ_si=?,"
+                            " max_si=?, base_unit=? WHERE id=?",
+                            [(1 if v else 0, st, ev, vk, a, b, c, bu, i) for i, v, st, ev, vk, a, b, c, bu in params])
+            con.executemany("UPDATE chunks SET evidence=? WHERE id=?", [(e, i) for i, e in chunk_evidence])
+            self._bump_version(con)
+
+    def raw_tables(self, doc_id: int) -> list[sqlite3.Row]:
+        with self.connect() as con:
+            return con.execute("SELECT * FROM tables WHERE doc_id=?", (doc_id,)).fetchall()
+
+    def raw_parameters(self, table_id: int) -> list[sqlite3.Row]:
+        with self.connect() as con:
+            return con.execute("SELECT * FROM parameters WHERE table_id=?", (table_id,)).fetchall()
+
+    def table_chunks(self, doc_id: int, page: int) -> list[sqlite3.Row]:
+        with self.connect() as con:
+            return con.execute("SELECT id, text FROM chunks WHERE doc_id=? AND kind='table' AND page_start=?",
+                               (doc_id, page)).fetchall()
+
+    # ----------------------------------------------------------------- pages
+    @property
+    def has_geometry(self) -> bool:
+        return bool(self.columns.get("pages"))
+
+    def page_geom(self, doc_id: int, page: int):
+        """PageGeom of a page, or None (legacy index, non-PDF source or page out of range)."""
+        from techrag.geometry import PageGeom
+
+        if not self.has_geometry:
+            return None
+        key = (doc_id, page)
+        with self._lock:
+            if key in self._geom_cache:
+                return self._geom_cache[key]
+        with self.connect() as con:
+            row = con.execute("SELECT label, geom, words FROM pages WHERE doc_id=? AND page=?", (doc_id, page)).fetchone()
+        geom = PageGeom.decode(page, row["label"], row["geom"], row["words"]) if row else None
+        with self._lock:
+            if len(self._geom_cache) > 256:
+                self._geom_cache.clear()
+            self._geom_cache[key] = geom
+        return geom
+
+    def page_labels(self, doc_id: int) -> dict[int, str]:
+        if not self.has_geometry:
+            return {}
+        with self.connect() as con:
+            rows = con.execute("SELECT page, label FROM pages WHERE doc_id=? AND label != ''", (doc_id,)).fetchall()
+        return {r["page"]: r["label"] for r in rows}
 
     def set_superseded(self, pairs: Iterable[tuple[int, Optional[int]]]) -> None:
         self._writable()
@@ -444,15 +615,18 @@ class Store:
             self._bump_version(con)
 
     # ---------------------------------------------------------------- chunks
-    _CHUNK_SELECT = (
-        "SELECT c.id, c.doc_id, c.ordinal, c.domain, c.section, c.page_start, c.page_end, c.kind, c.overlap,"
-        " c.text, d.title AS doc_title, d.path AS doc_path FROM chunks c JOIN documents d ON d.id = c.doc_id"
-    )
+    @property
+    def _CHUNK_SELECT(self) -> str:
+        ev = "c.evidence" if "evidence" in self.columns.get("chunks", ()) else "1"
+        return ("SELECT c.id, c.doc_id, c.ordinal, c.domain, c.section, c.page_start, c.page_end, c.kind, c.overlap,"
+                f" c.text, d.title AS doc_title, d.path AS doc_path, {ev} AS evidence"
+                " FROM chunks c JOIN documents d ON d.id = c.doc_id")
 
     @staticmethod
     def _chunk(r: sqlite3.Row) -> ChunkRow:
         return ChunkRow(r["id"], r["doc_id"], r["ordinal"], r["domain"], r["section"] or "", r["page_start"],
-                        r["page_end"], r["kind"], r["overlap"] or 0, r["text"], r["doc_title"], r["doc_path"])
+                        r["page_end"], r["kind"], r["overlap"] or 0, r["text"], r["doc_title"], r["doc_path"],
+                        bool(r["evidence"]))
 
     def chunks_by_ids(self, ids: Iterable[int]) -> dict[int, ChunkRow]:
         ids = list(dict.fromkeys(int(i) for i in ids))
@@ -478,22 +652,31 @@ class Store:
                 (doc_id, section, limit)).fetchall()
         return [self._chunk(r) for r in rows]
 
-    def page_chunks(self, doc_id: int, page: int) -> list[ChunkRow]:
+    def page_chunks(self, doc_id: int, page: int, evidence_only: bool = True) -> list[ChunkRow]:
         with self.connect() as con:
             rows = con.execute(
                 f"{self._CHUNK_SELECT} WHERE c.doc_id=? AND c.page_start<=? AND c.page_end>=? ORDER BY c.ordinal",
                 (doc_id, page, page)).fetchall()
-        return [self._chunk(r) for r in rows]
+        return [c for c in (self._chunk(r) for r in rows) if c.evidence or not evidence_only]
 
     # -------------------------------------------------------- tables / params
     _PARAM_SELECT = ("SELECT p.*, d.title AS doc_title FROM parameters p JOIN documents d ON d.id = p.doc_id")
 
     @staticmethod
     def _param(r: sqlite3.Row) -> ParameterRow:
+        keys = r.keys()
+        status = (r["status"] if "status" in keys else "") or "legacy_unchecked"
+        try:
+            evidence = json.loads(r["evidence"]) if "evidence" in keys and r["evidence"] else {}
+        except ValueError:
+            evidence = {}
+        # Rows from an index without cell-level grounding are never treated as verified.
+        verified = bool(r["verified"]) and status == "grounded"
         return ParameterRow(r["id"], r["doc_id"], r["table_id"], r["domain"] or "", r["page"] or 0,
                             r["section"] or "", r["caption"] or "", r["parameter"] or "", r["symbol"] or "",
                             r["min"] or "", r["typ"] or "", r["max"] or "", r["unit"] or "", r["conditions"] or "",
-                            r["notes"] or "", bool(r["verified"]), r["doc_title"])
+                            r["notes"] or "", verified, r["doc_title"], status, evidence,
+                            (r["value_kind"] if "value_kind" in keys else "") or "")
 
     def search_parameters(self, query: str, k: int, doc_ids: Optional[Sequence[int]] = None,
                           domains: Optional[Sequence[str]] = None, verified_only: bool = False) -> list[ParameterRow]:
@@ -509,7 +692,8 @@ class Store:
             sql += f" AND p.domain IN ({','.join('?' * len(domains))})"
             params += list(domains)
         if verified_only:
-            sql += " AND p.verified = 1"
+            sql += " AND p.verified = 1" + (" AND p.status = 'grounded'" if "status" in self.columns["parameters"] else
+                                           " AND 0")
         sql += " ORDER BY bm25(params_fts, 3.0, 3.0, 1.0, 0.5, 1.0, 0.5, 0.3) LIMIT ?"
         params.append(k)
         with self.connect() as con:
@@ -536,7 +720,8 @@ class Store:
         with self.connect() as con:
             rows = con.execute(sql, params).fetchall()
         out = [TableRow(r["id"], r["doc_id"], r["page"], r["caption"] or "", r["section"] or "",
-                        r["markdown"] or "", r["source"] or "", r["verified_ratio"] or 0.0, r["doc_title"])
+                        r["markdown"] or "", r["source"] or "", r["verified_ratio"] or 0.0, r["doc_title"],
+                        (r["status"] if "status" in r.keys() else "") or "legacy_unchecked")
                for r in rows]
         if query:
             terms = [t for t in re.findall(r"\w+", query.lower()) if t not in _STOPWORDS and len(t) > 1]
@@ -569,7 +754,19 @@ class Store:
             "embedding_dim": self.get_meta("embedding_dim"),
             "index_version": self.get_meta("index_version"),
             "read_only": self.read_only,
+            "verified_parameters": self._count_verified(),
+            "legacy_documents": len(self.legacy_documents()),
         }
+
+    def _count_verified(self) -> int:
+        if "status" not in self.columns["parameters"]:
+            return 0
+        with self.connect() as con:
+            return con.execute("SELECT COUNT(*) FROM parameters WHERE verified=1 AND status='grounded'").fetchone()[0]
+
+    def legacy_documents(self) -> list[DocumentRow]:
+        """Documents indexed before page geometry / cell-level grounding (re-index or `techrag migrate`)."""
+        return [d for d in self.documents() if d.legacy]
 
     # ---------------------------------------------------------------- search
     def search_bm25(self, query: str, k: int, domains: Optional[Sequence[str]] = None,

@@ -9,21 +9,31 @@ from __future__ import annotations
 import ast
 import math
 import operator
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Callable, Optional
 
 from techrag.ingest.chunker import estimate_tokens
 from techrag.query import QueryPlan
-from techrag.retrieval import Passage, Retriever
+from techrag.retrieval import Passage, Retriever, Scope
 from techrag.store import ParameterRow, Store, TableRow
+from techrag.units import find_quantities, parse_number
 
 TOOL_RESULT_TOKENS = 2500
+
+
+TYPE_NOTES = {
+    "errata": "ERRATA", "ecn": "ECN (engineering change notice)", "amendment": "AMENDMENT",
+    "guide": "DESIGN GUIDE (informative; does not override the specifications)",
+    "appnote": "APPLICATION NOTE (informative; does not override the specifications)",
+    "other": "SUPPORTING DOCUMENT (informative)",
+}
 
 
 @dataclass
 class Source:
     n: int
-    kind: str                 # passage | parameter | table | page | calc
+    kind: str                 # passage | parameter | table | page | calc | user
     text: str
     doc_id: Optional[int] = None
     doc_title: str = ""
@@ -35,24 +45,36 @@ class Source:
     doc_type: str = ""
     revision: str = ""
     score: float = 0.0
-    verified: bool = True
+    verified: bool = True     # False: an extraction that may not be used as evidence
     key: str = ""
+    evidence_text: str = ""   # what verification checks against ("" = text); excludes VLM descriptions
+    relation: str = ""        # precedence note: which document an errata amends, superseded revision, ...
+    extra: dict = field(default_factory=dict)  # parameter fields / calculation inputs / chunk ids
+
+    def evidence(self) -> str:
+        return self.evidence_text or self.text
 
     def header(self) -> str:
-        pages = f"p. {self.page_start}" if self.page_start == self.page_end else f"pp. {self.page_start}-{self.page_end}"
         if self.kind == "calc":
-            return f"[{self.n}] Calculation"
+            ok = self.extra.get("traceable")
+            return f"[{self.n}] Calculation" + ("" if ok else " (WARNING: some inputs are not found in any source)")
+        if self.kind == "user":
+            return (f"[{self.n}] USER INPUT (values from the question - not from any document; never present "
+                    f"them as values stated by a standard)")
+        pages = f"p. {self.page_start}" if self.page_start == self.page_end else f"pp. {self.page_start}-{self.page_end}"
         bits = [f"[{self.n}]"]
         if self.entities:
             bits.append(f"Standard: {', '.join(self.entities)}")
         bits.append(f"Document: {self.doc_title}" + (f" (rev {self.revision})" if self.revision else ""))
         if self.doc_type and self.doc_type != "base":
-            bits.append(f"Type: {self.doc_type.upper()} (overrides the base document)")
+            bits.append(f"Type: {TYPE_NOTES.get(self.doc_type, self.doc_type.upper())}")
+        if self.relation:
+            bits.append(self.relation)
         if self.section:
             bits.append(f"Section: {self.section}")
         bits.append(pages)
         if self.kind != "passage":
-            bits.append(f"({self.kind}{'' if self.verified else ', UNVERIFIED extraction'})")
+            bits.append(f"({self.kind}{'' if self.verified else ', UNVERIFIED extraction - not citable as evidence'})")
         return " | ".join(bits)
 
     def prompt_text(self) -> str:
@@ -81,39 +103,88 @@ class SourceRegistry:
         self._keys[key] = src
         return src, True
 
-    def add_passage(self, p: Passage) -> tuple[Source, bool]:
+    def add_passage(self, p: Passage, doc_meta: Optional[dict] = None) -> tuple[Source, bool]:
         key = "c:" + ",".join(map(str, p.chunk_ids))
+        meta = {"entities": p.entities, "doc_type": p.doc_type, "revision": p.revision, **(doc_meta or {})}
         return self._add(key, kind="table" if p.kind == "table" else "passage", text=p.text, doc_id=p.doc_id,
                          doc_title=p.doc_title, domain=p.domain, section=p.section, page_start=p.page_start,
-                         page_end=p.page_end, entities=p.entities, doc_type=p.doc_type, revision=p.revision,
-                         score=p.score)
+                         page_end=p.page_end, score=p.score, extra={"chunk_ids": list(p.chunk_ids)}, **meta)
 
     def add_parameter(self, r: ParameterRow, doc_meta: dict) -> tuple[Source, bool]:
         caption = f"{r.caption} — " if r.caption else ""
+        fields = {k: getattr(r, k) for k in ("parameter", "symbol", "min", "typ", "max", "unit", "conditions")}
         return self._add(f"p:{r.id}", kind="parameter", text=caption + r.line(), doc_id=r.doc_id,
                          doc_title=r.doc_title, domain=r.domain, section=r.section, page_start=r.page,
-                         page_end=r.page, verified=r.verified, **doc_meta)
+                         page_end=r.page, verified=r.verified,
+                         extra={"param": fields, "param_id": r.id, "status": r.status,
+                                "evidence": r.evidence}, **doc_meta)
 
     def add_table(self, t: TableRow, doc_meta: dict) -> tuple[Source, bool]:
         text = t.markdown
         if estimate_tokens(text) > TOOL_RESULT_TOKENS:
             text = text[: TOOL_RESULT_TOKENS * 4] + "\n... (table truncated; use get_parameter for specific rows)"
         return self._add(f"t:{t.id}", kind="table", text=text, doc_id=t.doc_id, doc_title=t.doc_title,
-                         section=t.section, page_start=t.page, page_end=t.page,
-                         verified=t.verified_ratio >= 0.8, **doc_meta)
+                         section=t.section, page_start=t.page, page_end=t.page, verified=t.grounded,
+                         extra={"table_id": t.id}, **doc_meta)
 
-    def add_page(self, doc_id: int, page: int, title: str, text: str, doc_meta: dict) -> tuple[Source, bool]:
+    def add_page(self, doc_id: int, page: int, title: str, text: str, doc_meta: dict,
+                 evidence_text: str = "", image: bool = False) -> tuple[Source, bool]:
         return self._add(f"g:{doc_id}:{page}", kind="page", text=text or "(page image)", doc_id=doc_id,
-                         doc_title=title, page_start=page, page_end=page, **doc_meta)
+                         doc_title=title, page_start=page, page_end=page, evidence_text=evidence_text or " ",
+                         extra={"image": image}, **doc_meta)
 
-    def add_calc(self, expression: str, result: str) -> tuple[Source, bool]:
-        return self._add(f"x:{expression}", kind="calc", text=f"{expression} = {result}")
+    def add_user_input(self, question: str) -> Optional[Source]:
+        """The question's own numbers, as a separate citable 'user input' (never evidence for a document)."""
+        vals = [q.text.strip() for q in find_quantities(question)]
+        qnums = {q.number for q in find_quantities(question)}
+        vals += [n for n in re.findall(r"(?<![\w.,-])\d+(?:[.,]\d+)?(?![\w.,])", question) if n not in qnums
+                 and not (n.isdigit() and len(n) == 1)]
+        if not vals:
+            return None
+        text = f"Values in the user's question: {'; '.join(dict.fromkeys(vals))}\nQuestion: {question}"
+        src, _ = self._add("u:question", kind="user", text=text, doc_title="User input")
+        return src
+
+    def add_calc(self, expression: str, result: str, inputs: list[dict], traceable: bool) -> tuple[Source, bool]:
+        lines = [f"{expression} = {result}"]
+        if inputs:
+            lines.append("Inputs: " + "; ".join(
+                f"{i['value']} from " + (", ".join(f"[{n}]" for n in i["sources"]) if i["sources"] else "NO SOURCE")
+                for i in inputs))
+        return self._add(f"x:{expression}", kind="calc", text="\n".join(lines),
+                         extra={"inputs": inputs, "traceable": traceable, "result": result,
+                                "expression": expression})
 
     def text_of(self, numbers) -> str:
-        return "\n".join(s.text for n in numbers if (s := self.get(n)))
+        return "\n".join(s.evidence() for n in numbers if (s := self.get(n)))
 
     def all_text(self) -> str:
-        return "\n".join(s.text for s in self.items)
+        return "\n".join(s.evidence() for s in self.items)
+
+
+def parameter_conflicts(registry: SourceRegistry) -> list[str]:
+    """Different values for the same parameter and conditions in different documents/revisions: the model
+    must state the conflict, never merge or silently pick one."""
+    groups: dict[tuple, list[Source]] = {}
+    for s in registry.items:
+        p = s.extra.get("param") if s.kind == "parameter" and s.verified else None
+        if not p:
+            continue
+        name = (p.get("symbol") or p.get("parameter") or "").strip().lower()
+        cond = " ".join(sorted(re.findall(r"\w+", (p.get("conditions") or "").lower())))
+        groups.setdefault((name, cond), []).append(s)
+    notes = []
+    for (name, cond), srcs in groups.items():
+        docs = {s.doc_id for s in srcs}
+        vals = {(s.extra["param"].get("min"), s.extra["param"].get("typ"), s.extra["param"].get("max"),
+                 s.extra["param"].get("unit")) for s in srcs}
+        if len(docs) > 1 and len(vals) > 1:
+            label = srcs[0].extra["param"].get("symbol") or srcs[0].extra["param"].get("parameter")
+            notes.append(f"{label}{f' ({cond})' if cond else ''}: " + " vs ".join(
+                f"[{s.n}] {s.extra['param'].get('min') or s.extra['param'].get('typ') or s.extra['param'].get('max')} "
+                f"{s.extra['param'].get('unit')} ({s.doc_title}{', rev ' + s.revision if s.revision else ''})"
+                for s in srcs))
+    return notes
 
 
 # --------------------------------------------------------------------------------- calculator
@@ -154,6 +225,63 @@ def safe_eval(expression: str) -> float:
     return float(ev(tree))
 
 
+def literals(expression: str) -> list[tuple[str, float]]:
+    """Numeric literals of an expression as (source text, value)."""
+    expr = expression.replace("^", "**").replace("×", "*").replace("·", "*")
+    out = []
+    for node in ast.walk(ast.parse(expr, mode="eval")):
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) and not isinstance(node.value, bool):
+            out.append((ast.get_source_segment(expr, node) or repr(node.value), float(node.value)))
+    return out
+
+
+def _trivial(v: float) -> bool:
+    """Constants that need no source: small integers, powers of ten (unit prefixes), 0.5."""
+    if v in (0.5, 0.25):
+        return True
+    if float(v).is_integer() and abs(v) <= 16:
+        return True
+    if v > 0:
+        e = math.log10(v)
+        return abs(e - round(e)) < 1e-9
+    return False
+
+
+def _close(a: float, b: float) -> bool:
+    return a == b or abs(a - b) <= 1e-6 * max(abs(a), abs(b))
+
+
+def trace_inputs(expression: str, registry: "SourceRegistry", declared: Optional[list] = None
+                 ) -> tuple[list[dict], bool]:
+    """Where each non-trivial number of a calculation comes from: a quantity/number in a document source,
+    the user's input or an earlier calculation. A number found nowhere makes the calculation untraceable;
+    correct arithmetic on an untraceable input never becomes verified evidence."""
+    declared_src: dict[str, int] = {}
+    for d in declared or []:
+        if isinstance(d, dict) and str(d.get("source", "")).strip().isdigit():
+            declared_src[str(d.get("value", "")).strip()] = int(d["source"])
+    inputs, ok = [], True
+    for text, v in literals(expression):
+        if _trivial(v):
+            continue
+        hits = []
+        for s in registry.items:
+            if not s.verified and s.kind not in ("calc", "user"):
+                continue
+            hay = s.evidence() if s.kind != "calc" else str(s.extra.get("result", ""))
+            vals = [x for q in find_quantities(hay) for x in q.values]
+            vals += [x for n in re.findall(r"-?\d+(?:[.,]\d+)*(?:e-?\d+)?", hay) for x in parse_number(n)]
+            if any(_close(v, x) for x in vals):
+                hits.append(s.n)
+        want = next((n for val, n in declared_src.items() if val and (val == text or val.split()[0] == text)), None)
+        if want is not None and want not in hits:
+            hits = []
+        kinds = sorted({registry.get(n).kind for n in hits})
+        inputs.append({"value": text, "sources": hits, "kinds": kinds})
+        ok = ok and bool(hits)
+    return inputs, ok
+
+
 # ------------------------------------------------------------------------------------- tools
 
 TOOL_SCHEMAS = [
@@ -167,7 +295,7 @@ TOOL_SCHEMAS = [
             "required": ["query"]}}},
     {"type": "function", "function": {
         "name": "get_parameter",
-        "description": "Look up typed parameter rows (min/typ/max/unit/conditions/notes) extracted from the standards' tables.",
+        "description": "Look up typed parameter rows (min/typ/max/unit/conditions/notes) extracted from the standards' tables. Only rows verified cell by cell against the PDF are returned as citable sources.",
         "parameters": {"type": "object", "properties": {
             "name": {"type": "string", "description": "Parameter name or symbol, e.g. 'tRFC', 'VOD', 'rise time'"},
             "standard": {"type": "string", "description": "Optional standard/version, e.g. 'DDR4'"},
@@ -189,10 +317,14 @@ TOOL_SCHEMAS = [
             "page": {"type": "integer"}}}}},
     {"type": "function", "function": {
         "name": "calculate",
-        "description": "Evaluate an arithmetic expression (+ - * / ** sqrt log10 ln exp min max ...). Use SI numbers, e.g. '1/(400e3)' or '0.2*1.25'. Returns a citable result.",
+        "description": "Evaluate an arithmetic expression (+ - * / ** sqrt log10 ln exp min max ...). Use SI numbers, e.g. '1/(400e3)' or '295e-9*1.6e9'. Every input number must come from a source (or the user's input); list them in 'inputs'. Returns a citable result whose inputs are traced to sources.",
         "parameters": {"type": "object", "properties": {
             "expression": {"type": "string"},
-            "label": {"type": "string", "description": "What is being computed, with units"}},
+            "label": {"type": "string", "description": "What is being computed, with units"},
+            "inputs": {"type": "array", "description": "The input values and the source [n] each comes from",
+                       "items": {"type": "object", "properties": {
+                           "value": {"type": "string", "description": "the number as used in the expression"},
+                           "source": {"type": "integer", "description": "source number n"}}}}},
             "required": ["expression"]}}},
 ]
 
@@ -206,42 +338,69 @@ class ToolOutput:
 
 
 class ToolExecutor:
+    """Runs the agent's tools inside the question's scope: the user's selection, the standards named in the
+    question and their resolved revisions apply to every tool. A tool may narrow the scope to one of those
+    standards; it never widens it, and a standard that is not loaded returns nothing (with a note)."""
+
     def __init__(self, store: Store, retriever: Retriever, registry: SourceRegistry, plan: QueryPlan,
                  render_page: Callable[[int, int], Optional[bytes]], vision_input: bool = True,
-                 base_doc_ids: Optional[list[int]] = None,
-                 expand: Callable[[str], list[str]] = lambda q: [],
-                 default_doc_ids: Optional[list[int]] = None,
-                 describe_page: Optional[Callable[[int, int], Optional[str]]] = None):
+                 scope: Optional[Scope] = None, expand: Callable[[str], list[str]] = lambda q: [],
+                 resolve_standard: Callable[[str], list[str]] = lambda s: [],
+                 describe_page: Optional[Callable[[int, int], Optional[str]]] = None,
+                 doc_meta: Optional[Callable[[int], dict]] = None):
         self.describe_page = describe_page
         self.expand = expand
-        self.default_doc_ids = default_doc_ids  # the question's own (entity) scope
+        self.resolve_standard = resolve_standard
+        self.scope = scope or Scope()
         self.store = store
         self.retriever = retriever
         self.registry = registry
         self.plan = plan
         self.render_page = render_page
         self.vision_input = vision_input
-        self.base_doc_ids = base_doc_ids  # user scope (UI selection) still applies inside tools
+        self._doc_meta_fn = doc_meta
 
     def _doc_meta(self, doc_id: int) -> dict:
+        if self._doc_meta_fn:
+            return self._doc_meta_fn(doc_id)
         d = self.retriever.catalog.docs().get(doc_id)
         if not d:
             return {}
         return {"entities": list(d.entities), "doc_type": d.doc_type, "revision": d.revision}
 
     def _scope_ids(self, standard: str) -> tuple[Optional[list[int]], str]:
-        """(doc ids, note). The user's selection always wins; an explicit standard narrows to it; otherwise
-        tools stay inside the question's scope (so a DDR5 question cannot pull DDR4 rows by accident)."""
-        if self.base_doc_ids:
-            return self.base_doc_ids, ""
+        """(doc ids or None = whole library, note for the model)."""
+        sc = self.scope
         standard = (standard or "").strip()
-        if standard:
-            scope = self.retriever.catalog.resolve_scope(None, standard=standard, entity_filter=True,
-                                                         domain_routing=False)
-            if scope.reason == "entity":
-                return scope.doc_ids, ""
-            return scope.doc_ids, f"Note: no loaded document is tagged '{standard}'; searched all documents.\n\n"
-        return self.default_doc_ids, ""
+        if not standard:
+            return sc.doc_ids, ""
+        wanted = self.resolve_standard(standard) or [standard]
+        docs = self.retriever.catalog.docs()
+
+        def has(i: int, ents) -> bool:
+            d = docs.get(i)
+            return bool(d) and bool({e.lower() for e in ents} & {x.lower() for x in d.entities})
+
+        if sc.reason == "user":
+            ids = [i for i in (sc.doc_ids or []) if has(i, wanted)]
+            if not ids:
+                return [], f"Note: none of the documents the user selected is tagged '{standard}'.\n\n"
+            return ids, ""
+        if sc.reason in ("entity", "entity_missing"):
+            allowed = [e for e in sc.entities if e.lower() in {w.lower() for w in wanted}]
+            if not allowed:
+                named = ", ".join(sc.entities + sc.missing) or "-"
+                return [], (f"Note: '{standard}' is outside this question's scope ({named}). Do not use other "
+                            f"standards or versions to answer.\n\n")
+            return sorted({i for e in allowed for i in sc.per_entity.get(e, [])}), ""
+        res = self.retriever.catalog.resolve_scope(None, entities=wanted)
+        if res.reason == "entity_missing":
+            return [], (f"Note: no loaded document is tagged '{standard}'. Do not substitute another standard or "
+                        f"version; say that it is not in the loaded documents.\n\n")
+        ids = res.doc_ids
+        if sc.doc_ids is not None and ids is not None:
+            ids = [i for i in ids if i in set(sc.doc_ids)] or ids
+        return ids, ""
 
     def _format(self, sources: list[Source], empty: str) -> str:
         if not sources:
@@ -266,46 +425,81 @@ class ToolExecutor:
         except Exception as exc:
             return ToolOutput(f"Tool {name} failed: {exc}", summary=f"error: {exc}")
 
+    def _register_passages(self, passages) -> tuple[list[Source], list[Source]]:
+        new, shown = [], []
+        for p in passages:
+            src, is_new = self.registry.add_passage(p, self._doc_meta(p.doc_id))
+            shown.append(src)
+            if is_new:
+                new.append(src)
+        return new, shown
+
     def tool_search_docs(self, query: str, standard: str = "", top_k: int = 5) -> ToolOutput:
         top_k = max(1, min(int(top_k or 5), 8))
         plan = QueryPlan(question=query, standalone=query, english=query, language="en",
                          keywords=[], expansions=self.expand(query))
         ids, note = self._scope_ids(standard)
-        res = self.retriever.search(plan, doc_ids=ids, top_k=top_k, budget_tokens=TOOL_RESULT_TOKENS * 2,
-                                    with_parameters=False)
-        new, shown = [], []
-        for p in res.passages:
-            src, is_new = self.registry.add_passage(p)
-            shown.append(src)
-            if is_new:
-                new.append(src)
+        if ids is not None and not ids:
+            return ToolOutput(note or "No documents in scope.", summary=f"0 passages for '{query}' (out of scope)")
+        res = self.retriever.search(plan, top_k=top_k, budget_tokens=TOOL_RESULT_TOKENS * 2, with_parameters=False,
+                                    scope=Scope(doc_ids=ids, reason="tool"))
+        new, shown = self._register_passages(res.passages)
         return ToolOutput(note + self._format(shown, "No matching passages."), new,
                           summary=f"{len(shown)} passage(s) for '{query}'" + (f" in {standard}" if standard else ""))
 
     def tool_get_parameter(self, name: str, standard: str = "", conditions: str = "") -> ToolOutput:
         ids, note = self._scope_ids(standard)
-        rows = self.store.search_parameters(f"{name} {conditions}", 10, ids, verified_only=False)
-        rows.sort(key=lambda r: (not r.verified,))
+        if ids is not None and not ids:
+            return ToolOutput(note or "No documents in scope.", summary=f"0 parameter rows for '{name}' (out of scope)")
+        query = f"{name} {conditions}"
+        rows = self.store.search_parameters(query, 10, ids, verified_only=True)
+        unverified = [r for r in self.store.search_parameters(query, 10, ids, verified_only=False) if not r.verified]
         shown, new = [], []
         for r in rows[:10]:
             src, is_new = self.registry.add_parameter(r, self._doc_meta(r.doc_id))
             shown.append(src)
             if is_new:
                 new.append(src)
-        return ToolOutput(note + self._format(shown, f"No parameter rows found for '{name}'. Try search_docs."), new,
-                          summary=f"{len(shown)} parameter row(s) for '{name}'")
+        text = note + self._format(shown, f"No verified parameter rows for '{name}'.")
+        if unverified:
+            where = sorted({f"{r.doc_title} p.{r.page}" for r in unverified})[:4]
+            text += (f"\n\n{len(unverified)} more extracted row(s) matched but could not be verified against the "
+                     f"PDF ({', '.join(where)}); they are not citable. Read the original table text with "
+                     f"search_docs / get_table or look at the page with get_page_image.")
+        conflicts = parameter_conflicts(self.registry)
+        if conflicts and shown:
+            text += "\n\nCONFLICTING VALUES (state the conflict, do not merge): " + "; ".join(conflicts)
+        return ToolOutput(text, new, summary=f"{len(shown)} verified parameter row(s) for '{name}'"
+                          + (f", {len(unverified)} unverified" if unverified else ""))
 
     def tool_get_table(self, query: str, standard: str = "") -> ToolOutput:
         ids, note = self._scope_ids(standard)
+        if ids is not None and not ids:
+            return ToolOutput(note or "No documents in scope.", summary=f"0 tables for '{query}' (out of scope)")
         tables = self.store.tables_for(query=query, doc_ids=ids, limit=2)
-        shown, new = [], []
+        shown, new, notes = [], [], []
         for t in tables:
-            src, is_new = self.registry.add_table(t, self._doc_meta(t.doc_id))
+            if t.grounded:
+                src, is_new = self.registry.add_table(t, self._doc_meta(t.doc_id))
+            else:
+                # The VLM version is not verified: give the model the original PDF text of that page instead.
+                notes.append(f"'{t.caption or 'table'}' (p.{t.page}): extraction not verified; original page text given")
+                chunks = self.store.page_chunks(t.doc_id, t.page)
+                if not chunks:
+                    continue
+                from techrag.retrieval import Passage
+                d = self.retriever.catalog.docs().get(t.doc_id)
+                p = Passage(t.doc_id, t.doc_title, d.path if d else "", d.domain if d else "", chunks[0].section,
+                            t.page, t.page, "text", "\n\n".join(c.text for c in chunks), 0.0,
+                            [c.id for c in chunks], [c.id for c in chunks], list(d.entities) if d else [],
+                            d.doc_type if d else "base", d.revision if d else "")
+                src, is_new = self.registry.add_passage(p, self._doc_meta(t.doc_id))
             shown.append(src)
             if is_new:
                 new.append(src)
-        return ToolOutput(note + self._format(shown, f"No extracted table matches '{query}'. Try search_docs."), new,
-                          summary=f"{len(shown)} table(s) for '{query}'")
+        text = note + ("\n".join(notes) + "\n\n" if notes else "") + \
+            self._format(shown, f"No extracted table matches '{query}'. Try search_docs.")
+        return ToolOutput(text, new, summary=f"{len(shown)} table(s) for '{query}'")
 
     def tool_get_page_image(self, source: int = 0, document_id: int = 0, page: int = 0) -> ToolOutput:
         if source:
@@ -318,20 +512,29 @@ class ToolExecutor:
         doc = self.store.document(int(document_id))
         if not doc or not (1 <= int(page) <= max(doc.n_pages, 1)):
             return ToolOutput("No such document/page.", summary="no such page")
-        text = "\n".join(c.text for c in self.store.page_chunks(doc.id, int(page)))[:4000]
+        if self.scope.doc_ids is not None and doc.id not in set(self.scope.doc_ids) and not source:
+            return ToolOutput(f"Document {doc.id} is outside this question's scope.", summary="out of scope")
+        page_text = "\n".join(c.text for c in self.store.page_chunks(doc.id, int(page)))[:4000]
+        text = page_text
         png = self.render_page(doc.id, int(page)) if self.vision_input else None
         if not png and self.describe_page:
             desc = self.describe_page(doc.id, int(page))
             if desc:
-                text = f"{desc}\n\nPage text:\n{text}"
-        src, is_new = self.registry.add_page(doc.id, int(page), doc.title, text, self._doc_meta(doc.id))
-        note = (f"Page image of '{doc.title}' p. {page} is attached in the next message; cite it as [{src.n}]."
+                text = f"{desc}\n\nPage text (text layer):\n{page_text}"
+        src, is_new = self.registry.add_page(doc.id, int(page), doc.title, text, self._doc_meta(doc.id),
+                                             evidence_text=page_text, image=bool(png))
+        note = (f"Page image of '{doc.title}' p. {page} is attached in the next message; cite it as [{src.n}]. "
+                f"Only what is also in the page's text layer can be verified."
                 if png else f"Page {page} of '{doc.title}' (no image input for this model), cite as [{src.n}]:\n{text}")
         return ToolOutput(note, [src] if is_new else [], png, summary=f"page {page} of {doc.title}")
 
-    def tool_calculate(self, expression: str, label: str = "") -> ToolOutput:
+    def tool_calculate(self, expression: str, label: str = "", inputs: Optional[list] = None) -> ToolOutput:
         value = safe_eval(expression)
         result = f"{value:.10g}"
         expr = f"{label}: {expression}" if label else expression
-        src, is_new = self.registry.add_calc(expr, result)
-        return ToolOutput(f"[{src.n}] {expr} = {result}", [src] if is_new else [], summary=f"{expression} = {result}")
+        traced, ok = trace_inputs(expression, self.registry, inputs)
+        src, is_new = self.registry.add_calc(expr, result, traced, ok)
+        warn = "" if ok else ("\nWARNING: input(s) " + ", ".join(i["value"] for i in traced if not i["sources"])
+                              + " are not found in any source; this result cannot support a verified statement.")
+        return ToolOutput(f"{src.prompt_text()}{warn}", [src] if is_new else [],
+                          summary=f"{expression} = {result}" + ("" if ok else " (untraceable input)"))

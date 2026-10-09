@@ -44,6 +44,9 @@ class FakeOpenAI:
         self.tools_supported = True
         self.vlm_hallucinate = False
         self.answer: Optional[Callable[[list, Optional[list]], dict]] = None  # override answer behaviour
+        # override the judge: return the response text, an httpx.Response, or raise (e.g. httpx.ReadTimeout)
+        self.judge: Optional[Callable[[list], object]] = None
+        self.vlm: Optional[Callable[[str], dict]] = None  # override VLM table extraction (page text -> JSON)
         self.reasoning = ""
 
     def transport(self) -> httpx.MockTransport:
@@ -84,7 +87,13 @@ class FakeOpenAI:
         elif "extract tables" in system:
             out = {"content": self._vlm(msgs)}
         elif "strict fact checker" in system:
-            out = {"content": self._judge(msgs)}
+            if self.judge is not None:
+                res = self.judge(msgs)
+                if isinstance(res, httpx.Response):
+                    return res
+                out = {"content": res}
+            else:
+                out = {"content": self._judge(msgs)}
         elif "ANSWER CONTRACT" in system:
             out = (self.answer or self._answer)(msgs, tools)
         else:
@@ -126,6 +135,8 @@ class FakeOpenAI:
 
     def _vlm(self, msgs) -> str:
         txt = _text(msgs[-1]["content"])
+        if self.vlm is not None:
+            return json.dumps(self.vlm(txt))
         m = re.search(r"tRFC\W+(\d+)", txt)
         if not m:
             return json.dumps({"tables": []})
@@ -144,10 +155,10 @@ class FakeOpenAI:
         txt = _text(msgs[-1]["content"])
         verdicts = []
         for block in re.split(r"\n\n(?=CLAIM )", txt):
-            m = re.match(r"CLAIM (\d+): (.*?)\nCITED SOURCES:\n(.*)", block, re.S)
+            m = re.match(r"CLAIM (\d+): (.*?)\nTYPE: (\w+)\nCITED SOURCES:\n(.*)", block, re.S)
             if not m:
                 continue
-            claim, src = m.group(2), m.group(3)
+            claim, src = m.group(2), m.group(4)
             nums = re.findall(r"\d+(?:\.\d+)?", re.sub(r"\[\d+\]", "", claim))
             ok = all(n in src for n in nums) and "(none)" not in src
             verdicts.append({"id": int(m.group(1)), "verdict": "supported" if ok else "unsupported",
@@ -177,4 +188,4 @@ class FakeOpenAI:
                             f"- The refresh cycle time tRFC for an 8Gb device is {val} ns [{n}].\n"
                             f"- A REFRESH command must be issued every 3.9 us [{n}].\n\n"
                             f"### Engineering inference (not stated in the sources)\n"
-                            f"- Plan refresh scheduling around the tRFC window.")}
+                            f"- Plan refresh scheduling around the tRFC window [{n}].")}

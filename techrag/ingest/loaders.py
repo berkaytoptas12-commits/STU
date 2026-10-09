@@ -21,6 +21,8 @@ class Block:
     text: str
     kind: str = TEXT_KIND
     ref: Optional[int] = None  # index into the document's extracted tables (VLM), if any
+    bbox: Optional[tuple] = None  # PDF word space (see techrag.geometry), when known
+    evidence: bool = True  # False: search-only content (unverified VLM table), never cited directly
 
 
 @dataclass
@@ -40,6 +42,7 @@ class LoadedDocument:
     metadata: dict = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
     page_stats: dict[int, PageStats] = field(default_factory=dict)
+    pages: dict = field(default_factory=dict)  # page -> techrag.geometry.PageGeom (PDF text layer words)
 
 
 def title_from_path(path: Path) -> str:
@@ -104,14 +107,21 @@ def _drawing_count(page) -> int:
 def load_pdf(path: Path, extract_tables: bool = True) -> LoadedDocument:
     import pymupdf
 
+    from techrag.geometry import PageGeom
+
     getattr(pymupdf, "no_recommend_layout", lambda: None)()  # silence a stdout advert in newer versions
     doc = pymupdf.open(str(path))
     blocks: list[Block] = []
     warnings: list[str] = []
     empty_pages = 0
     page_stats: dict[int, PageStats] = {}
+    geoms: dict[int, PageGeom] = {}
     for index, page in enumerate(doc):
         page_no = index + 1
+        try:
+            geoms[page_no] = PageGeom.from_page(page, page_no)
+        except Exception as exc:  # geometry is for highlighting/grounding only; never fail the document
+            warnings.append(f"p.{page_no}: word positions unavailable ({exc.__class__.__name__})")
         tables = []
         stats = page_stats[page_no] = PageStats(drawings=_drawing_count(page))
         try:
@@ -137,11 +147,11 @@ def load_pdf(path: Path, extract_tables: bool = True) -> LoadedDocument:
                 continue
             if any(_overlap_ratio((x0, y0, x1, y1), tb) > 0.5 for tb, _ in tables):
                 continue
-            items.append((y0, Block(page_no, text)))
+            items.append((y0, Block(page_no, text, bbox=(x0, y0, x1, y1))))
         # Insert each table before the first text block that starts below it (reading order).
         for bbox, md in tables:
             pos = next((i for i, (y, _) in enumerate(items) if y > bbox[1]), len(items))
-            items.insert(pos, (bbox[1], Block(page_no, md, TABLE_KIND)))
+            items.insert(pos, (bbox[1], Block(page_no, md, TABLE_KIND, bbox=tuple(bbox))))
 
         stats.pdf_tables = len(tables)
         if not items or sum(len(b.text) for _, b in items) < 20:
@@ -167,7 +177,7 @@ def load_pdf(path: Path, extract_tables: bool = True) -> LoadedDocument:
     meta = {k: v for k, v in (doc.metadata or {}).items() if v}
     n_pages = doc.page_count
     doc.close()
-    return LoadedDocument(path, title_from_path(path), blocks, n_pages, toc, meta, warnings, page_stats)
+    return LoadedDocument(path, title_from_path(path), blocks, n_pages, toc, meta, warnings, page_stats, geoms)
 
 
 # --------------------------------------------------------------------- text / md

@@ -115,6 +115,8 @@
       <h2 data-i18n="library"></h2>
       <p class="small"><span data-i18n="currentLibrary"></span>: <code id="lib-path"></code> <span id="lib-ro" class="pill" hidden>read-only</span></p>
       <p class="hint" data-i18n="libraryHint"></p>
+      <div class="verify warning" id="lib-legacy" hidden><span id="lib-legacy-text"></span>
+        <div class="row" style="margin-top:6px"><button type="button" id="btn-migrate" data-i18n="migrate"></button></div></div>
       <label><span data-i18n="libraryFolder"></span>
         <div class="row"><input id="lib-new-path" placeholder="C:\TechRAG\library"><button type="button" class="ghost" id="btn-pick-lib">…</button></div></label>
       <label><input type="checkbox" id="lib-readonly"> <span data-i18n="openReadOnly"></span></label>

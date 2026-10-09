@@ -27,10 +27,33 @@ const I18N = {
     stPlanning: "Soru çözümleniyor ve kaynaklar aranıyor…", stAnswering: "Cevap yazılıyor…", stVerifying: "İfadeler kaynaklara karşı doğrulanıyor…",
     stRegenerating: "{0} ifade doğrulanamadı, düzeltiliyor…", stNoTools: "Sunucu araç çağrısını desteklemiyor; araçsız devam ediliyor.",
     scopeEntity: "kapsam: {0} (soruda geçen standart)", scopeUser: "kapsam: seçili dokümanlar", scopeDomain: "koleksiyon: {0}", scopeAll: "kapsam: tüm kütüphane",
-    thinkingOn: "düşünme açık", searchAs: "arama", vOk: "✓ {0}/{1} ifade kaynaklarla doğrulandı.", vCorrected: "✓ {0}/{1} ifade doğrulandı; doğrulanamayan {2} ifade cevaptan çıkarıldı.",
-    vWarning: "⚠ {0} ifade doğrulanamadı (⚠ ile işaretli) — orijinal sayfadan kontrol edin.", vNotFound: "Yüklü dokümanlarda bu sorunun cevabı bulunamadı.",
-    vRegenerated: "Cevap bir kez düzeltilerek yeniden üretildi.", vJudge: "Sayısal kontrol + bağımsız denetçi", vDet: "Sayısal/atıf kontrolü",
-    removedList: "Çıkarılan ifadeler", prev: "‹ Önceki", next: "Sonraki ›", zoom: "Yakınlaştır", openOriginal: "Orijinal dosyayı aç",
+    thinkingOn: "düşünme açık", searchAs: "arama",
+    vSupported: "✓ Cevaptaki {0} ifadenin tamamı kaynaklarla doğrulandı (sayı/atıf kontrolü ve bağımsız denetçi).",
+    vCorrected: "✓ Kalan {0} ifade doğrulandı; doğrulanamayan {1} ifade cevaptan çıkarıldı.",
+    vWarning: "⚠ {0} ifade doğrulanamadı (⚠ ile işaretli) — kesin bilgi değildir, orijinal sayfadan kontrol edin.",
+    vNotFound: "Yüklü dokümanlarda bu sorunun cevabı bulunamadı.",
+    vUnverified: "⚠ Doğrulama tamamlanamadı; doğrulanamayan ifadeler cevap olarak gösterilmiyor.",
+    vNotChecked: "Doğrulama uygulanmadı (Ayarlar'da kapalı): ifadeler kaynaklarla denetlenmedi, doğrulanmış sayılmaz.",
+    vNotCheckedJudge: "Bağımsız denetçi kapalı: ifadeler yalnızca sayı/atıf kontrolünden geçti; anlamsal olarak doğrulanmadı.",
+    vClarify: "Kapsam belirsiz — hangi standardı/sürümü kastettiğinizi seçin:",
+    vRegenerated: "Cevap bir kez düzeltilerek yeniden üretildi.",
+    judgeDone: "bağımsız denetçi tamamlandı", judgeFailed: "bağımsız denetçi tamamlanamadı", judgeOff: "bağımsız denetçi kapalı", judgeNone: "denetçi gerekmedi",
+    removedList: "Çıkarılan / işaretlenen ifadeler", claimDetails: "İfade ayrıntıları", usesUser: "kullanıcı girdisi içerir", usesCalc: "hesap içerir",
+    st_supported: "destekleniyor", st_unsupported: "desteklenmiyor", st_unverified: "doğrulanamadı", st_not_checked: "uygulanmadı",
+    prev: "‹ Önceki", next: "Sonraki ›", zoom: "Yakınlaştır", zoomIn: "Yakınlaştır", zoomOut: "Uzaklaştır", openOriginal: "Orijinal dosyayı aç",
+    highlight: "Vurgu", prevEv: "‹ Önceki kanıt", nextEv: "Sonraki kanıt ›", printed: "basılı", verifStatus: "Doğrulama", locStatus: "Konum",
+    loc_located: "kanıt sayfada işaretlendi", loc_partial: "kanıtın bir kısmı işaretlendi",
+    loc_not_located: "Kaynak sayfası bulundu, kesin konum eşleştirilemedi.", loc_ambiguous: "Kaynak sayfası bulundu, kesin konum eşleştirilemedi (metin sayfada birden fazla yerde geçiyor).",
+    loc_no_text_layer: "Bu sayfada metin katmanı yok (taranmış olabilir); konum gösterilemiyor.",
+    loc_legacy_index: "Bu doküman eski sürümle indekslenmiş; vurgulama için Kütüphane > 'Konum verisini oluştur'.",
+    loc_not_pdf: "PDF değil: kanıt aşağıdaki metinde işaretlendi.", loc_none: "Bu kaynak için konum bilgisi yok (cevapta atıf almadı).",
+    loc_calc: "Hesap sonucu PDF'de yer almaz; girdileri ve kaynakları:", loc_user: "Kullanıcı girdisi — sorudan alınan değerler, bir doküman değildir.",
+    locNote: "Vurgu kanıtın sayfadaki yerini gösterir; ifadenin doğru olup olmadığını 'Doğrulama' durumu belirtir.",
+    role_value: "değer", role_label: "parametre", role_header: "sütun başlığı", role_unit: "birim", role_condition: "koşul", role_footnote: "dipnot", role_text: "metin", role_row: "tablo satırı",
+    inputs: "Girdiler", noSource: "kaynak yok", draftProgress: "Taslak yazılıyor — henüz doğrulanmadı", showDraft: "Taslağı göster (doğrulanmamış)",
+    legacyNotice: "{0} doküman eski indeks biçiminde: PDF vurgulama ve hücre düzeyi tablo doğrulaması için geçiş gerekir.",
+    migrate: "Konum verisini oluştur (hızlı geçiş)", legacyTag: "eski indeks", userKind: "kullanıcı girdisi",
+    scopeMissing: "yüklü değil: {0}",
     page: "Sayfa", pages: "sayfa", chunks: "parça", superseded: "eski revizyon", toc: "İçindekiler", noToc: "Bu dokümanda yer imi yok.",
     readOnly: "salt-okunur", docs: "doküman", params: "parametre", modelsLoad: "Modelleri getir", test: "Test et",
     sameAsChat: "Sohbet modeliyle aynı", baseUrl: "API adresi (…/v1)", apiKey: "API anahtarı", model: "Model",
@@ -77,10 +100,33 @@ const I18N = {
     stPlanning: "Analysing the question and searching…", stAnswering: "Writing the answer…", stVerifying: "Checking statements against the sources…",
     stRegenerating: "{0} statement(s) failed verification, correcting…", stNoTools: "The server does not support tool calls; continuing without tools.",
     scopeEntity: "scope: {0} (named in the question)", scopeUser: "scope: selected documents", scopeDomain: "collection: {0}", scopeAll: "scope: whole library",
-    thinkingOn: "thinking on", searchAs: "search", vOk: "✓ {0}/{1} statements verified against the sources.", vCorrected: "✓ {0}/{1} statements verified; {2} unverifiable statement(s) removed.",
-    vWarning: "⚠ {0} statement(s) could not be verified (marked ⚠) — check the original page.", vNotFound: "The loaded documents do not answer this question.",
-    vRegenerated: "The answer was corrected and regenerated once.", vJudge: "Numeric check + independent judge", vDet: "Numeric/citation check",
-    removedList: "Removed statements", prev: "‹ Prev", next: "Next ›", zoom: "Zoom", openOriginal: "Open original file",
+    thinkingOn: "thinking on", searchAs: "search",
+    vSupported: "✓ All {0} statements of the answer were verified against the sources (number/citation check and independent judge).",
+    vCorrected: "✓ The remaining {0} statements were verified; {1} unverifiable statement(s) were removed.",
+    vWarning: "⚠ {0} statement(s) could not be verified (marked ⚠) — not established facts; check the original page.",
+    vNotFound: "The loaded documents do not answer this question.",
+    vUnverified: "⚠ Verification could not be completed; unverified statements are not shown as the answer.",
+    vNotChecked: "Verification not applied (switched off in Settings): statements were not checked against the sources.",
+    vNotCheckedJudge: "Independent judge switched off: statements passed only the number/citation check and are not semantically verified.",
+    vClarify: "The scope is ambiguous — choose the standard/version you mean:",
+    vRegenerated: "The answer was corrected and regenerated once.",
+    judgeDone: "independent judge completed", judgeFailed: "independent judge NOT completed", judgeOff: "independent judge off", judgeNone: "judge not needed",
+    removedList: "Removed / flagged statements", claimDetails: "Statement details", usesUser: "uses user input", usesCalc: "uses a calculation",
+    st_supported: "supported", st_unsupported: "unsupported", st_unverified: "unverified", st_not_checked: "not applied",
+    prev: "‹ Prev", next: "Next ›", zoom: "Zoom", zoomIn: "Zoom in", zoomOut: "Zoom out", openOriginal: "Open original file",
+    highlight: "Highlight", prevEv: "‹ Previous evidence", nextEv: "Next evidence ›", printed: "printed", verifStatus: "Verification", locStatus: "Location",
+    loc_located: "evidence marked on the page", loc_partial: "part of the evidence marked",
+    loc_not_located: "Source page found; the exact location could not be matched.", loc_ambiguous: "Source page found; the exact location could not be matched (the text occurs in several places).",
+    loc_no_text_layer: "This page has no text layer (possibly scanned); no location can be shown.",
+    loc_legacy_index: "This document was indexed by an older version; for highlights use Library > 'Build location data'.",
+    loc_not_pdf: "Not a PDF: the evidence is marked in the text below.", loc_none: "No location for this source (not cited in the answer).",
+    loc_calc: "A calculated result is not in any PDF; its inputs and their sources:", loc_user: "User input — values taken from the question, not a document.",
+    locNote: "The highlight shows where the evidence is on the page; whether the statement is right is given by its 'Verification' status.",
+    role_value: "value", role_label: "parameter", role_header: "column header", role_unit: "unit", role_condition: "condition", role_footnote: "footnote", role_text: "text", role_row: "table row",
+    inputs: "Inputs", noSource: "no source", draftProgress: "Writing a draft — not verified yet", showDraft: "Show draft (unverified)",
+    legacyNotice: "{0} document(s) use an older index format: PDF highlights and cell-level table checks need a migration.",
+    migrate: "Build location data (quick migration)", legacyTag: "legacy index", userKind: "user input",
+    scopeMissing: "not loaded: {0}",
     page: "Page", pages: "pages", chunks: "chunks", superseded: "superseded", toc: "Contents", noToc: "This document has no outline.",
     readOnly: "read-only", docs: "documents", params: "parameters", modelsLoad: "Load models", test: "Test",
     sameAsChat: "Same as chat model", baseUrl: "API base URL (…/v1)", apiKey: "API key", model: "Model",
@@ -251,6 +297,7 @@ async function loadInfo() {
   const banner = $("#banner");
   const missing = SERVICES.filter((s) => s !== "vision" && !i.models[s]);
   if (i.error) { banner.hidden = false; banner.textContent = `${t("errorPrefix")}: ${i.error}`; }
+  else if (i.legacy_documents && !i.read_only) { banner.hidden = false; banner.textContent = `${t("legacyNotice", i.legacy_documents)} → ${t("library")} › ${t("migrate")}`; }
   else if (missing.length) { banner.hidden = false; banner.textContent = `${t("settings")}: ${missing.map((s) => t("svc_" + s)).join(", ")} — ${t("model")}?`; }
   else banner.hidden = true;
   $("#collection-list").innerHTML = i.domains.map((d) => `<option value="${esc(d.key)}">${esc(d.name)}</option>`).join("");
@@ -268,6 +315,7 @@ function docTags(d) {
   if (d.doc_type && d.doc_type !== "base") tags.push(`<span class="tag errata">${esc(d.doc_type.toUpperCase())}</span>`);
   if (d.revision) tags.push(`<span class="tag">rev ${esc(d.revision)}</span>`);
   if (d.superseded_by) tags.push(`<span class="tag">${t("superseded")}</span>`);
+  if (d.legacy) tags.push(`<span class="tag errata" title="${esc(t("loc_legacy_index"))}">${t("legacyTag")}</span>`);
   return tags.join("");
 }
 
@@ -308,52 +356,173 @@ function openTab(name) {
   $("#tab-notes").hidden = name !== "notes";
 }
 
-function pageViewer(container, docId, page, nPages) {
-  let p = page;
+const ZOOMS = [1, 1.5, 2, 3];
+const docCache = {};
+async function docInfo(id) {
+  if (!docCache[id]) docCache[id] = getJSON(`/api/documents/${id}`).catch(() => ({ page_labels: {} }));
+  return docCache[id];
+}
+
+// Page image + highlight overlay. Region rects are fractions (0..1) of the rendered page (rotation and
+// CropBox already applied server-side), so the overlay stays aligned at any zoom level, DPI or screen scaling.
+function pageViewer(container, docId, page, nPages, opts = {}) {
+  const regions = (opts.regions || []).filter((r) => r.doc_id === undefined || r.doc_id === docId);
+  const st = { p: page, zoom: 0, show: true, cur: regions.length ? Math.max(0, Math.min(opts.focus || 0, regions.length - 1)) : -1, labels: {} };
+  if (st.cur >= 0) st.p = regions[st.cur].page;
   const box = document.createElement("div");
-  box.innerHTML = `<div class="page-nav"><button type="button" class="ghost small pv-prev">${t("prev")}</button>
-    <span class="pv-label"></span><button type="button" class="ghost small pv-next">${t("next")}</button>
-    <button type="button" class="ghost small pv-zoom">${t("zoom")}</button>
+  box.className = "pv-box";
+  const evCtl = regions.length ? `<span class="pv-ev"><label class="small"><input type="checkbox" class="pv-hl" checked> ${t("highlight")}</label>
+      <button type="button" class="ghost small pv-evprev">${t("prevEv")}</button><span class="pv-evlabel small"></span>
+      <button type="button" class="ghost small pv-evnext">${t("nextEv")}</button></span>` : "";
+  box.innerHTML = `<div class="page-nav"><button type="button" class="ghost small pv-prev" title="${t("prev")}">‹</button>
+    <span class="pv-label small"></span><button type="button" class="ghost small pv-next" title="${t("next")}">›</button>
+    <button type="button" class="ghost small pv-zout" title="${t("zoomOut")}">−</button><span class="pv-zl small"></span>
+    <button type="button" class="ghost small pv-zin" title="${t("zoomIn")}">+</button>
     ${state.info && state.info.desktop ? `<button type="button" class="ghost small pv-open">${t("openOriginal")}</button>` : ""}</div>
-    <div class="page-view"><img alt=""></div>`;
+    ${evCtl}<div class="pv-role small muted"></div>
+    <div class="page-view"><div class="page-wrap"><img alt=""><div class="hl-layer"></div></div></div>`;
   const img = $("img", box);
-  const show = () => {
-    img.src = pageUrl(docId, p, 130);
-    $(".pv-label", box).textContent = `${t("page")} ${p}${nPages ? " / " + nPages : ""}`;
-    $(".pv-prev", box).disabled = p <= 1;
-    $(".pv-next", box).disabled = nPages ? p >= nPages : false;
+  const wrap = $(".page-wrap", box);
+  const layer = $(".hl-layer", box);
+  const draw = () => {
+    layer.innerHTML = "";
+    layer.hidden = !st.show;
+    regions.forEach((r, i) => {
+      if (r.page !== st.p) return;
+      for (const rc of r.rects || []) {
+        const d = document.createElement("div");
+        d.className = `hl role-${r.role || "text"}${i === st.cur ? " current" : ""}`;
+        d.style.left = `${rc[0] * 100}%`;
+        d.style.top = `${rc[1] * 100}%`;
+        d.style.width = `${Math.max(rc[2] - rc[0], 0.002) * 100}%`;
+        d.style.height = `${Math.max(rc[3] - rc[1], 0.002) * 100}%`;
+        d.title = `${t("role_" + (r.role || "text"))}${r.quote ? ": " + r.quote : ""}`;
+        layer.append(d);
+      }
+    });
+    const cur = regions[st.cur];
+    const role = $(".pv-role", box);
+    role.textContent = cur && cur.page === st.p ? `${t("role_" + (cur.role || "text"))}${cur.quote ? " — " + cur.quote.slice(0, 160) : ""}` : "";
+    const el = $(".evlabel, .pv-evlabel", box);
+    if (el) el.textContent = `${st.cur + 1}/${regions.length}`;
   };
-  $(".pv-prev", box).addEventListener("click", () => { if (p > 1) { p--; show(); } });
-  $(".pv-next", box).addEventListener("click", () => { p++; show(); });
-  $(".pv-zoom", box).addEventListener("click", () => $(".page-view", box).classList.toggle("zoom"));
+  const show = () => {
+    const z = ZOOMS[st.zoom];
+    wrap.style.width = `${z * 100}%`;
+    img.src = pageUrl(docId, st.p, Math.min(220, Math.round(110 * z)));
+    const lab = st.labels[st.p] || (regions.find((r) => r.page === st.p && r.page_label) || {}).page_label || "";
+    $(".pv-label", box).textContent = `${t("page")} ${st.p}${nPages ? " / " + nPages : ""}${lab && lab !== String(st.p) ? ` (${t("printed")}: ${lab})` : ""}`;
+    $(".pv-zl", box).textContent = `${Math.round(z * 100)}%`;
+    $(".pv-prev", box).disabled = st.p <= 1;
+    $(".pv-next", box).disabled = nPages ? st.p >= nPages : false;
+    draw();
+  };
+  img.addEventListener("load", () => {
+    const c = $(".hl.current", box);
+    if (c && st.show) c.scrollIntoView({ block: "center", inline: "center" });
+  });
+  const go = (i) => { st.cur = (i + regions.length) % regions.length; if (regions[st.cur].page !== st.p) { st.p = regions[st.cur].page; show(); } else { draw(); const c = $(".hl.current", box); if (c) c.scrollIntoView({ block: "center", inline: "center" }); } };
+  $(".pv-prev", box).addEventListener("click", () => { if (st.p > 1) { st.p--; show(); } });
+  $(".pv-next", box).addEventListener("click", () => { st.p++; show(); });
+  $(".pv-zin", box).addEventListener("click", () => { if (st.zoom < ZOOMS.length - 1) { st.zoom++; show(); } });
+  $(".pv-zout", box).addEventListener("click", () => { if (st.zoom > 0) { st.zoom--; show(); } });
+  if (regions.length) {
+    $(".pv-hl", box).addEventListener("change", (e) => { st.show = e.target.checked; draw(); });
+    $(".pv-evprev", box).addEventListener("click", () => go(st.cur - 1));
+    $(".pv-evnext", box).addEventListener("click", () => go(st.cur + 1));
+  }
   const open = $(".pv-open", box);
   if (open) open.addEventListener("click", () => postJSON(`/api/documents/${docId}/open`, {}).catch((e) => alert(e.message)));
   container.append(box);
+  docInfo(docId).then((d) => { st.labels = d.page_labels || {}; show(); });
   show();
+  return box;
 }
 
 function kindLabel(s) {
-  return { parameter: t("parameter"), table: t("table"), page: t("pageKind"), calc: t("calc") }[s.kind] || "";
+  return { parameter: t("parameter"), table: t("table"), page: t("pageKind"), calc: t("calc"), user: t("userKind") }[s.kind] || "";
 }
 
-function showSource(s, chip) {
+// Location records of the claims that cite source s (or of one claim) in an answer message.
+function evidenceOf(msg, s, claimId) {
+  const v = msg && msg._verification;
+  if (!v) return [];
+  const out = [];
+  for (const c of v.details || []) {
+    if (claimId ? c.id !== claimId : !(c.citations || []).includes(s.n)) continue;
+    if (c.outcome !== "kept" && c.outcome !== "flagged") continue;
+    for (const e of c.evidence || []) if (e.n === s.n) out.push({ claim: c, rec: e });
+  }
+  return out;
+}
+
+function markQuotes(html, quotes) {
+  let out = html;
+  for (const q of quotes || []) {
+    const e = esc(q.replace(/\[\d+(?:\s*[,–-]\s*\d+)*\]/g, "").trim());
+    if (e.length < 4) continue;
+    const i = out.indexOf(e);
+    if (i >= 0) out = out.slice(0, i) + `<mark>${e}</mark>` + out.slice(i + e.length);
+  }
+  return out;
+}
+
+function showSource(s, msg, claimId, override) {
   openTab("source");
   const pane = $("#tab-source");
-  const pages = s.page_start === s.page_end ? `${t("page")} ${s.page_start}` : `${t("page")} ${s.page_start}–${s.page_end}`;
+  const ev = override ? [] : evidenceOf(msg, s, claimId);
+  const recs = override ? [override] : ev.map((x) => x.rec);
+  const claims = ev.map((x) => x.claim);
+  const regions = [];
+  for (const r of recs) for (const g of r.regions || []) if (!regions.some((x) => x.page === g.page && JSON.stringify(x.rects) === JSON.stringify(g.rects))) regions.push(g);
+  const quotes = recs.flatMap((r) => r.quotes || []);
+  const label = s.page_label && s.page_label !== String(s.page_start) ? ` (${t("printed")}: ${s.page_label})` : "";
+  const pages = s.page_start === s.page_end ? `${t("page")} ${s.page_start}${label}` : `${t("page")} ${s.page_start}–${s.page_end}`;
   const meta = [(s.entities || []).join(", "), s.doc_type && s.doc_type !== "base" ? s.doc_type.toUpperCase() : "", s.section, s.doc_id ? pages : "",
     kindLabel(s), s.verified === false ? t("unverified") : ""].filter(Boolean).map(esc).join(" · ");
-  pane.innerHTML = `<div class="source-card"><h3>[${s.n}] ${esc(s.kind === "calc" ? t("calc") : s.doc_title)}${s.revision ? ` <span class="tag">rev ${esc(s.revision)}</span>` : ""}</h3>
-    <div class="source-meta">${meta}</div><div class="pv"></div><div class="source-text markdown">${renderMarkdown(s.text, false)}</div></div>`;
+  // Verification (is the statement right?) and location (where is the evidence?) are shown separately.
+  let status = "";
+  if (claims.length) {
+    const st = [...new Set(claims.map((c) => c.status))];
+    status += `<div class="small"><b>${t("verifStatus")}:</b> ${st.map((x) => `<span class="badge st-${x}">${esc(t("st_" + x))}</span>`).join(" ")}</div>`;
+  }
+  const locKeys = [...new Set(recs.map((r) => (r.partial ? "partial" : r.status)))];
+  let locText = "";
+  if (s.kind === "calc") locText = t("loc_calc");
+  else if (s.kind === "user") locText = t("loc_user");
+  else if (!recs.length) locText = t("loc_none");
+  else locText = locKeys.map((k) => t("loc_" + k)).join(" ");
+  status += `<div class="small"><b>${t("locStatus")}:</b> ${esc(locText)}</div>`;
+  if (regions.length) status += `<div class="small muted">${esc(t("locNote"))}</div>`;
+  let inputs = "";
+  if (s.kind === "calc") {
+    const recInputs = (recs[0] && recs[0].inputs) || (s.extra && s.extra.inputs) || [];
+    inputs = `<div class="calc-inputs"><b>${t("inputs")}:</b><ul>${recInputs.map((inp, i) => `<li><code>${esc(inp.value)}</code> — ${
+      (inp.sources || []).length ? inp.sources.map((n) => `<button type="button" class="cite" data-input="${i}" data-n="${n}">${n}</button>`).join("") : `<span class="flag">${t("noSource")}</span>`}</li>`).join("")}</ul></div>`;
+  }
+  const title = s.kind === "calc" ? t("calc") : s.kind === "user" ? t("userKind") : s.doc_title;
+  pane.innerHTML = `<div class="source-card"><h3>[${s.n}] ${esc(title)}${s.revision ? ` <span class="tag">rev ${esc(s.revision)}</span>` : ""}</h3>
+    <div class="source-meta">${meta}</div>${s.relation ? `<div class="small relation">${esc(s.relation)}</div>` : ""}
+    <div class="loc-status">${status}</div>${inputs}<div class="pv"></div>
+    <div class="source-text markdown">${markQuotes(renderMarkdown(s.text, false), quotes)}</div></div>`;
+  if (s.kind === "calc") {
+    $$(".calc-inputs .cite", pane).forEach((b) => b.addEventListener("click", () => {
+      const src = (msg._sources || []).find((x) => x.n === +b.dataset.n);
+      const inp = ((recs[0] && recs[0].inputs) || [])[+b.dataset.input] || {};
+      const loc = (inp.locations || []).find((l) => l.n === +b.dataset.n);
+      if (src) showSource(src, msg, null, loc || { n: src.n, status: "not_located", regions: [], quotes: [inp.value] });
+    }));
+  }
   if (s.doc_id) {
     const doc = state.docs.find((d) => d.id === s.doc_id);
-    pageViewer($(".pv", pane), s.doc_id, s.page_start || 1, doc ? doc.n_pages : 0);
+    pageViewer($(".pv", pane), s.doc_id, s.page_start || 1, doc ? doc.n_pages : 0, { regions });
   }
   $$(".cite-chip.active").forEach((c) => c.classList.remove("active"));
-  if (chip) chip.classList.add("active");
 }
 
 async function showDocument(id) {
   const d = await getJSON(`/api/documents/${id}`);
+  docCache[id] = Promise.resolve(d);
   openTab("source");
   const pane = $("#tab-source");
   const toc = (d.toc || []).slice(0, 500).map(([lvl, title, page]) =>
@@ -379,10 +548,11 @@ function renderChips(el) {
     if (el._final && s.cited === false && list.some((x) => x.cited)) continue;
     const b = document.createElement("button");
     b.className = "cite-chip" + (s.cited === false ? " uncited" : "");
-    const where = s.kind === "calc" ? s.text : `${s.doc_title}${s.section ? " — " + s.section.split(" > ").pop() : ""} — ${t("page")} ${s.page_start}`;
+    const where = s.kind === "calc" ? s.text.split("\n")[0] : s.kind === "user" ? t("loc_user").split(" — ")[0]
+      : `${s.doc_title}${s.section ? " — " + s.section.split(" > ").pop() : ""} — ${t("page")} ${s.page_start}`;
     b.innerHTML = `<b>[${s.n}]</b> ${kindLabel(s) ? `<i>${esc(kindLabel(s))}</i> ` : ""}${esc(where)}`;
     b.title = s.text.slice(0, 400);
-    b.addEventListener("click", () => showSource(s, b));
+    b.addEventListener("click", () => { showSource(s, el); b.classList.add("active"); });
     wrap.append(b);
   }
 }
@@ -392,19 +562,34 @@ function renderVerification(el, v, confidence) {
   if (!v) { box.hidden = true; return; }
   box.hidden = false;
   box.className = "verify " + v.status;
+  const j = v.judge || {};
   let html = "";
-  if (v.status === "ok") html = t("vOk", v.supported, v.checked);
-  else if (v.status === "corrected") html = t("vCorrected", v.supported, v.checked, v.removed.length);
+  if (v.status === "supported") html = t("vSupported", v.kept);
+  else if (v.status === "corrected") html = t("vCorrected", v.kept, (v.removed || []).length);
   else if (v.status === "not_found") html = t("vNotFound");
-  else html = t("vWarning", (v.flagged || []).length || v.failed);
-  const notes = [v.judge_used ? t("vJudge") : t("vDet")];
-  if (v.regenerated) notes.push(t("vRegenerated"));
-  if (confidence != null) notes.push(`rerank ${(confidence * 100).toFixed(0)}%`);
+  else if (v.status === "clarify") html = t("vClarify");
+  else if (v.status === "unverified") html = t("vUnverified");
+  else if (v.status === "not_checked") html = (v.deterministic || {}).enabled === false ? t("vNotChecked") : t("vNotCheckedJudge");
+  else html = t("vWarning", (v.flagged || []).length);
+  const notes = [];
+  if (v.status !== "clarify") {
+    notes.push(!j.enabled ? t("judgeOff") : j.completed ? t("judgeDone") : j.called ? t("judgeFailed") : t("judgeNone"));
+    if (v.regenerated) notes.push(t("vRegenerated"));
+    if (confidence != null) notes.push(`rerank ${(confidence * 100).toFixed(0)}%`);
+  }
   html += `<div class="small">${notes.map(esc).join(" · ")}</div>`;
-  const failed = (v.details || []).filter((c) => c.status === "removed" || c.status === "fail");
+  if ((j.errors || []).length) html += `<div class="small muted">${esc(j.errors.join(" | "))}</div>`;
+  const failed = (v.details || []).filter((c) => c.outcome === "removed" || c.outcome === "flagged");
   if (failed.length) {
     html += `<details><summary>${t("removedList")} (${failed.length})</summary><ul>${failed.map((c) =>
-      `<li>${esc(c.text)}<br><span class="small">${esc((c.reasons || []).join("; "))}</span></li>`).join("")}</ul></details>`;
+      `<li><span class="badge st-${c.status}">${esc(t("st_" + c.status))}</span> ${esc(c.text)}<br><span class="small">${esc((c.reasons || []).concat(c.judge && c.judge.error ? [c.judge.error] : []).join("; "))}</span></li>`).join("")}</ul></details>`;
+  }
+  const kept = (v.details || []).filter((c) => c.outcome === "kept" || c.outcome === "flagged");
+  if (kept.length) {
+    html += `<details><summary>${t("claimDetails")} (${kept.length})</summary><ul>${kept.map((c) => {
+      const extra = [c.uses_user_input ? t("usesUser") : "", c.uses_calculation ? t("usesCalc") : ""].filter(Boolean).join(", ");
+      return `<li><span class="badge st-${c.status}">${esc(t("st_" + c.status))}</span> ${esc(c.text)}${extra ? ` <span class="small muted">(${esc(extra)})</span>` : ""}</li>`;
+    }).join("")}</ul></details>`;
   }
   box.innerHTML = html;
 }
@@ -434,10 +619,21 @@ async function ask(question) {
   let text = "";
   let confidence = null;
   let pending = false;
+  // The streamed draft is progress only: it is shown collapsed and greyed, never as the answer.
   const render = () => {
     if (pending) return;
     pending = true;
-    requestAnimationFrame(() => { pending = false; body.innerHTML = renderMarkdown(text); scrollDown(); });
+    requestAnimationFrame(() => {
+      pending = false;
+      let d = $(".draft-box", body);
+      if (!d) {
+        body.innerHTML = `<details class="draft-box"><summary>${t("showDraft")} <span class="small muted draft-len"></span></summary><div class="markdown draft"></div></details>`;
+        d = $(".draft-box", body);
+      }
+      $(".draft", d).innerHTML = renderMarkdown(text, false);
+      $(".draft-len", d).textContent = text ? `(${text.length})` : "";
+      scrollDown();
+    });
   };
   scrollDown();
 
@@ -447,6 +643,7 @@ async function ask(question) {
       case "plan": {
         const s = ev.scope || {};
         const parts = [];
+        if (s.missing && s.missing.length) parts.push(t("scopeMissing", s.missing.join(", ")));
         if (s.reason === "entity") parts.push(t("scopeEntity", (s.entities || []).join(", ")));
         else if (s.reason === "user") parts.push(t("scopeUser"));
         else if (s.reason === "domain") parts.push(t("scopeDomain", (s.domains || []).join(", ")));
@@ -469,17 +666,33 @@ async function ask(question) {
         ul.append(li);
         break;
       }
-      case "draft": body.classList.add("draft"); text += ev.text; render(); break;
+      case "draft": status.textContent = t("draftProgress"); text += ev.text; render(); break;
       case "draft_reset": text = ""; render(); break;
+      case "clarify": el._clarify = ev; break;
       case "final": {
         el._final = true;
         status.textContent = "";
-        body.classList.remove("draft");
         text = ev.answer;
         body.innerHTML = renderMarkdown(text);
+        $$("button.cite", body).forEach((b, i) => { const c = (ev.cite_claims || [])[i]; if (c != null) b.dataset.claim = c; });
         el._sources = ev.sources || el._sources;
+        el._verification = ev.verification;
         renderChips(el);
         renderVerification(el, ev.verification, confidence);
+        const clar = ev.clarify || el._clarify;
+        if (clar && clar.options) {
+          const box = document.createElement("div");
+          box.className = "clarify";
+          for (const o of clar.options) {
+            const b = document.createElement("button");
+            b.className = "example";
+            b.textContent = o.label;
+            b.title = o.question;
+            b.addEventListener("click", () => ask(o.question));
+            box.append(b);
+          }
+          body.append(box);
+        }
         const acts = $(".msg-actions", el);
         acts.hidden = false;
         $(".timing", acts).textContent = ev.timings && ev.timings.total ? `${ev.timings.total.toFixed(1)} s` : "";
@@ -779,6 +992,9 @@ function openLibrary() {
   $("#lib-new-path").value = i ? i.library : "";
   $("#lib-readonly").checked = !!(i && i.read_only);
   $("#lib-status").textContent = "";
+  const legacy = (i && i.legacy_documents) || 0;
+  $("#lib-legacy").hidden = !legacy || (i && i.read_only);
+  $("#lib-legacy-text").textContent = legacy ? t("legacyNotice", legacy) : "";
   $$("#dlg-library [data-i18n]").forEach((x) => { x.textContent = t(x.dataset.i18n); });
   $("#dlg-library").showModal();
 }
@@ -789,10 +1005,10 @@ function bind() {
   $("#question").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("#composer").requestSubmit(); } });
   $("#messages").addEventListener("click", (e) => {
     const c = e.target.closest("button.cite");
-    if (!c) return;
+    if (!c || c.closest(".source-card")) return;
     const msg = c.closest(".msg");
     const s = (msg && msg._sources || []).find((x) => x.n === +c.dataset.n);
-    if (s) showSource(s);
+    if (s) showSource(s, msg, c.dataset.claim ? +c.dataset.claim : null);
   });
   $$(".tab").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.tab)));
   $("#btn-new-chat").addEventListener("click", () => { state.history = []; $("#messages").innerHTML = `<div class="empty"><p>${t("newChatStarted")}</p></div>`; });
@@ -825,6 +1041,11 @@ function bind() {
     catch (e) { $("#lib-status").textContent = `${t("errorPrefix")}: ${e.message}`; }
   });
   $("#btn-reindex-all").addEventListener("click", () => { $("#dlg-library").close(); reindex($("#lib-rebuild").checked); });
+  $("#btn-migrate").addEventListener("click", async () => {
+    $("#dlg-library").close();
+    try { const r = await postJSON("/api/library/migrate", {}); await pollJob(r.job, $("#job-log")); }
+    catch (e) { alert(e.message); }
+  });
   $("#btn-add-files").addEventListener("click", addFiles);
   $("#add-file-input").addEventListener("change", (e) => uploadFiles([...e.target.files]));
   $("#btn-reindex").addEventListener("click", () => reindex(false));

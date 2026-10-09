@@ -3,8 +3,12 @@
 1. Score every page cheaply (captions, Min/Max/Typ/Unit headers, number+unit density, ruled tables).
 2. Render only pages above the threshold and send image + text layer to the vision model, which returns
    the tables (merged cells resolved, continuation tables, footnotes) and typed parameter rows.
-3. Validate deterministically: every numeric value must occur in the page's text layer. Rows that fail
-   are kept but marked unverified; tables mostly unverified fall back to the PDF text.
+3. Ground deterministically against the PDF text layer (techrag.geometry): every value must sit in the
+   row of its parameter/row label AND under its column header (and column group), with its unit and
+   conditions printed on the page. The VLM's structure is only a hypothesis; a value that cannot be tied
+   to exactly one cell, sits under another header (min/max swapped) or has another unit is not verified.
+   Unverified rows stay out of answers; unverified tables become search-only hints and the original PDF
+   text of the table is kept.
 4. Cache per (document hash, page, model, prompt version) so re-ingestion and shared libraries never
    pay for the same page twice.
 """
@@ -19,8 +23,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
+from techrag.geometry import FIELD_HEADERS, PageGeom, find_unit, ground_cell, norm_tokens
 from techrag.llm import LLMClient, image_part, parse_json_object
-from techrag.units import base_unit, find_quantities, to_si
+from techrag.units import (NON_SI_UNITS, base_unit, find_quantities, number_ambiguous, to_si, unit_info,
+                           value_kind)
 
 PROMPT_VERSION = "vlm-tables-v1"
 
@@ -64,6 +70,12 @@ class ExtractedTable:
     footnotes: list[str] = field(default_factory=list)
     parameters: list[dict] = field(default_factory=list)
     verified_ratio: float = 0.0
+    status: str = "unchecked"   # grounded | partial | conflict | no_text_layer | unchecked
+    grounding: dict = field(default_factory=dict)
+
+    @property
+    def grounded(self) -> bool:
+        return self.status == "grounded"
 
     @property
     def markdown(self) -> str:
@@ -135,21 +147,182 @@ def value_in_text(value: str, text: str) -> bool:
     return True
 
 
-def validate(table: ExtractedTable, page_text: str) -> ExtractedTable:
-    cells = [c for r in table.rows for c in r if _NUM.search(str(c or ""))]
-    if cells and page_text.strip():
-        table.verified_ratio = sum(value_in_text(str(c), page_text) for c in cells) / len(cells)
-    elif not cells:
-        table.verified_ratio = 1.0
+# A table replaces the PDF-extracted table only when (nearly) every cell is tied to its row and column.
+MIN_GROUNDED = 0.98
+_LETTER = re.compile(r"[A-Za-z]")
+
+
+def _row_labels(row: list[str]) -> list[str]:
+    """Leading cells that name the row (parameter, symbol, condition) rather than hold a value."""
+    out = []
+    for c in row[:3]:
+        if c and _LETTER.search(c) and value_kind(c) in ("expression", "empty"):
+            out.append(c)
+        elif out:
+            break
+    return out
+
+
+def _present(geom: PageGeom, text: str) -> bool:
+    return bool(geom.find_phrase(text)) or geom.locate_text(text).status in ("exact", "approximate", "ambiguous")
+
+
+def ground_table(table: ExtractedTable, geom: Optional[PageGeom], prev: Optional[PageGeom] = None) -> None:
+    """Cell-level grounding of a whole VLM table (sets status, verified_ratio, grounding)."""
+    if geom is None:
+        table.status, table.verified_ratio = "unchecked", 0.0
+        table.grounding = {"reason": "no page geometry"}
+        return
+    if not geom.has_text:
+        table.status, table.verified_ratio = "no_text_layer", 0.0
+        table.grounding = {"reason": "page has no text layer (scanned)"}
+        return
+    counts = {"cells": 0, "grounded": 0, "conflict": 0, "ambiguous": 0, "not_found": 0}
+    reasons: list[str] = []
+    boxes = []
+    for r in table.rows:
+        labels = _row_labels(r)
+        for j, cell in enumerate(r):
+            if not cell or cell in labels or value_kind(cell) == "empty":
+                continue
+            counts["cells"] += 1
+            if not re.search(r"\d", cell):
+                ok = _present(geom, cell)
+                counts["grounded" if ok else "not_found"] += 1
+                if not ok:
+                    reasons.append(f"'{cell}' not in the text layer")
+                continue
+            levels = [x.strip() for x in (table.columns[j] if j < len(table.columns) else "").split(" / ") if x.strip()]
+            if not levels or not labels:
+                counts["not_found"] += 1
+                reasons.append(f"'{cell}' has no row label or column header")
+                continue
+            res = ground_cell(geom, cell, labels, [levels[-1]], levels[:-1], prev)
+            key = res.status if res.status in counts else "not_found"
+            counts[key] += 1
+            if res.status != "grounded":
+                reasons.append(res.reason)
+            else:
+                boxes += [res.value, res.label]
+    total = counts["cells"]
+    table.verified_ratio = round(counts["grounded"] / total, 3) if total else 0.0
+    if counts["conflict"]:
+        table.status = "conflict"
+    elif total and table.verified_ratio >= MIN_GROUNDED:
+        table.status = "grounded"
+    else:
+        table.status = "partial"
+    table.grounding = dict(counts, reasons=reasons[:12])
+    if boxes:
+        from techrag.geometry import union
+
+        table.grounding["bbox"] = union(boxes).rect()
+
+
+def _conditions(text: str) -> list[str]:
+    return [c.strip() for c in re.split(r"[;,]|\band\b", text or "") if len(norm_tokens(c)) >= 1 and c.strip()]
+
+
+def _item(role: str, page: int, box, geom: Optional[PageGeom] = None, **kw) -> dict:
+    if geom is not None and "text" not in kw:
+        kw["text"] = " ".join(geom.words[i].text for i in box.words if i < len(geom.words))
+    return dict(role=role, page=page, rect=box.rect(), **kw)
+
+
+def ground_parameter(p: dict, geom: Optional[PageGeom], prev: Optional[PageGeom] = None,
+                     nxt: Optional[PageGeom] = None, caption: str = "") -> None:
+    """Relation-level check of one typed parameter row: each value under its min/typ/max header, in the row of
+    the parameter (or of its condition), with its unit and conditions on the page. Sets verified/status/
+    evidence/value_kind and the SI values (only for plain numbers with a known unit)."""
+    unit = p.get("unit", "")
+    fields = [(k, p.get(k, "")) for k in ("min", "typ", "max") if value_kind(p.get(k, "")) != "empty"]
+    kinds = {value_kind(v) for _, v in fields}
+    p["value_kind"] = "expression" if "expression" in kinds else ("range" if "range" in kinds else "number")
+    flags: list[str] = []
+    if unit and not unit_info(unit) and unit.strip().lower() not in NON_SI_UNITS:
+        flags.append(f"unit '{unit}' has no known SI conversion")
+    for k, v in fields:
+        if value_kind(v) == "expression":
+            flags.append(f"{k} is an expression, kept verbatim")
+        elif number_ambiguous(v):
+            flags.append(f"{k} '{v}': number format ambiguous (decimal or thousands separator)")
+    for k in ("min", "typ", "max"):
+        p[f"{k}_si"] = to_si(p.get(k, ""), unit)
+    p["base_unit"] = base_unit(unit)
+    evidence: dict = {"page": geom.page if geom else 0, "items": [], "reasons": [], "flags": flags,
+                      "notes_located": not p.get("notes")}
+    p["evidence"] = evidence
+    p["verified"] = False
+    if geom is None:
+        p["status"] = "unchecked"
+        evidence["reasons"].append("no page geometry")
+        return
+    if not geom.has_text:
+        p["status"] = "no_text_layer"
+        evidence["reasons"].append("page has no text layer")
+        return
+    if not fields:
+        p["status"] = "no_value"
+        return
+    conds = _conditions(p.get("conditions", ""))
+    missing = [c for c in conds if not _present(geom, c) and c.lower() not in caption.lower()]
+    statuses: list[str] = []
+    if missing:
+        statuses.append("condition_not_found")
+        evidence["reasons"].append(f"condition(s) not on the page: {missing}")
+    names = [x for x in (p.get("symbol", ""), p.get("parameter", "")) if x]
+    label_items: dict = {}
+    for k, v in fields:
+        res = ground_cell(geom, v, names, FIELD_HEADERS[k], conds, prev)
+        if res.status == "not_found" and conds:
+            res = ground_cell(geom, v, conds, FIELD_HEADERS[k], conds, prev, label_left=False)
+        if res.status != "grounded":
+            statuses.append(res.status)
+            evidence["reasons"].append(f"{k}: {res.reason or res.status}")
+            continue
+        evidence["items"].append(_item("value", geom.page, res.value, field=k, text=v))
+        if res.header is not None:
+            hg = geom if (res.header_page or geom.page) == geom.page else prev
+            evidence["items"].append(_item("header", res.header_page or geom.page, res.header, hg, field=k))
+        if res.label is not None:
+            label_items[tuple(res.label.rect())] = res.label
+        for g in res.groups:
+            evidence["items"].append(_item("condition", geom.page, g, geom))
+        if unit:
+            ustate, ubox = find_unit(geom, unit, res.value, res.header if res.header_page == geom.page else None)
+            if ustate == "mismatch":
+                statuses.append("unit_mismatch")
+                evidence["reasons"].append(f"{k}: the row's unit is '{geom.words[ubox.words[0]].text}', not '{unit}'")
+            elif ustate == "not_found":
+                statuses.append("unit_not_found")
+                evidence["reasons"].append(f"{k}: unit '{unit}' not printed in the row or column header")
+            elif ubox is not None:
+                evidence["items"].append(_item("unit", geom.page, ubox, text=unit))
+    for box in label_items.values():
+        evidence["items"].append(_item("label", geom.page, box, geom))
+    if p.get("notes"):
+        for g in (geom, nxt):
+            if g is None or not g.has_text:
+                continue
+            m = g.locate_text(" ".join(norm_tokens(p["notes"])[:14]), min_cov=0.85)
+            if m.status in ("exact", "approximate"):
+                for b in g.line_boxes(m.words):
+                    evidence["items"].append(_item("footnote", g.page, b, g))
+                evidence["notes_located"] = True
+                break
+        if not evidence["notes_located"]:
+            evidence["reasons"].append("footnote text not found in the text layer (left out of the cited row)")
+    order = ["conflict", "ambiguous", "unit_mismatch", "condition_not_found", "not_found", "unit_not_found"]
+    bad = [st for st in order if st in statuses]
+    p["status"] = bad[0] if bad else "grounded"
+    p["verified"] = p["status"] == "grounded"
+
+
+def validate(table: ExtractedTable, geom: Optional[PageGeom], prev: Optional[PageGeom] = None,
+             nxt: Optional[PageGeom] = None) -> ExtractedTable:
+    ground_table(table, geom, prev)
     for p in table.parameters:
-        vals = [p.get(k, "") for k in ("min", "typ", "max")]
-        p["verified"] = bool(page_text.strip()) and all(value_in_text(v, page_text) for v in vals) \
-            and any(_NUM.search(v or "") for v in vals)
-        unit = p.get("unit", "")
-        for k in ("min", "typ", "max"):
-            v = p.get(k, "")
-            p[f"{k}_si"] = to_si(_NUM.search(_norm_text(v)).group(0), unit) if _NUM.search(_norm_text(v or "")) else None
-        p["base_unit"] = base_unit(unit)
+        ground_parameter(p, geom, prev, nxt, table.caption)
     return table
 
 
@@ -188,7 +361,7 @@ class TableExtractor:
         return self.cache_dir / doc_sha[:24] / f"p{page:05d}_{key}.json"
 
     def extract_page(self, pdf_path: Path, doc_sha: str, page: int, page_text: str,
-                     read_only_cache: bool = False) -> list[ExtractedTable]:
+                     read_only_cache: bool = False, geoms: Optional[dict] = None) -> list[ExtractedTable]:
         cache = self._cache_file(doc_sha, page)
         if cache.exists():
             obj = json.loads(cache.read_text(encoding="utf-8"))
@@ -205,16 +378,18 @@ class TableExtractor:
             if not read_only_cache:
                 cache.parent.mkdir(parents=True, exist_ok=True)
                 cache.write_text(json.dumps(obj, ensure_ascii=False), encoding="utf-8")
-        return [validate(t, page_text) for t in _parse(obj, page)]
+        geoms = geoms or {}
+        return [validate(t, geoms.get(page), geoms.get(page - 1), geoms.get(page + 1)) for t in _parse(obj, page)]
 
     def extract(self, pdf_path: Path, doc_sha: str, pages: list[int], page_texts: dict[int, str],
-                progress: Callable[[str], None] = lambda m: None) -> tuple[dict[int, list[ExtractedTable]], list[str]]:
+                progress: Callable[[str], None] = lambda m: None,
+                geoms: Optional[dict] = None) -> tuple[dict[int, list[ExtractedTable]], list[str]]:
         results: dict[int, list[ExtractedTable]] = {}
         errors: list[str] = []
 
         def run(page: int):
             try:
-                return page, self.extract_page(pdf_path, doc_sha, page, page_texts.get(page, "")), None
+                return page, self.extract_page(pdf_path, doc_sha, page, page_texts.get(page, ""), geoms=geoms), None
             except Exception as exc:
                 return page, [], f"p.{page}: VLM extraction failed ({exc.__class__.__name__}: {str(exc)[:160]})"
 

@@ -22,7 +22,7 @@ BASES: dict[str, tuple[str, float, bool]] = {
     "bps": ("bit/s", 1.0, True), "b/s": ("bit/s", 1.0, True), "bit/s": ("bit/s", 1.0, True),
     "bits/s": ("bit/s", 1.0, True), "B/s": ("B/s", 1.0, True), "Bps": ("B/s", 1.0, True),
     "T/s": ("T/s", 1.0, True),
-    "m": ("m", 1.0, True), "in": ("m", 0.0254, False), "mil": ("m", 25.4e-6, False),
+    "m": ("m", 1.0, True), "inch": ("m", 0.0254, False), "inches": ("m", 0.0254, False), "mil": ("m", 25.4e-6, False),
     "mils": ("m", 25.4e-6, False), "ft": ("m", 0.3048, False), "feet": ("m", 0.3048, False),
     "dB": ("dB", 1.0, False), "dBm": ("dBm", 1.0, False), "%": ("%", 1.0, False),
     "°C": ("degC", 1.0, False), "degC": ("degC", 1.0, False), "ppm": ("ppm", 1.0, False),
@@ -118,19 +118,58 @@ def find_quantities(text: str) -> list[Quantity]:
     return out
 
 
+# Units that are meaningful but have no SI conversion (clock cycles); kept as written.
+NON_SI_UNITS = {"tck", "nck", "ck", "clk", "clock", "clocks", "cycle", "cycles", "tck(avg)", "tck(abs)"}
+_EMPTY_VALUES = {"", "-", "--", "—", "–", "n/a", "na", "none", "x"}
+_PLAIN_NUMBER = re.compile(r"^[-+±]?\d+(?:[.,]\d+)*$")
+_RANGE = re.compile(r"^[-+±]?\d+(?:[.,]\d+)*\s*(?:-|–|to|~|\.\.\.?)\s*[-+±]?\d+(?:[.,]\d+)*$")
+
+
+def is_unit_token(text: str) -> bool:
+    t = text.strip(" .,;:()[]")
+    return bool(t) and (unit_info(t) is not None or t.lower() in NON_SI_UNITS)
+
+
+def value_kind(value: str) -> str:
+    """empty | number | range | expression. 'max(10 ns, 4 tCK)' or '0.5 x VDD' are expressions: they are
+    kept verbatim and never reduced to a single number."""
+    v = (value or "").strip()
+    if v.lower() in _EMPTY_VALUES:
+        return "empty"
+    if _PLAIN_NUMBER.match(v):
+        return "number"
+    if _RANGE.match(v):
+        return "range"
+    return "expression" if re.search(r"\d", v) else "empty"
+
+
+def number_ambiguous(value: str) -> bool:
+    """True when the digits can be read two ways ('1,200' = 1200 or 1.2)."""
+    return len({round(x, 12) for x in parse_number(value)}) > 1
+
+
 def to_si(value: Optional[str], unit: str) -> Optional[float]:
-    if value is None:
+    """SI value of a plain number with a known unit. None for expressions, ranges, ambiguous number formats
+    and units without a known SI factor (an unknown unit is never silently treated as SI)."""
+    if value is None or value_kind(str(value)) != "number" or number_ambiguous(str(value)):
         return None
     nums = parse_number(str(value))
-    info = unit_info(unit or "")
     if not nums:
         return None
-    return nums[0] * (info[1] if info else 1.0)
+    unit = (unit or "").strip()
+    if not unit:
+        return nums[0]
+    info = unit_info(unit)
+    return nums[0] * info[1] if info else None
 
 
 def base_unit(unit: str) -> str:
-    info = unit_info(unit or "")
-    return info[0] if info else (unit or "")
+    """Canonical base of a known unit ('ns' -> 's'); '' for an unknown unit; clock-cycle units as written."""
+    unit = (unit or "").strip()
+    info = unit_info(unit)
+    if info:
+        return info[0]
+    return unit if unit.lower() in NON_SI_UNITS else ""
 
 
 def format_si(value: float, base: str) -> str:

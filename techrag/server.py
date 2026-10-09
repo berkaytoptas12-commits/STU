@@ -177,6 +177,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                     domains.append({"key": k, "name": k, **v})
         return {"version": __version__, "desktop": desktop, "library": str(c.library_dir.resolve()),
                 "read_only": c.read_only, "language": c.ui.language,
+                "legacy_documents": stats.get("legacy_documents", 0),
                 "models": {s: getattr(c, s).model for s in SERVICES},
                 "stats": stats, "domains": domains, "error": state["error"],
                 "allow_upload": c.server.allow_upload and not c.read_only}
@@ -316,10 +317,22 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
 
     @app.get("/api/documents/{doc_id}", dependencies=guard)
     def document(doc_id: int):
-        d = eng().store.document(doc_id)
+        e = eng()
+        d = e.store.document(doc_id)
         if not d:
             raise HTTPException(404, "document not found")
-        return d.to_dict(with_toc=True)
+        return d.to_dict(with_toc=True) | {"page_labels": e.store.page_labels(doc_id)}
+
+    @app.get("/api/documents/{doc_id}/page/{page}/info", dependencies=guard)
+    def page_info(doc_id: int, page: int):
+        """Physical page index vs printed label, and whether word positions exist (for highlights)."""
+        e = eng()
+        d = e.store.document(doc_id)
+        if not d or not (1 <= page <= max(d.n_pages, 1)):
+            raise HTTPException(404, "page not found")
+        g = e.store.page_geom(doc_id, page)
+        return {"page": page, "n_pages": d.n_pages, "label": g.label if g else "", "has_text": bool(g and g.has_text),
+                "geometry": g is not None, "legacy": d.legacy, "sha256": d.sha256}
 
     @app.get("/api/documents/{doc_id}/page/{page}.png", dependencies=guard)
     def page_image(doc_id: int, page: int, dpi: int = 110):
@@ -358,7 +371,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
     @app.post("/api/search", dependencies=guard)
     def search(req: SearchRequest):
         res = eng().retrieve(req.query, domains=req.domains, doc_ids=req.doc_ids, top_k=req.top_k)
-        return {"plan": res.plan.to_dict(), "scope": res.scope.__dict__, "confidence": res.confidence,
+        return {"plan": res.plan.to_dict(), "scope": res.scope.to_dict(), "confidence": res.confidence,
                 "timings": res.timings, "sources": [p.to_dict() for p in res.passages],
                 "parameters": [p.__dict__ for p in res.parameters]}
 
@@ -438,6 +451,32 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             while chunk := await file.read(1 << 20):
                 fh.write(chunk)
         return {"job": start_job("upload", dest)["id"], "path": str(dest)}
+
+    @app.post("/api/library/migrate", dependencies=guard)
+    def library_migrate():
+        """Update an index from an older version in place (no re-embedding, no VLM calls)."""
+        from techrag.ingest.pipeline import migrate_index
+
+        c: Config = state["cfg"]
+        if c.read_only:
+            raise HTTPException(403, "the library is opened read-only")
+        e = eng()
+        job = jobs.create("migrate")
+
+        def run():
+            with jobs.lock:
+                job["status"] = "running"
+                try:
+                    rep = migrate_index(c, e.store, lambda m: job["messages"].append(m))
+                    job["report"] = rep
+                    job["messages"].append(json.dumps(rep, ensure_ascii=False, indent=1))
+                    job["status"] = "done"
+                except Exception as exc:
+                    job["messages"].append(f"ERROR: {exc}")
+                    job["status"] = "failed"
+
+        threading.Thread(target=run, daemon=True).start()
+        return {"job": job["id"]}
 
     @app.post("/api/ingest", dependencies=guard)
     def ingest_all(req: IngestRequest = IngestRequest()):

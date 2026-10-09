@@ -34,6 +34,7 @@ class Chunk:
     kind: str = TEXT_KIND
     overlap: int = 0  # number of leading characters copied from the previous chunk
     ref: Optional[int] = None  # extracted-table index for table chunks
+    evidence: bool = True  # False: search-only (unverified VLM table); retrieval cites the page text instead
 
     @property
     def tokens(self) -> int:
@@ -111,8 +112,9 @@ def chunk_blocks(blocks: list[SectionedBlock], target_tokens: int = 380, max_tok
     section: tuple[str, ...] | None = None
     last_text_line = ""
 
-    def emit(text: str, pages: list[int], kind: str, overlap: int = 0, ref: Optional[int] = None):
-        chunks.append(Chunk(len(chunks), text, section or (), min(pages), max(pages), kind, overlap, ref))
+    def emit(text: str, pages: list[int], kind: str, overlap: int = 0, ref: Optional[int] = None,
+             evidence: bool = True):
+        chunks.append(Chunk(len(chunks), text, section or (), min(pages), max(pages), kind, overlap, ref, evidence))
 
     def flush(carry_overlap: bool):
         nonlocal buf, buf_overlap
@@ -136,7 +138,7 @@ def chunk_blocks(blocks: list[SectionedBlock], target_tokens: int = 380, max_tok
             caption = last_text_line if _CAPTION.match(last_text_line) and not _CAPTION.match(b.text) else ""
             last_text_line = ""
             for part in split_table(b.text, max_tokens):
-                emit(f"{caption}\n{part}" if caption else part, [b.page], TABLE_KIND, ref=b.ref)
+                emit(f"{caption}\n{part}" if caption else part, [b.page], TABLE_KIND, ref=b.ref, evidence=b.evidence)
             continue
         lines = [ln for ln in b.text.split("\n") if ln.strip()]
         last_text_line = lines[-1].strip() if lines else ""

@@ -150,9 +150,12 @@ class RetrievalConfig:
     section_expand_tokens: int = 1800
     neighbor_window: int = 1
     domain_routing: bool = True
-    entity_filter: bool = True      # hard filter on standards/versions named in the question
-    min_results_for_filter: int = 1
+    entity_filter: bool = True      # hard filter on standards/versions named in the question (never widened)
+    min_results_for_filter: int = 1  # (unused since 0.2: a named standard's scope is never widened)
     query_rewrite: bool = True
+    # Ask back instead of answering when no standard is named and the evidence for a value question comes
+    # from sibling standards/versions (DDR4 and DDR5 ...) whose values may differ.
+    clarify_ambiguous: bool = True
     parameter_rows: int = 12        # typed parameter rows pre-fetched for numeric questions
 
 

@@ -6,7 +6,7 @@ import pytest
 
 from fakeserver import sources_in
 from techrag.tools import SourceRegistry, safe_eval
-from techrag.verify import apply_failures, deterministic_check, split_claims
+from techrag.verify import deterministic_check, parse_answer, render, split_claims
 
 
 def final(engine, question, **kw):
@@ -55,7 +55,7 @@ def test_agent_uses_tools_verifies_and_regenerates(engine, fake):
     tool = next(e for e in events if e["type"] == "tool")
     assert tool["name"] == "get_parameter" and tool["args"]["standard"] == "DDR5"
     v = fin["verification"]
-    assert v["regenerated"] and v["judge_used"] and v["status"] == "ok"
+    assert v["regenerated"] and v["judge"]["called"] and v["judge"]["completed"] and v["status"] == "supported"
     assert "295 ns" in fin["answer"] and "3.9 us" not in fin["answer"] and "350" not in fin["answer"]
     cited = [s for s in fin["sources"] if s["cited"]]
     assert cited and all(s["entities"] == ["DDR5"] for s in cited)
@@ -70,7 +70,7 @@ def test_failing_claim_is_stripped_when_regeneration_does_not_fix_it(engine, fak
     _, fin = final(engine, "DDR5 tRFC?")
     v = fin["verification"]
     assert v["status"] == "corrected" and len(v["removed"]) == 1 and "999" not in fin["answer"]
-    assert any("999" in c["text"] and c["status"] == "removed" for c in v["details"])
+    assert any("999" in c["text"] and c["status"] == "unsupported" and c["outcome"] == "removed" for c in v["details"])
 
     cfg.answer.failed_claims = "flag"
     _, fin = final(engine, "DDR5 tRFC?")
@@ -126,9 +126,10 @@ def _registry(*texts):
 def test_split_claims_sections_and_tables():
     ans = ("Short answer is 350 ns [1].\n\n### Documented\n- tRFC is 350 ns [1]. tREFI is 7.8 us [2].\n\n"
            "| Parameter | Value |\n|---|---|\n| tRFC | 350 ns [1] |\n\n### Engineering inference (not stated in the sources)\n"
-           "- Margin is about 10 percent.")
+           "- Margin is about 10 percent [1].")
     claims = split_claims(ans)
     assert [c.section for c in claims] == ["lead", "documented", "documented", "documented", "inference"]
+    assert [c.kind for c in claims] == ["fact", "fact", "fact", "fact", "inference"]
     assert claims[2].citations == [2]
     assert claims[3].text.startswith("| tRFC")
 
@@ -139,21 +140,20 @@ def test_deterministic_check_units_and_citations():
                           "- tRFC is 260 ns [1].")
     deterministic_check(claims, reg)
     st = {c.text: c for c in claims}
-    assert st["tRFC is 0.35 µs [1]."].status == "ok", "unit-normalised match"
+    assert st["tRFC is 0.35 µs [1]."].status == "pending", "unit-normalised match passes to the judge"
     assert "wrong citation" in " ".join(st["tREFI is 7.8 us [1]."].reasons)
     assert "non-existent" in " ".join(st["tRFC is 350 ns [3]."].reasons)
-    assert st["tRFC is 260 ns [1]."].status == "fail"
+    assert st["tRFC is 260 ns [1]."].status == "unsupported"
 
 
-def test_apply_failures_strip_and_flag():
-    ans = "### Documented\n- A is 1 V [1]. B is 2 V [1].\n- C is 3 V [1].\n| x | 4 V [1] |"
-    claims = split_claims(ans)
-    for c in claims:
-        c.status = "fail" if ("B is" in c.text or "C is" in c.text or "4 V" in c.text) else "ok"
-    out, removed = apply_failures(ans, claims, "strip")
-    assert out == "### Documented\n- A is 1 V [1]." and len(removed) == 3
-    out, _ = apply_failures(ans, claims, "flag")
-    assert out.count("⚠") == 3
+def test_render_strip_and_flag():
+    ans = "### Documented\n- A is 1 V [1]. B is 2 V [1].\n- C is 3 V [1].\n\n| P | V |\n|---|---|\n| x | 4 V [1] |"
+    parsed = parse_answer(ans)
+    bad = {c.id for c in parsed.claims if any(k in c.text for k in ("B is", "C is", "4 V"))}
+    out = render(parsed, lambda c: "drop" if c.id in bad else "keep")
+    assert out == "### Documented\n- A is 1 V [1].", out
+    flagged = render(parsed, lambda c: "flag" if c.id in bad else "keep")
+    assert flagged.count("⚠") == 3
 
 
 def test_safe_calculator():
@@ -170,20 +170,25 @@ def test_eval_recall_with_expected_pages(engine, tmp_path):
     f = tmp_path / "gold.yaml"
     f.write_text("""
 - id: ddr5-trfc
+  status: expert_verified
   question: DDR5 tRFC 8Gb refresh cycle time
-  expected: ["295"]
-  expected_doc: DDR5
-  expected_pages: [6]
+  document: DDR5
+  pages: [6]
+  facts: [{parameter: [tRFC], value: "295", unit: ns, conditions: [8Gb]}]
 - id: i2c-fm
+  status: expert_verified
   question: I2C Fast-mode bit rate
-  expected: ["400"]
-  expected_doc: UM10204
+  document: UM10204
+  keywords: ["400"]
 """, encoding="utf-8")
     report = run_eval(engine, load_items(f), retrieval_only=True)
     s = report["summary"]
-    assert s["recall@5"] == 1.0 and s["errors"] == 0
+    assert s["recall@5"] == 1.0 and s["errors"] == 0 and s["benchmark"] is True
     full = run_eval(engine, load_items(f)[:1])
-    assert full["summary"]["answer_accuracy"] == 1.0 and full["summary"]["faithfulness"] == 1.0
+    s = full["summary"]
+    assert s["fact_accuracy_of_answered"] == 1.0 and s["wrong_answer_rate_of_answered"] == 0.0
+    assert s["source_accuracy"] == 1.0 and s["page_accuracy"] == 1.0 and s["evidence_location_accuracy"] == 1.0
+    assert "not an independent" in s["internal_verification_note"]
 
 
 def test_tools_inherit_question_scope(engine, fake):

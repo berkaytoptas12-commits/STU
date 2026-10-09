@@ -8,6 +8,7 @@ After a run, supersedence between revisions of the same standard is recomputed.
 from __future__ import annotations
 
 import hashlib
+import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -19,6 +20,7 @@ import numpy as np
 from techrag.config import Config
 from techrag.domains import DomainRegistry
 from techrag.embeddings import Embedder
+from techrag.geometry import norm_tokens
 from techrag.ingest.chunker import Chunk, chunk_blocks
 from techrag.ingest.cleaning import clean_blocks
 from techrag.ingest.loaders import SUPPORTED_SUFFIXES, TABLE_KIND, Block, LoadedDocument, load_document
@@ -29,10 +31,6 @@ from techrag.llm import LLMClient
 from techrag.store import Store
 
 Progress = Callable[[str], None]
-
-# A VLM table replaces the PDF-extracted text of that table only when most of its numbers check out.
-MIN_TABLE_VERIFIED = 0.8
-
 
 @dataclass
 class IngestReport:
@@ -84,31 +82,84 @@ def page_texts(blocks: list[Block]) -> dict[int, str]:
     return {p: "\n".join(t) for p, t in out.items()}
 
 
-def merge_vlm_tables(blocks: list[Block], tables: dict[int, list[ExtractedTable]]) -> tuple[list[Block], list[ExtractedTable]]:
-    """Replace PDF-detected table blocks on pages with verified VLM tables and insert the VLM tables after
-    their caption block (or at the end of the page). Returns new blocks and the accepted tables (index = ref)."""
-    accepted: list[ExtractedTable] = []
-    good_pages = {p for p, ts in tables.items() if any(t.verified_ratio >= MIN_TABLE_VERIFIED for t in ts)}
-    out: list[Block] = []
+_TABLE_REF = re.compile(r"\b(?:table|tablo)\s*([A-Z]?\d+(?:[.\-–]\d+)*)", re.I)
+
+
+def _tokens(text: str) -> set[str]:
+    return set(norm_tokens(text))
+
+
+def _overlap(a, b) -> float:
+    """Intersection area / smaller area of two rects."""
+    x0, y0, x1, y1 = max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3])
+    if x1 <= x0 or y1 <= y0:
+        return 0.0
+    small = min((a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1])) or 1.0
+    return (x1 - x0) * (y1 - y0) / small
+
+
+def _match_score(t: ExtractedTable, block: Block, before: str) -> float:
+    """How surely a PDF-detected table block is the table the VLM read: content, position and caption."""
+    vt = _tokens(" ".join([*t.columns, *(c for r in t.rows for c in r)]))
+    bt = _tokens(block.text)
+    score = len(vt & bt) / len(vt | bt) if vt and bt else 0.0
+    bbox = (t.grounding or {}).get("bbox")
+    if bbox and block.bbox:
+        score += 0.5 * _overlap(bbox, block.bbox)
+    ref = _TABLE_REF.search(t.caption or "")
+    if ref and re.search(r"\b" + re.escape(ref.group(1)) + r"\b", before + "\n" + block.text.split("\n", 1)[0], re.I):
+        score += 0.3
+    return score
+
+
+def merge_vlm_tables(blocks: list[Block], tables: dict[int, list[ExtractedTable]]
+                     ) -> tuple[list[Block], list[ExtractedTable], list[str]]:
+    """Per table, not per page: a grounded VLM table replaces the one PDF table block it reliably matches
+    (content + position + caption); when the match is uncertain the original is kept and the VLM table is
+    added beside it. A table that is not grounded never replaces anything: the original PDF text stays the
+    evidence and the VLM version is kept only as search-only content.
+
+    Returns (blocks, stored tables (index = Block.ref), notes)."""
+    stored: list[ExtractedTable] = []
+    notes: list[str] = []
     by_page: dict[int, list[Block]] = defaultdict(list)
-    order: list[int] = []
     for b in blocks:
-        if b.page not in by_page:
-            order.append(b.page)
         by_page[b.page].append(b)
-    for page in sorted(set(order) | set(tables)):
-        page_blocks = [b for b in by_page.get(page, []) if not (page in good_pages and b.kind == TABLE_KIND)]
+    out: list[Block] = []
+    for page in sorted(set(by_page) | set(tables)):
+        page_blocks = list(by_page.get(page, []))
+        claimed: set[int] = set()
         for t in tables.get(page, []):
-            if t.verified_ratio < MIN_TABLE_VERIFIED or not t.markdown:
+            if not t.markdown:
                 continue
-            accepted.append(t)
-            block = Block(page, t.markdown, TABLE_KIND, ref=len(accepted) - 1)
-            cap = t.caption.split(":")[0].strip().lower()[:40]
-            pos = next((i + 1 for i, b in enumerate(page_blocks)
-                        if cap and b.kind != TABLE_KIND and cap in b.text.lower()), len(page_blocks))
-            page_blocks.insert(pos, block)
+            stored.append(t)
+            ref = len(stored) - 1
+            scores = []
+            for i, b in enumerate(page_blocks):
+                if b.kind == TABLE_KIND and b.ref is None and i not in claimed:
+                    before = page_blocks[i - 1].text if i else ""
+                    scores.append((_match_score(t, b, before), i))
+            scores.sort(reverse=True)
+            match = None
+            if scores and scores[0][0] >= 0.5 and (len(scores) == 1 or scores[1][0] < scores[0][0] - 0.15):
+                match = scores[0][1]
+            if t.grounded and match is not None:
+                claimed.add(match)
+                page_blocks[match] = Block(page, t.markdown, TABLE_KIND, ref, page_blocks[match].bbox, True)
+                continue
+            if t.grounded:
+                if scores:
+                    notes.append(f"p.{page}: '{t.caption or 'table'}' matched no PDF table reliably; original kept")
+                cap = t.caption.split(":")[0].strip().lower()[:40]
+                pos = next((i + 1 for i, b in enumerate(page_blocks)
+                            if cap and b.kind != TABLE_KIND and cap in b.text.lower()), len(page_blocks))
+                page_blocks.insert(pos, Block(page, t.markdown, TABLE_KIND, ref, None, True))
+                continue
+            # Not grounded: keep every original block; the VLM table is search-only.
+            pos = (match + 1) if match is not None else len(page_blocks)
+            page_blocks.insert(pos, Block(page, t.markdown, TABLE_KIND, ref, None, False))
         out.extend(page_blocks)
-    return out, accepted
+    return out, stored, notes
 
 
 class Ingestor:
@@ -217,12 +268,19 @@ class Ingestor:
             pages = select_pages(texts, doc.page_stats, cfg.vision.min_page_score, cfg.vision.max_pages_per_doc)
             if pages:
                 self.progress(f"    {len(pages)} table page(s) -> VLM")
-                found, errors = self.extractor.extract(path, digest, pages, texts, self.progress)
+                found, errors = self.extractor.extract(path, digest, pages, texts, self.progress, geoms=doc.pages)
                 warnings.extend(errors[:20])
-                blocks, accepted = merge_vlm_tables(blocks, found)
-                rejected = sum(1 for ts in found.values() for t in ts if t.verified_ratio < MIN_TABLE_VERIFIED)
-                if rejected:
-                    warnings.append(f"{rejected} VLM table(s) failed value verification and were not used")
+                blocks, accepted, notes = merge_vlm_tables(blocks, found)
+                warnings.extend(notes[:20])
+                partial = [t for t in accepted if not t.grounded]
+                if partial:
+                    warnings.append(f"{len(partial)} VLM table(s) could not be tied cell by cell to the PDF text "
+                                    "layer: their original PDF text is kept as evidence, the VLM version is "
+                                    "search-only")
+                params = [p for t in accepted for p in t.parameters]
+                unverified = sum(1 for p in params if not p.get("verified"))
+                if unverified:
+                    warnings.append(f"{unverified}/{len(params)} parameter row(s) not verified (not used in answers)")
 
         sectioned = assign_sections(doc, blocks)
         chunks = chunk_blocks(sectioned, cfg.chunking.target_tokens, cfg.chunking.max_tokens,
@@ -237,7 +295,8 @@ class Ingestor:
         table_rows = [{
             "page": t.page, "caption": t.caption, "section": table_sections.get(i, ""), "markdown": t.markdown,
             "data": {"columns": t.columns, "rows": t.rows, "footnotes": t.footnotes}, "source": "vlm",
-            "verified_ratio": t.verified_ratio, "parameters": t.parameters,
+            "verified_ratio": t.verified_ratio, "status": t.status, "grounding": t.grounding,
+            "parameters": t.parameters,
         } for i, t in enumerate(accepted)]
 
         title = doc.title
@@ -251,20 +310,94 @@ class Ingestor:
         matrix = np.vstack(vectors) if vectors else np.zeros((0, self.embedder.dim), np.float32)
 
         rows = [{"ordinal": c.ordinal, "section": SECTION_SEP.join(c.section), "page_start": c.page_start,
-                 "page_end": c.page_end, "kind": c.kind, "overlap": c.overlap, "text": c.text} for c in chunks]
+                 "page_end": c.page_end, "kind": c.kind, "overlap": c.overlap, "text": c.text,
+                 "evidence": c.evidence} for c in chunks]
         metadata = dict(doc.metadata)
-        metadata.update({"figure_pages": figure_pages, "llm": meta.llm})
+        metadata.update({"figure_pages": figure_pages, "llm": meta.llm, "doc_key": meta.doc_key,
+                         "version": meta.version, "part": meta.part})
         self.store.replace_document(
             path=rel, title=title, domain=domain, sha256=digest, n_pages=doc.n_pages,
             toc=[list(t) for t in doc.toc], metadata=metadata, warnings=warnings, chunks=rows, embeddings=matrix,
             entities=meta.entities, doc_type=meta.doc_type, revision=meta.revision, doc_date=meta.doc_date,
-            tables=table_rows,
+            tables=table_rows, pages=[(p, g.label, *g.encode()) for p, g in sorted(doc.pages.items())],
         )
-        n_params = sum(len(t["parameters"]) for t in table_rows)
-        self.progress(f"    -> {len(chunks)} chunks, {len(table_rows)} VLM tables, {n_params} parameters, "
+        n_params = sum(1 for t in table_rows for p in t["parameters"] if p.get("verified"))
+        self.progress(f"    -> {len(chunks)} chunks, {len(table_rows)} VLM tables, {n_params} verified parameters, "
                       f"collection={domain}, standard={', '.join(meta.entities) or '-'}, type={meta.doc_type}, "
                       f"rev={meta.revision or '-'}, {time.time() - t0:.1f}s")
         return {"chunks": len(chunks), "tables": len(table_rows), "parameters": n_params}, warnings
+
+
+def pdf_geometry(path: Path) -> dict:
+    import pymupdf
+
+    from techrag.geometry import PageGeom
+
+    with pymupdf.open(str(path)) as doc:
+        return {i + 1: PageGeom.from_page(page, i + 1) for i, page in enumerate(doc)}
+
+
+def migrate_index(cfg: Config, store: Store, progress: Progress = lambda m: None) -> dict:
+    """Bring documents indexed by an older version up to date WITHOUT re-embedding or VLM calls:
+    store page geometry from the (unchanged) source PDFs, then re-run cell-level grounding on the cached
+    VLM tables/parameters stored in the index. Tables whose original PDF text the old version dropped and
+    that still cannot be grounded need a full re-index (reported)."""
+    import json as _json
+
+    from techrag.ingest.metadata import regex_version, series_key
+    from techrag.ingest.vlm import ExtractedTable, validate
+    from techrag.store import INDEX_FORMAT
+
+    rep = {"documents": 0, "pages": 0, "tables_grounded": 0, "tables_not_grounded": 0, "parameters_verified": 0,
+           "parameters_unverified": 0, "skipped": [], "needs_reindex": []}
+    for doc in store.legacy_documents():
+        path = Path(doc.path)
+        path = path if path.is_absolute() else cfg.sources_dir / path
+        meta = dict(doc.metadata, index_format=INDEX_FORMAT)
+        stem = Path(doc.path).stem
+        meta.setdefault("doc_key", series_key(stem, doc.title))
+        meta.setdefault("version", regex_version(f"{stem} {doc.title}"))
+        if path.suffix.lower() != ".pdf":
+            store.set_pages(doc.id, [], meta)
+            rep["documents"] += 1
+            continue
+        if not path.exists():
+            rep["skipped"].append(f"{doc.path} (file missing)")
+            continue
+        if sha256_file(path) != doc.sha256:
+            rep["needs_reindex"].append(f"{doc.path} (file changed since indexing)")
+            continue
+        progress(f"migrating {doc.path}")
+        geoms = pdf_geometry(path)
+        tables, params, chunk_ev = [], [], []
+        for t in store.raw_tables(doc.id):
+            data = _json.loads(t["data"] or "{}") or {}
+            et = ExtractedTable(t["page"], t["caption"] or "", data.get("columns") or [], data.get("rows") or [],
+                                data.get("footnotes") or [])
+            raw_params = store.raw_parameters(t["id"])
+            et.parameters = [{k: (r[k] or "") for k in ("parameter", "symbol", "min", "typ", "max", "unit",
+                                                         "conditions", "notes")} for r in raw_params]
+            validate(et, geoms.get(t["page"]), geoms.get(t["page"] - 1), geoms.get(t["page"] + 1))
+            tables.append((t["id"], et.status, _json.dumps(et.grounding, ensure_ascii=False), et.verified_ratio))
+            rep["tables_grounded" if et.grounded else "tables_not_grounded"] += 1
+            header = next((ln for ln in (t["markdown"] or "").split("\n") if ln.startswith("|")), "")
+            for c in store.table_chunks(doc.id, t["page"]):
+                if header and header in c["text"]:
+                    chunk_ev.append((c["id"], 1 if et.grounded else 0))
+            if not et.grounded:
+                rep["needs_reindex"].append(f"{doc.path} p.{t['page']} '{et.caption}' (table not grounded; its "
+                                            "original PDF text was not kept by the old version)")
+            for r, p in zip(raw_params, et.parameters):
+                params.append((r["id"], p["verified"], p["status"], _json.dumps(p["evidence"], ensure_ascii=False),
+                               p["value_kind"], p.get("min_si"), p.get("typ_si"), p.get("max_si"), p.get("base_unit", "")))
+                rep["parameters_verified" if p["verified"] else "parameters_unverified"] += 1
+        store.update_grounding(tables, params, chunk_ev)
+        store.set_pages(doc.id, [(p, g.label, *g.encode()) for p, g in sorted(geoms.items())], meta)
+        rep["documents"] += 1
+        rep["pages"] += len(geoms)
+    pairs = compute_supersedence(store.documents())
+    store.set_superseded(pairs)
+    return rep
 
 
 def build_chunks(cfg: Config, path: Path):

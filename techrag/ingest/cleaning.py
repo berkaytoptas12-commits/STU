@@ -85,7 +85,7 @@ def remove_headers_footers(blocks: list[Block], n_pages: int, edge_lines: int = 
             text = "\n".join(kept).strip()
             if not text:
                 continue
-            b = Block(b.page, text, b.kind, b.ref)
+            b = Block(b.page, text, b.kind, b.ref, b.bbox, b.evidence)
         out.append(b)
     return out
 
@@ -108,8 +108,8 @@ def toc_like_pages(blocks: list[Block], min_ratio: float = 0.4) -> set[int]:
 
 def clean_blocks(blocks: list[Block], n_pages: int, strip_headers_footers: bool = True,
                  skip_toc_pages: bool = True) -> list[Block]:
-    blocks = [Block(b.page, b.text if b.kind == TABLE_KIND else normalize_text(b.text), b.kind, b.ref)
-              for b in blocks]
+    blocks = [Block(b.page, b.text if b.kind == TABLE_KIND else normalize_text(b.text), b.kind, b.ref, b.bbox,
+                    b.evidence) for b in blocks]
     blocks = [b for b in blocks if b.text.strip()]
     if strip_headers_footers:
         blocks = remove_headers_footers(blocks, n_pages)

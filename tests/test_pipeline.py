@@ -2,7 +2,7 @@
 
 from techrag.ingest.metadata import DocMeta, compute_supersedence, regex_doc_type, regex_revision
 from techrag.ingest.pipeline import Ingestor
-from techrag.ingest.vlm import ExtractedTable, page_table_score, validate, value_in_text
+from techrag.ingest.vlm import ExtractedTable, page_table_score, validate
 from techrag.store import Store
 
 
@@ -44,21 +44,39 @@ def test_hallucinated_vlm_values_are_rejected(cfg, sources, registry, clients, f
     fake.vlm_hallucinate = True  # VLM 'reads' 7.9 where the page says 7.8
     store = Store(cfg.db_path)
     report = Ingestor(cfg, store, clients["embedder"], registry, llm=clients["llm"], vision=clients["vision"]).run()
-    assert store.search_parameters("tREFI tRFC", 10) == []
-    # 1 of 4 numeric cells is wrong -> table verified ratio 0.75 < 0.8 -> table not used
-    assert store.stats()["tables"] == 0
-    assert any("failed value verification" in w for ws in report.warnings.values() for w in ws)
+    verified = store.search_parameters("tREFI tRFC", 10, verified_only=True)
+    assert {r.symbol for r in verified} == {"tRFC"}, "the hallucinated tREFI row must not be verified"
+    trefi = [r for r in store.search_parameters("tREFI", 10) if r.symbol == "tREFI"]
+    assert trefi and all(not r.verified and r.status == "not_found" for r in trefi)
+    # The table is not grounded: the original PDF table stays as evidence, the VLM version is search-only.
+    tables = store.tables_for(query="timing")
+    assert tables and all(t.status == "partial" for t in tables)
+    with store.connect() as con:
+        rows = con.execute("SELECT text, evidence FROM chunks WHERE kind='table'").fetchall()
+    assert any(r["evidence"] == 1 and "7.8" in r["text"] for r in rows)
+    assert any(r["evidence"] == 0 and "7.9" in r["text"] for r in rows)
+    assert any("could not be tied cell by cell" in w for ws in report.warnings.values() for w in ws)
 
 
-def test_validation_helpers():
-    assert value_in_text("1.2", "VDD = 1.2 V") and not value_in_text("1.2", "VDD = 1.25 V")
-    assert value_in_text("0,4", "0.4 V")
-    t = validate(ExtractedTable(3, "Table 1", ["P", "Max"], [["a", "10"], ["b", "20"]],
-                                parameters=[{"parameter": "a", "max": "10", "unit": "ns"},
-                                            {"parameter": "b", "max": "21", "unit": "ns"}]), "a 10 b 20 ns")
-    assert t.verified_ratio == 1.0
-    assert t.parameters[0]["verified"] and not t.parameters[1]["verified"]
-    assert t.parameters[0]["max_si"] == 10e-9
+def test_validation_helpers(tmp_path):
+    import pymupdf
+
+    from techrag.geometry import PageGeom
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    for r, row in enumerate([["Param", "Min", "Max", "Unit"], ["a", "10", "-", "ns"], ["b", "-", "20", "ns"]]):
+        for c, cell in enumerate(row):
+            page.insert_text((72 + c * 100, 100 + r * 20), cell, fontsize=10)
+    geom = PageGeom.from_page(page, 1)
+    t = validate(ExtractedTable(1, "Table 1", ["Param", "Min", "Max", "Unit"], [["a", "10", "-", "ns"], ["b", "-", "20", "ns"]],
+                                parameters=[{"parameter": "a", "min": "10", "unit": "ns"},
+                                            {"parameter": "b", "max": "21", "unit": "ns"},
+                                            {"parameter": "b", "min": "20", "unit": "ns"}]), geom)
+    assert t.status == "grounded" and t.verified_ratio == 1.0
+    assert t.parameters[0]["verified"] and t.parameters[0]["min_si"] == 10e-9
+    assert t.parameters[1]["status"] == "not_found", "a value not printed on the page"
+    assert t.parameters[2]["status"] == "conflict", "20 is printed under Max, not Min"
 
 
 def test_page_selection_scores_tables_above_prose():
@@ -76,9 +94,9 @@ def test_metadata_helpers_and_supersedence():
     class D(DocMeta):
         pass
 
-    def doc(i, rev, date="", dtype="base"):
-        d = D(entities=["DDR4"], doc_type=dtype, revision=rev, doc_date=date)
-        d.id, d.domain = i, "ddr"
+    def doc(i, rev, date="", dtype="base", key="jesd79-4"):
+        d = D(entities=["DDR4"], doc_type=dtype, revision=rev, doc_date=date, doc_key=key)
+        d.id, d.domain, d.superseded_by = i, "ddr", None
         return d
 
     pairs = dict(compute_supersedence([doc(1, "B"), doc(2, "C"), doc(3, "", dtype="errata")]))
