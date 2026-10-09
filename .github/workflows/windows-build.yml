@@ -6,6 +6,11 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Create a GitHub Release with this tag (e.g. v0.1.0); empty = build only"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -62,11 +67,13 @@ jobs:
             TechRAG-win64.zip
             dist/TechRAG-portable.exe
           retention-days: 30
-      - name: Attach to release (tags only)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish GitHub Release (tag push or manual run with release_tag)
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
         uses: softprops/action-gh-release@v2
         with:
-          name: TechRAG ${{ github.ref_name }}
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: TechRAG ${{ inputs.release_tag || github.ref_name }}
           body_path: packaging/RELEASE_NOTES.md
           files: |
             TechRAG-win64.zip
