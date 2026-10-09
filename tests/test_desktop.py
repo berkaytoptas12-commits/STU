@@ -16,7 +16,7 @@ def test_gui_starts_backend_with_token_and_opens_window(monkeypatch, tmp_path):
 
     fake = types.ModuleType("webview")
     fake.settings = {}
-    fake.FOLDER_DIALOG, fake.OPEN_DIALOG, fake.SAVE_DIALOG = 20, 10, 30
+    fake.FileDialog = types.SimpleNamespace(OPEN=10, FOLDER=20, SAVE=30)
 
     class Window:
         def __init__(self, url):

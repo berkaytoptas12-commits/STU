@@ -624,8 +624,12 @@ class Store:
             target.unlink()
         with self.connect() as con:
             con.execute("VACUUM INTO ?", (str(target),))
-        with sqlite3.connect(str(target)) as con:
+        con = sqlite3.connect(str(target))  # `with` would only commit; Windows needs the handle closed
+        try:
             con.execute("PRAGMA journal_mode=DELETE")
+            con.commit()
+        finally:
+            con.close()
         if sources_dir.exists():
             shutil.copytree(sources_dir, dest / "sources", dirs_exist_ok=True)
         if vlm_cache_dir and vlm_cache_dir.exists():

@@ -54,6 +54,16 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+def _dialog(kind: str):
+    """pywebview >= 5 exposes webview.FileDialog.*; older releases had module constants."""
+    import webview
+
+    fd = getattr(webview, "FileDialog", None)
+    if fd is not None:
+        return getattr(fd, kind)
+    return getattr(webview, f"{kind}_DIALOG")
+
+
 class JsApi:
     """Native dialogs exposed to the page as window.pywebview.api.*"""
 
@@ -61,23 +71,17 @@ class JsApi:
         self.window = None
 
     def pick_folder(self):
-        import webview
-
-        r = self.window.create_file_dialog(webview.FOLDER_DIALOG)
-        return r[0] if r else None
+        r = self.window.create_file_dialog(_dialog("FOLDER"))
+        return (r[0] if isinstance(r, (list, tuple)) else r) if r else None
 
     def pick_files(self):
-        import webview
-
         r = self.window.create_file_dialog(
-            webview.OPEN_DIALOG, allow_multiple=True,
+            _dialog("OPEN"), allow_multiple=True,
             file_types=("Documents (*.pdf;*.docx;*.md;*.txt;*.html;*.htm)", "All files (*.*)"))
         return list(r) if r else []
 
     def save_text(self, filename: str, content: str) -> bool:
-        import webview
-
-        r = self.window.create_file_dialog(webview.SAVE_DIALOG, save_filename=filename)
+        r = self.window.create_file_dialog(_dialog("SAVE"), save_filename=filename)
         path = r if isinstance(r, str) else (r[0] if r else None)
         if not path:
             return False

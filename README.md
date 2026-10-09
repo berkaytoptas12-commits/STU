@@ -1,23 +1,13 @@
-# techrag — Kapalı Ağda Çalışan Standart Asistanı (NotebookLM benzeri RAG)
+# TechRAG — Arayüz ve Tasarım Standartları için Doğrulamalı Asistan
 
-Tamamen **internetsiz (air-gapped)** çalışan, cevaplarını **yalnızca yüklenen standart dokümanlarından** üreten
-ve her bilgiyi **[n] atfıyla doküman / bölüm / sayfaya** bağlayan bir soru-cevap sistemi.
+Kullanıcının arayüz/standart sorularını (ARINC, JEDEC DDR, PCIe, Ethernet, DisplayPort, USB, RS-422, I²C,
+genel tasarım standartları …) **yalnızca yüklü dokümanlardan** cevaplayan, her ifadeyi **[n] atfıyla sayfasına**
+bağlayan ve cevabı kullanıcıya göstermeden önce **kaynaklara karşı denetleyen** bir masaüstü uygulaması.
 
-İlk kurulum şu standart aileleri için hazırlanmıştır (her biri ayrı bir *koleksiyon*):
-
-| Koleksiyon | Kapsam (örnek) |
-|---|---|
-| `arinc` | ARINC 429, 664 (AFDX), 653, 818, 825 … |
-| `ddr` | JEDEC DDR3 / DDR4 / DDR5 / LPDDR4/5 (JESD79-x) |
-| `pcie` | PCI Express Base, CEM, M.2 |
-| `ethernet` | IEEE 802.3, MII/RGMII/SGMII, TSN |
-| `displayport` | VESA DisplayPort, eDP |
-| `usb` | USB 2.0 / 3.x / USB4, Type-C, Power Delivery |
-| `rs422` | TIA/EIA-422 (RS-422), RS-485 |
-| `i2c` | I²C (UM10204), SMBus, I3C |
-| `general` | DO-254, DO-160, DO-178C, MIL-STD-461/704, IPC, IEC … |
-
-Yeni bir aile eklemek için `config/domains.yaml`'a bir blok ekleyip `data/sources/<anahtar>/` klasörü açmanız yeterlidir.
+* Windows için tek `TechRAG.exe` (tarayıcı açılmaz; yerel pencere — Microsoft Edge WebView2).
+* Tüm modeller kurum içindeki **vLLM / SGLang** sunucularından (OpenAI uyumlu API) kullanılır:
+  sohbet modeli, görsel model, embedding ve reranker ayrı ayrı ayarlanır. Yerelde ağır hiçbir şey çalışmaz.
+* Arayüz Türkçe / İngilizce (tek tıkla değişir). Cevap, sorunun dilinde verilir; teknik terimler İngilizce kalır.
 
 ---
 
@@ -25,262 +15,205 @@ Yeni bir aile eklemek için `config/domains.yaml`'a bir blok ekleyip `data/sourc
 
 ```mermaid
 flowchart TB
-    subgraph Ingest["İndeksleme: techrag ingest"]
-        A["PDF / DOCX / MD / HTML"] --> B["PyMuPDF: metin + tablo + yer imleri"]
-        B --> C["Temizlik: üst/alt bilgi, sayfa no,<br/>içindekiler sayfaları, tire birleştirme"]
-        C --> D["Bölüm ataması:<br/>PDF outline / numaralı başlıklar"]
-        D --> E["Bölüm sınırına saygılı parçalama,<br/>tablolar ayrı parça"]
-        E --> F[("SQLite: FTS5-BM25 + bge-m3 vektörleri")]
+    subgraph Ingest["İndeksleme (bir kez, kütüphaneyi hazırlayan kişi)"]
+        A["PDF / DOCX / MD"] --> B["PyMuPDF: metin, yer imleri, cetvelli tablolar,<br/>sayfa istatistikleri (çizim/görsel)"]
+        B --> C["Temizlik: üst/alt bilgi, sayfa no, içindekiler sayfaları"]
+        C --> M["Meta veri: standart + sürüm varlığı (DDR5, PCIe 5.0 …),<br/>revizyon, tarih, tür (base / errata / ECN), eski revizyon tespiti"]
+        C --> V["Tablo sayfası skorlama -> yalnızca tablo sayfaları VLM'e<br/>(görüntü + metin katmanı), değerler metin katmanına karşı doğrulanır"]
+        V --> P[("Tipli parametre deposu<br/>parameter / symbol / min / typ / max / unit / conditions / notes + SI")]
+        C --> D["Bölüm yolu + bölüm sınırına saygılı parçalar"]
+        D --> E["Embedding (API)"]
+        E --> F[("library/index.sqlite<br/>FTS5-BM25 + vektörler + tablolar + parametreler")]
     end
-    subgraph Ask["Soru: CLI / Web"]
-        Q["Soru TR/EN + sohbet geçmişi"] --> P["Sorgu planı - LLM:<br/>bağımsız soru, İngilizce terminoloji,<br/>anahtar kelimeler + TR-EN sözlük"]
-        P --> R["Koleksiyon yönlendirme<br/>PCIe, ARINC 429 ..."]
-        R --> S["BM25 + yoğun vektör, RRF birleştirme"]
+    subgraph Ask["Soru"]
+        Q["Soru + sohbet geçmişi"] --> PL["Planlayıcı (LLM): bağımsız soru, İngilizce terminoloji,<br/>parametreler, soru tipi, düşünme gerekli mi"]
+        PL --> R["Varlık önce: soruda adı geçen standart/sürüme KESİN filtre<br/>(eski revizyonlar hariç)"]
+        R --> S["BM25 + vektör -> RRF -> cross-encoder rerank (API)<br/>-> bölüme genişletme + şekil sayfası görüntüsü"]
         F --> S
-        S --> T["Çok dilli cross-encoder<br/>bge-reranker-v2-m3"]
-        T --> U["Komşu parça genişletme,<br/>numaralı kaynak pasajları"]
-        U --> V["Yerel LLM - Ollama / vLLM<br/>katı kaynak-temelli istem"]
-        V --> W["Doğrulama: atıflar ve sayısal<br/>değerler kaynakta var mı?"]
-        W --> X["Cevap + [n] atıflar + sayfa linkleri"]
+        P --> S
+        S --> AG["Ajan (Qwen, tool calling): search_docs, get_parameter,<br/>get_table, get_page_image, calculate"]
+        AG --> VE["Doğrulama: birim normalize sayısal kontrol + atıf kontrolü<br/>-> bağımsız denetçi (taze bağlam) -> 1 kez yeniden üretim<br/>-> doğrulanamayan ifadeler çıkarılır/işaretlenir"]
+        VE --> X["Cevap: 'Kaynaklarda belirtilen' + 'Mühendislik yorumu'<br/>[n] atıfları, sayfa görüntüsü, doğrulama özeti"]
     end
 ```
 
-Hiçbir bileşen dışarıya istek atmaz: modeller yerel klasörden yüklenir (`HF_HUB_OFFLINE=1` zorlanır),
-web arayüzü CDN kullanmaz, LLM yerel sunucudadır.
+### Halüsinasyona karşı katmanlar
 
-### Doğru cevap için alınan önlemler
-
-| Sorun | Önlem |
+| Hata kaynağı | Önlem |
 |---|---|
-| Standart PDF'lerinde gürültü | Tekrarlayan üst/alt bilgi, sayfa numarası ve **içindekiler/şekil listesi sayfaları** atılır (aksi halde aramada "en alakalı" sayfa TOC çıkar). |
-| Bağlamını kaybeden parçalar | Parçalar **bölüm sınırını aşmaz**; her parça `4 Physical Layer > 4.2 … > 4.2.6.3 Polling` gibi bölüm yolu ve sayfa aralığı taşır; bu yol embedding metnine de eklenir. |
-| Tablolardaki değerler (zamanlama, pin, gerilim) | Tablolar Markdown tablo olarak **ayrı parça** olur, büyük tablolar başlık satırı tekrarlanarak bölünür, tablo başlığı ("Table 4-12 …") eklenir. |
-| `tRFC`, `LTSSM`, `0x1F`, `128b/130b` gibi birebir terimler | **Hibrit arama**: BM25 (FTS5) birebir terimleri, vektör araması anlamı yakalar; ikisi RRF ile birleşir. |
-| Türkçe soru – İngilizce doküman | Çok dilli `bge-m3` + `bge-reranker-v2-m3`; LLM ile soru **İngilizce standart terminolojisine** çevrilir; ayrıca deterministik **TR→EN terim sözlüğü** (gerilim→voltage, sonlandırma→termination …) ve kısaltma açılımları (LTSSM, SSM, tRFC …). |
-| "Peki DDR5 için?" gibi takip soruları | Sorgu planlayıcı geçmişi kullanarak soruyu bağımsız hale getirir. |
-| Yanlış standarttan cevap (DDR4 ↔ DDR5, PCIe ↔ USB "Gen 2") | Soruda açıkça geçen standart adı aramayı o koleksiyona **daraltır**; istem, versiyonları karıştırmamayı ve çelişkiyi belirtmeyi şart koşar. |
-| Halüsinasyon | İstem: yalnızca kaynaklar, her cümlede [n], sayıları **birebir kopyala**, yoksa "Bu bilgi sağlanan kaynaklarda bulunamadı." Sıcaklık 0.1. |
-| Uydurma sayı / yanlış atıf | **Doğrulama katmanı**: cevaptaki her sayı kaynak pasajlarda aranır, var olmayan [n] atıfları yakalanır → arayüzde uyarı. İsteğe bağlı `self_correct` ile LLM cevabı düzeltir. |
-| Kesik bağlam | Ollama'da `num_ctx` (varsayılan 16384) açıkça gönderilir; bulunan parçanın aynı bölümdeki komşuları da eklenir. |
+| Yanlış standart / sürüm (DDR4 değeri DDR5 cevabında) | Her doküman standart+sürüm varlığıyla etiketlenir; soruda adı geçen standart aramayı **kesin** olarak o dokümanlara daraltır. Araç çağrıları da bu kapsamı miras alır. Eski revizyonlar (aynı standardın daha yeni sürümü varsa) aramadan çıkarılır; errata/ECN kaynakları "base dokümanı geçersiz kılar" diye işaretlenir. |
+| Tablo satırının bölünmesi, OCR bozulması | Tablo sayfaları **görsel modele** (VLM) gönderilir; birleşik hücreler çözülür, hız sınıfı / mod sütunları satırlara açılır, dipnotlar satıra eklenir. VLM'in yazdığı **her sayı sayfanın metin katmanında aranır**; tutmayan satırlar "doğrulanmamış" olur, çoğu tutmayan tablo hiç kullanılmaz. |
+| Sayısal değer uydurma | Sayısal sorular önce **tipli parametre deposundan** (min/typ/max/birim/koşul) cevaplanır. Hesaplar `calculate` aracıyla yapılır (modelin kafadan aritmetiği yasak). |
+| Bağlam kaybı | Küçük parça ile bulunur, **bölümün tamamı** (kısaysa) bağlama verilir; şekil/zamanlama diyagramı içeren sayfalar **görüntü olarak** modele eklenir. Bağlam ~16K token ile sınırlı tutulur (ham sayfa yığını değil, rerank edilmiş içerik). |
+| Model "biliyorum" diye uyduruyor | Cevap sözleşmesi: her ifade [n] atıflı; "Kaynaklarda belirtilen" ile "Mühendislik yorumu" ayrı; "yüklü dokümanlarda bulunamadı" cevabı her zaman kabul. |
+| Yine de hatalı ifade | **Deterministik doğrulayıcı**: her sayı+birim, *atıf yapılan* kaynakta (birim dönüşümüyle: 0,35 µs = 350 ns) aranır; yanlış kaynağa atıf yakalanır. **Bağımsız denetçi**: aynı model, taze bağlamda yalnızca iddia + atıf yapılan kaynakla "destekleniyor / kısmen / desteklenmiyor" der (yanlış koşula bağlanmış değerleri yakalar). Hatalı ifadeler bir kez yeniden üretilir; hâlâ hatalıysa cevaptan **çıkarılır** (veya ayarla ⚠ ile işaretlenir) ve kullanıcıya listelenir. |
 
----
+### Yerel hesaplama bütçesi
 
-## 2. Donanım ve model önerileri
-
-| Donanım | LLM (Ollama etiketi) | Not |
-|---|---|---|
-| Sadece CPU, ≥32 GB RAM | `qwen3:8b` veya `qwen3:30b-a3b` (MoE) | Çalışır ama yavaştır; `reranker.candidates: 20` yapın. |
-| 1× GPU 16 GB | **`qwen3:14b`** (varsayılan) | İyi denge, Türkçe cevap kalitesi iyi. |
-| 1× GPU 24 GB | `qwen3:32b`, `gemma3:27b`, `gpt-oss:20b` | Daha iyi muhakeme ve tablo okuma. |
-| 2+ GPU / ≥48 GB | `llama3.3:70b`, `qwen2.5:72b` (vLLM ile `provider: openai`) | En yüksek doğruluk. |
-
-* Embedding: `BAAI/bge-m3` (çok dilli, 1024 boyut). Reranker: `BAAI/bge-reranker-v2-m3`. İkisi birlikte ~4.5 GB disk.
-* GPU varsa `embedding.device: cuda` ve `reranker.device: cuda` yapın; büyük bir standardın indekslenmesi CPU'da
-  onlarca dakika sürebilirken GPU'da birkaç dakikaya iner.
-* Daha yeni bir model kullanacaksanız `eval/questions.yaml` ile mevcut modelle **karşılaştırarak** seçin.
-* Torch kurulamayan ortamlar için hafif mod: `embedding.backend: ollama`, `embedding.model: bge-m3`
-  (`ollama pull bge-m3`) ve `reranker.enabled: false`. Doğruluk bir miktar düşer.
-
----
-
-## 3. Kurulum
-
-### 3.1 İnternetli makinede paket hazırlama
-
-Hedef makineyle **aynı işletim sistemi, CPU mimarisi ve Python sürümü** olan bir makinede:
-
-```bash
-git clone <bu repo> techrag && cd techrag
-# Ollama'yı bu makineye kurun (https://ollama.com) ve servisini başlatın, sonra:
-TORCH=cpu LLM_MODELS="qwen3:14b" ./scripts/prepare_offline_bundle.sh offline_bundle
-#   GPU hedefi için: TORCH=cuda
-#   Ollama ile embedding kullanacaksanız: LLM_MODELS="qwen3:14b bge-m3"
-```
-
-`offline_bundle/` içinde: Python wheel'leri, `models/bge-m3`, `models/bge-reranker-v2-m3`, Ollama ikilisi ve
-LLM ağırlıkları, proje kaynağı. Bu klasörü (USB/DVD/veri diyotu ile) kapalı ağa taşıyın.
-
-### 3.2 Kapalı ağda kurulum
-
-```bash
-mkdir techrag && tar -xzf offline_bundle/techrag-src.tgz -C techrag && cd techrag
-./scripts/install_offline.sh ../offline_bundle
-ollama serve &                 # veya: sudo systemctl enable --now ollama
-.venv/bin/techrag doctor       # her şey [OK ] olmalı (indeks henüz boşsa o satır XX olur)
-```
-
-### 3.3 Docker ile (alternatif)
-
-```bash
-# internetli makinede
-docker compose build && docker pull ollama/ollama:latest
-docker save techrag:latest ollama/ollama:latest | gzip > techrag-images.tgz
-# kapalı ağda
-docker load < techrag-images.tgz
-mkdir -p models ollama && cp -r offline_bundle/models/* models/ && cp -r offline_bundle/ollama/models ollama/
-docker compose up -d && docker compose exec techrag techrag ingest
-```
-
-### 3.4 Servis olarak çalıştırma
-
-`deploy/techrag.service` örnek systemd birimidir (`/opt/techrag` altına kurulum varsayılır).
-
----
-
-## 4. Dokümanları ekleme
-
-```
-data/sources/
-├── arinc/        ARINC_429P1-19.pdf, ARINC_664P7.pdf ...
-├── ddr/          JESD79-4C_DDR4.pdf, JESD79-5B_DDR5.pdf ...
-├── pcie/         PCIe_Base_Spec_5.0.pdf ...
-├── ethernet/  displayport/  usb/  rs422/  i2c/
-└── general/      DO-254.pdf, MIL-STD-461G.pdf ...
-```
-
-* Klasör adı koleksiyonu belirler (`config/domains.yaml` → `folders`). Kök klasöre bırakılan dosyalar dosya adı
-  ve içeriğe göre otomatik sınıflandırılır.
-* **Dosya adına standart adını ve sürümünü yazın** (`PCIe_Base_Spec_5.0.pdf`): doküman adı her kaynak
-  pasajında LLM'e gösterilir ve versiyon ayrımını kolaylaştırır.
-* **Taranmış (resim) PDF'ler** metin içermez; önce OCR yapın: `ocrmypdf girdi.pdf cikti.pdf`.
-  İndeksleme bu durumu uyarı olarak raporlar.
-* Desteklenen türler: `.pdf .docx .md .txt .html`.
-
-```bash
-techrag ingest              # artımlı: değişmeyen dosyalar atlanır, silinen dosyalar indeksten çıkar
-techrag ingest --rebuild    # embedding modeli / parçalama ayarı değiştiyse
-techrag docs                # indekslenen dokümanlar
-techrag inspect data/sources/pcie/PCIe_Base_Spec_5.0.pdf --limit 5   # parçalamayı gözle kontrol
-```
-
-Web arayüzündeki **"Kaynak ekle"** ile de dosya yükleyip indeksleyebilirsiniz (`server.allow_upload`).
-
----
-
-## 5. Kullanım
-
-### Web arayüzü (NotebookLM benzeri)
-
-```bash
-techrag serve               # http://127.0.0.1:8000  (ağdan erişim: server.host: 0.0.0.0 + api_token)
-```
-
-* **Sol panel – Kaynaklar:** koleksiyonlar ve dokümanlar. Hiçbir şey seçilmezse tüm kaynaklarda aranır
-  (soruda geçen standart adı aramayı otomatik daraltır). Doküman/koleksiyon seçerek "defter" gibi kapsam
-  belirleyebilirsiniz. Doküman adına tıklayınca içindekiler ve sayfa linkleri açılır.
-* **Orta panel – Sohbet:** cevap akarak gelir; `[n]` atıflarına tıklayınca kaynak pasajı açılır.
-  Altında arama planı (İngilizce sorgu, yönlendirilen koleksiyon) ve **doğrulama kutusu** görünür:
-  ✓ yeşil = atıflar geçerli ve sayılar kaynakta bulundu; ⚠ sarı = kontrol edilmesi gereken değerler.
-* **Sağ panel – Kaynak / Notlar:** pasajın tam metni, "Orijinal dokümanda aç (s. N)" linki (PDF doğrudan
-  o sayfada açılır); beğendiğiniz cevapları **not** olarak kaydedip Markdown olarak indirebilirsiniz.
-
-### Komut satırı
-
-```bash
-techrag ask "PCIe LTSSM Polling durumunun alt durumları nelerdir?"
-techrag ask -d ddr "tRFC 16Gb için kaç ns?"          # koleksiyonla sınırla
-techrag ask --json "I2C Fm+ yükselme süresi?"         # yapılandırılmış çıktı (kaynaklar + doğrulama)
-techrag chat                                          # takip soruları ile sohbet
-techrag search "ARINC 429 SSM BNR" --no-rewrite       # sadece arama: hangi pasajlar geliyor?
-techrag stats | techrag doctor
-```
-
-### HTTP API
-
-| Uç nokta | Açıklama |
+| Yerelde (exe) | Sunucuda (vLLM) |
 |---|---|
-| `POST /api/ask` | `{question, history?, domains?, doc_ids?, top_k?, stream?}` → SSE olayları: `plan`, `sources`, `token`, `replace`, `done` (`stream:false` ile tek JSON) |
-| `POST /api/search` | Yalnızca arama, numaralı pasajlar |
-| `GET /api/documents`, `/api/documents/{id}`, `/api/documents/{id}/file` | Doküman listesi, içindekiler, orijinal dosya |
-| `POST /api/upload`, `POST /api/ingest`, `GET /api/jobs/{id}` | Yükleme ve indeksleme işleri |
-| `GET /api/info`, `GET /api/health` | Durum |
+| PDF ayrıştırma (PyMuPDF), sayfa render (yalnızca VLM sayfaları ve görüntülenen sayfalar), SQLite FTS5, numpy ile vektör arama (100 bin parçaya kadar ms düzeyi), birim/sayı doğrulama | Sohbet + görsel model, embedding, reranker |
 
-`server.api_token` doluysa `Authorization: Bearer <token>` gerekir.
+Exe ~65 MB (tek dosya); GPU, torch veya model dosyası gerektirmez.
+
+**Soru başına LLM çağrısı (doğruluk öncelikli mod):** planlayıcı 1 + cevap 1 (+ araç turları, en fazla 4) +
+denetçi 1–2 (paralel) + gerekirse yeniden üretim 1 + yeniden denetim. Embedding 1, rerank 1 istek.
 
 ---
 
-## 6. Doğruluğu ölçme ve iyileştirme
+## 2. Kurulum
 
-```bash
-techrag eval --retrieval-only   # LLM çağırmadan: doğru pasaj geliyor mu? (context recall)
-techrag eval                    # tam akış: cevap doğruluğu + doğrulama oranı
+### 2.1 Exe'yi almak
+
+GitHub Actions her push'ta Windows derlemesi yapar (**Actions → Build Windows exe → Artifacts → TechRAG-windows**):
+
+* `TechRAG-portable.exe` — tek dosya, kopyala-çalıştır.
+* `TechRAG-win64.zip` — klasör sürümü (daha hızlı açılır; `TechRAG.exe` içinde).
+
+`v*` etiketi atılırsa (ör. `git tag v1.0.0 && git push --tags`) dosyalar GitHub Release'e de eklenir.
+Derleme, dondurulmuş exe üzerinde `TechRAG.exe selftest` çalıştırarak PDF ayrıştırma, indeksleme, arama,
+gömülü arayüz ve pywebview'in pakete girdiğini doğrular. Exe'yi kapalı ağa normal dosya olarak taşıyın.
+
+**Gereksinim:** Microsoft Edge **WebView2 Runtime** (Windows 11'de hazır; Windows 10'da yoksa Microsoft'un
+"Evergreen Standalone Installer" çevrimdışı kurulumunu bir kez çalıştırın).
+
+### 2.2 Model sunucuları (vLLM)
+
+`deploy/vllm-serve-example.sh` dört uç nokta için örnek komutları içerir. Önemli bayraklar:
+
+* Sohbet modeli: `--enable-auto-tool-choice --tool-call-parser hermes` (araçlar için) ve
+  `--reasoning-parser qwen3` (düşünme metni cevaba karışmasın). Görsel giriş için `--limit-mm-per-prompt`.
+  Modelinizin kartında önerilen parser adlarını kullanın.
+* Embedding: `--runner pooling` (eski sürümlerde `--task embed`), ör. Qwen3-Embedding-0.6B.
+* Reranker: Qwen3-Reranker için `--hf_overrides` (dosyada); bge-reranker-v2-m3 ek ayar istemez.
+
+Sunucu araç çağrısını desteklemiyorsa uygulama bunu fark eder ve araçsız (ön-getirilmiş kaynaklarla) devam eder.
+
+### 2.3 İlk açılış: Ayarlar
+
+**Ayarlar** penceresinde her servis için **API adresi** (`http://sunucu:8000/v1`), **API anahtarı** ve
+**Model** girilir. Model listesi sunucunun `/v1/models` ucundan **otomatik çekilir** ve açılır listede gösterilir;
+**Test et** düğmesi bağlantıyı ve modeli dener (embedding boyutu, rerank skoru, LLM cevabı).
+
+* Görsel model: "Sohbet modeliyle aynı" (çok kipli Qwen) veya ayrı bir VLM.
+* Düşünme modu: `auto` (karşılaştırma / çok parçalı sorularda açık), `on`, `off`; kontrol yöntemi
+  `chat_template` (Qwen `enable_thinking`) veya `reasoning_effort`.
+* Doğrulanamayan iddialar: **Kaldır** (varsayılan) veya **İşaretle**.
+
+Ayarlar `%APPDATA%\TechRAG\settings.json` dosyasına yazılır; API anahtarları **Windows DPAPI** ile kullanıcı
+hesabına bağlı şifrelenir.
+
+---
+
+## 3. Kütüphane
+
+```
+<kütüphane>\
+├── sources\
+│   ├── arinc\        ARINC_429P1-19.pdf, ARINC_664P7.pdf ...
+│   ├── ddr\          JESD79-4C_DDR4.pdf, JESD79-5B_DDR5.pdf ...
+│   ├── pcie\         PCIe_Base_5.0.pdf, PCIe_CEM_4.0.pdf, PCIe_Base_5.0_Errata.pdf ...
+│   ├── ethernet\  displayport\  usb\  rs422\  i2c\  general\
+│   └── <yeni-grup>\  (tanımsız klasör otomatik olarak yeni koleksiyon olur)
+├── index.sqlite      (FTS5 + vektörler + tablolar + parametreler)
+└── cache\vlm\        (VLM ve meta veri sonuçları; aynı sayfa ikinci kez ücretlendirilmez)
 ```
 
-`eval/questions.yaml` her koleksiyon için örnek sorular içerir; rapor `data/eval_reports/` altına yazılır.
-Önerilen döngü:
+* Varsayılan konum `%USERPROFILE%\TechRAG\library`; **Kütüphane** penceresinden değiştirilir.
+* **Doküman ekle**: koleksiyon (klasör) seçin, dosyaları seçin → kopyalanır ve indekslenir (ilerleme görünür).
+  Dosya adına standart ve sürümü yazmak etiketlemeyi kesinleştirir (`JESD79-5B_DDR5.pdf`, `PCIe_Base_5.0.pdf`).
+  Errata/ECN dosyalarının adında "Errata"/"ECN" geçsin.
+* Standart/sürüm kalıpları `techrag/resources/domains.yaml` içindedir (koleksiyon klasörleri, desenler,
+  kısaltma sözlüğü, Türkçe→İngilizce terimler). Yeni bir standart ailesi bir YAML bloğu ile eklenir.
+* Taranmış PDF'ler önce OCR'dan geçirilmeli (`ocrmypdf`); VLM metin katmanı olmayan sayfaların değerlerini
+  doğrulayamaz.
 
-1. Mühendislerin gerçek sorularıyla seti **100+ soruya** çıkarın (`expected` + mümkünse `expected_doc`).
-2. `--retrieval-only` ile *context recall* ≥ %90 olana kadar arama tarafını ayarlayın:
-   parçalama (`chunking.target_tokens`), `retrieval.final_top_k`, `reranker.candidates`, terim sözlüğü.
-3. Sonra tam değerlendirme ile LLM'i / istemi karşılaştırın. Her değişiklikten sonra tekrar koşun.
-
-Ayar ipuçları:
-
-* Cevap "bulunamadı" ama bilgi dokümanda var → `techrag search` ile pasajlara bakın; gelmiyorsa
-  `config/domains.yaml` → `term_map` / `glossary`'ye terim ekleyin veya `final_top_k`'yı artırın.
-* Tablo değerleri yanlış hücreden okunuyor → `techrag inspect` ile tablo çıkarımını kontrol edin; bozuk
-  tablolarda `chunking.extract_tables: false` denenebilir.
-* Daha temkinli cevaplar için `answer.self_correct: true` (doğrulanamayan değer varsa ikinci LLM geçişi).
+**Paylaşım:** kütüphaneyi hazırlayan kişi **Kütüphane → Yayımla** ile temiz bir kopya üretir (tek dosya
+indeks + kaynaklar + VLM önbelleği). Diğer kullanıcılar bu klasörü (ağ paylaşımı dahil, `\\sunucu\paylaşım\...`)
+**salt-okunur** açar: kilit kullanmaz, ağ paylaşımında güvenlidir. Güncellemeyi yeni bir klasöre yayımlayıp
+kullanıcıların onu açması önerilir (açıkken üzerine yazmayın).
 
 ---
 
-## 7. Konfigürasyon
+## 4. Kullanım
 
-Tüm ayarlar `config/config.yaml` içindedir (açıklamalı). Her değer ortam değişkeniyle ezilebilir:
-`TECHRAG_<BÖLÜM>__<ANAHTAR>`, örn. `TECHRAG_LLM__MODEL=qwen3:32b`, `TECHRAG_RERANKER__DEVICE=cuda`.
-Farklı bir dosya: `techrag -c /yol/config.yaml ...` veya `TECHRAG_CONFIG=...`.
+* **Soru:** Sorunuzu yazın. Soruda geçen standart/sürüm kapsamı belirler ("kapsam: DDR5"); soldan doküman
+  seçerek kapsamı elle de daraltabilirsiniz.
+* **Cevap akışı:** önce taslak (soluk) akar, araç çağrıları ve isteğe bağlı model düşünmesi görünür; doğrulama
+  bitince taslak, **doğrulanmış son cevapla** değişir.
+* **Doğrulama kutusu:** "12/12 ifade doğrulandı", "1 ifade çıkarıldı" (gerekçesiyle), "bulunamadı".
+* **Kaynak görüntüleyici:** [n]'e tıklayın → kaynak metni + **ilgili sayfanın görüntüsü** (önceki/sonraki,
+  yakınlaştırma, orijinal dosyayı sistem PDF görüntüleyicisinde açma).
+* **Notlar:** cevapları kaydedin, Markdown olarak dışa aktarın.
 
-vLLM / llama.cpp / LM Studio kullanımı:
+### Komut satırı (aynı exe)
 
-```yaml
-llm:
-  provider: openai
-  base_url: http://localhost:8001/v1
-  model: Qwen/Qwen3-32B
+```bat
+TechRAG.exe doctor                    :: uç noktalar, modeller, indeks kontrolü
+TechRAG.exe models                    :: her uç noktanın sunduğu modeller
+TechRAG.exe ingest                    :: artımlı indeksleme (VLM tablo çıkarımı dahil)
+TechRAG.exe ingest --rebuild          :: embedding modeli değişince
+TechRAG.exe inspect dosya.pdf --table-pages   :: parçalama ve VLM'e gidecek sayfalar
+TechRAG.exe search "DDR5 tRFC 16Gb"   :: yalnızca arama (kapsam, pasajlar, parametre satırları)
+TechRAG.exe ask "PCIe 5.0 LTSSM Polling alt durumları?"
+TechRAG.exe publish \\sunucu\paylasim\techrag-2026-10
+TechRAG.exe eval eval\questions.yaml  :: değerlendirme
 ```
 
+Kaynak koddan: `pip install -r requirements-desktop.txt` → `python -m techrag.desktop` (pencere) veya
+`python -m techrag <komut>`; tarayıcıda geliştirme için `python -m techrag serve`.
+
 ---
 
-## 8. Sorun giderme
+## 5. Doğruluğu ölçme
+
+```bat
+TechRAG.exe eval --retrieval-only     :: LLM'siz: recall@1/3/5/8, MRR (doğru sayfa geldi mi?)
+TechRAG.exe eval                      :: + cevap doğruluğu, faithfulness, çıkarılan ifade oranı
+```
+
+`eval/questions.yaml` örnek bir settir; her maddeye `expected_doc` ve `expected_pages` ekleyin. Önerilen döngü:
+mühendislerin gerçek sorularıyla birkaç yüz soruluk altın set → önce **recall@k** (ayrıştırma, parçalama,
+VLM sayfa eşiği `vision.min_page_score`, rerank aday sayısı) → sonra **faithfulness**. Yanlış cevapların
+kökü neredeyse her zaman ayrıştırma veya varlık (standart/sürüm) etiketlemesindedir: `TechRAG.exe docs` ve
+`inspect` ile kontrol edin.
+
+---
+
+## 6. Sorun giderme
 
 | Belirti | Çözüm |
 |---|---|
-| `LLM server unreachable` | `ollama serve` çalışıyor mu? `llm.base_url` doğru mu? `techrag doctor` |
-| `model 'x' not found on server` | `ollama list`; modeli paketle taşıyıp `~/.ollama/models` altına kopyalayın. |
-| `Index was built with embedding model ...` | Embedding modelini değiştirdiniz: `techrag ingest --rebuild` |
-| Model HuggingFace'e bağlanmaya çalışıyor | `embedding.model` yerel klasörü göstermeli (`models/bge-m3`); `offline: true` kalmalı. |
-| Cevaplar çok yavaş (CPU) | `reranker.candidates: 20`, `retrieval.final_top_k: 6`, daha küçük LLM; GPU varsa `device: cuda`. |
-| Cevap yarıda kesiliyor / kaynakları görmüyor | `llm.num_ctx` artırın (≥16384), `llm.max_tokens` yeterli mi? |
-| Bir PDF'ten hiç parça çıkmıyor | Taranmış PDF → OCR. `techrag docs` uyarıları gösterir. |
+| Pencere açılmıyor | WebView2 Runtime kurulu mu? Günlük: `%APPDATA%\TechRAG\techrag.log` |
+| "no chat/embedding model configured" | Ayarlar → model seçin; `TechRAG.exe doctor` |
+| "indexed with embedding model …" | Embedding modeli değişti: Kütüphane → "Tamamen yeniden oluştur" veya `ingest --rebuild` |
+| Araç kullanılmıyor | vLLM'i `--enable-auto-tool-choice --tool-call-parser …` ile başlatın |
+| Cevapta `<think>` / düşünme metni | vLLM'de `--reasoning-parser` kullanın veya Ayarlar → Düşünme `off` |
+| Tablolar boş / "failed value verification" | Görsel model tanımlı mı, metin katmanı var mı (OCR)? `inspect --table-pages` |
+| Soru yanlış standarda gidiyor | `TechRAG.exe docs` ile doküman etiketlerini kontrol edin; dosya adına standart/sürüm yazın veya `domains.yaml` desenlerini genişletin |
 
 ---
 
-## 9. Proje yapısı
+## 7. Proje yapısı
 
 ```
 techrag/
-  config.py        konfigürasyon (YAML + ortam değişkenleri, offline zorlaması)
-  domains.py       koleksiyon tespiti, TR→EN terim sözlüğü, kısaltma açılımları
-  ingest/          loaders (PDF/DOCX/MD/HTML) · cleaning · structure (bölümler) · chunker · pipeline
-  store.py         SQLite: dokümanlar, parçalar, FTS5 (BM25), float16 vektörler
-  embeddings.py    sentence-transformers / Ollama / OpenAI-uyumlu embedding
-  reranker.py      cross-encoder yeniden sıralama
-  query.py         sorgu planlama (takip sorusu, çeviri, anahtar kelime)
-  retrieval.py     hibrit arama, RRF, rerank, komşu genişletme, pasajlar
-  prompts.py       istemler
-  llm.py           Ollama / OpenAI-uyumlu akış istemcisi (<think> filtreleme)
-  verify.py        atıf ve sayısal değer doğrulaması
-  engine.py        uçtan uca akış
-  evaluation.py    değerlendirme
-  server.py, web/  FastAPI + çevrimdışı tek sayfa arayüz
-  cli.py           komut satırı
-config/            config.yaml, domains.yaml
-eval/              questions.yaml
-scripts/           prepare_offline_bundle.sh, install_offline.sh, download_models.py
-tests/             pytest (sentetik standart PDF + sahte LLM ile uçtan uca testler)
+  desktop.py       exe giriş noktası: süreç içi FastAPI + pywebview penceresi, argümanla CLI
+  server.py        API: ayarlar (model listesi/test), kütüphane, dokümanlar, sayfa görüntüsü, SSE soru akışı
+  engine.py        plan -> kapsamlı arama -> ajan döngüsü -> doğrulama/denetçi/yeniden üretim
+  tools.py         ajan araçları + atıf kayıt defteri + güvenli hesap makinesi
+  verify.py        iddia ayırma, birim duyarlı deterministik kontrol, çıkarma/işaretleme
+  retrieval.py     varlık kapsamı, BM25+vektör+RRF+rerank, bölüme genişletme, şekil sayfaları
+  query.py         planlayıcı;  domains.py  koleksiyon/standart varlıkları, TR->EN terimler
+  ingest/          loaders, cleaning, structure, chunker, metadata, vlm (tablo çıkarımı), pipeline
+  store.py         SQLite indeks, parametre deposu, salt-okunur açma, yayımlama
+  api.py, llm.py, embeddings.py, reranker.py   OpenAI uyumlu istemciler (vLLM)
+  units.py         nicelik ayrıştırma ve SI normalizasyonu
+  config.py, settings.py   katmanlı ayarlar, DPAPI ile şifreli API anahtarları
+  web/             çevrimdışı arayüz (TR/EN);  resources/domains.yaml
+packaging/         PyInstaller spec + giriş;  .github/workflows/windows-build.yml
+deploy/            vLLM örnek komutları
+tests/             78 test (sahte OpenAI uyumlu sunucu ile uçtan uca)
 ```
 
-Testler: `pip install pytest && python -m pytest` (model veya GPU gerektirmez).
-
-> **Lisans notu:** Standart dokümanları (ARINC, JEDEC, PCI-SIG, VESA, USB-IF, IEEE …) lisanslı içeriktir.
-> `data/sources/` git'e eklenmez (`.gitignore`); yalnızca kurumunuzun lisansı kapsamında kullanın.
+> Standart dokümanları lisanslı içeriktir; kütüphane klasörü git'e eklenmez.

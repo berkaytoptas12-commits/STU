@@ -28,6 +28,7 @@ def _make_pdf(path: Path) -> None:
         page.draw_line((72 + c * 110, 240), (72 + c * 110, 284))
     doc.set_toc([[1, "3.2 Refresh Timing", 1]])
     doc.save(str(path))
+    doc.close()
 
 
 def run() -> dict:

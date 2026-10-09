@@ -202,8 +202,8 @@ def test_tools_inherit_question_scope(engine, fake):
 def test_read_only_uri_forms():
     from techrag.store import sqlite_ro_uri
 
-    assert sqlite_ro_uri("/srv/lib/index.sqlite") == "file:///srv/lib/index.sqlite?mode=ro&immutable=1"
-    assert sqlite_ro_uri("/srv/my lib/index.sqlite").startswith("file:///srv/my%20lib/")
+    uri = sqlite_ro_uri("/srv/my lib/index.sqlite")
+    assert uri.startswith("file:///") and "my%20lib/index.sqlite" in uri and uri.endswith("?mode=ro&immutable=1")
     from techrag.store import uri_for_resolved
 
     assert uri_for_resolved(r"\\fileserver\share\lib\index.sqlite").startswith("file:////fileserver/share/lib/")
