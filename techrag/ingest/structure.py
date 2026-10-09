@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Optional
 
 from techrag.ingest.loaders import TABLE_KIND, Block, LoadedDocument
 
@@ -21,6 +22,7 @@ class SectionedBlock:
     text: str
     kind: str
     section: tuple[str, ...]
+    ref: Optional[int] = None
 
 
 def _norm(text: str) -> str:
@@ -78,7 +80,7 @@ def _sections_from_toc(blocks: list[Block], toc: list[tuple[int, str, int]]) -> 
                     ptr = j + 1
                 else:
                     break
-        out.append(SectionedBlock(b.page, b.text, b.kind, tuple(t for _, t in stack)))
+        out.append(SectionedBlock(b.page, b.text, b.kind, tuple(t for _, t in stack), b.ref))
     return out
 
 
@@ -143,7 +145,7 @@ def _sections_from_headings(blocks: list[Block]) -> list[SectionedBlock]:
                 while stack and stack[-1][0] >= level:
                     stack.pop()
                 stack.append((level, title))
-        out.append(SectionedBlock(b.page, b.text, b.kind, tuple(t for _, t in stack)))
+        out.append(SectionedBlock(b.page, b.text, b.kind, tuple(t for _, t in stack), b.ref))
     return out
 
 

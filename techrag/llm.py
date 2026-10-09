@@ -1,24 +1,55 @@
-"""Minimal chat client for local LLM servers (Ollama native API or any OpenAI-compatible server)."""
+"""Streaming chat client for OpenAI-compatible servers with tools, images and thinking control."""
 
 from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass, field
 from typing import Iterator, Optional, Sequence
 
 import httpx
 
-from techrag.config import LLMConfig
+from techrag.api import APIClient, APIError
+from techrag.config import LLMConfig, ServiceConfig
 
-Message = dict  # {"role": "system"|"user"|"assistant", "content": str}
+Message = dict
 
 
 class LLMError(RuntimeError):
     pass
 
 
+class ToolsUnsupported(LLMError):
+    """The server rejected tool calling (vLLM without --enable-auto-tool-choice)."""
+
+
+@dataclass
+class ToolCall:
+    id: str
+    name: str
+    arguments: str = ""
+
+    def args(self) -> dict:
+        try:
+            v = json.loads(self.arguments or "{}")
+            return v if isinstance(v, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+
+    def to_message(self) -> dict:
+        return {"id": self.id, "type": "function", "function": {"name": self.name, "arguments": self.arguments or "{}"}}
+
+
+@dataclass
+class ChatResult:
+    content: str = ""
+    reasoning: str = ""
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    finish_reason: str = ""
+
+
 class ThinkFilter:
-    """Removes <think>...</think> reasoning blocks from a token stream (tags may span chunks)."""
+    """Splits inline <think>...</think> blocks (servers without a reasoning parser) out of the content."""
 
     OPEN, CLOSE = "<think>", "</think>"
 
@@ -26,38 +57,27 @@ class ThinkFilter:
         self.inside = False
         self.buf = ""
 
-    def feed(self, text: str) -> str:
+    def feed(self, text: str) -> tuple[str, str]:
+        """Returns (content, reasoning) parts of the new text."""
         self.buf += text
-        out = []
+        content, reasoning = [], []
         while self.buf:
-            if self.inside:
-                idx = self.buf.find(self.CLOSE)
-                if idx < 0:
-                    self.buf = self.buf[-(len(self.CLOSE) - 1):]
-                    break
-                self.buf = self.buf[idx + len(self.CLOSE):]
-                self.inside = False
-            else:
-                idx = self.buf.find(self.OPEN)
-                if idx >= 0:
-                    out.append(self.buf[:idx])
-                    self.buf = self.buf[idx + len(self.OPEN):]
-                    self.inside = True
-                    continue
-                # Hold back a possible partial "<think" at the end.
-                keep = 0
-                for k in range(1, len(self.OPEN)):
-                    if self.buf.endswith(self.OPEN[:k]):
-                        keep = k
-                out.append(self.buf[:len(self.buf) - keep])
-                self.buf = self.buf[len(self.buf) - keep:]
-                break
-        return "".join(out)
+            tag = self.CLOSE if self.inside else self.OPEN
+            idx = self.buf.find(tag)
+            if idx >= 0:
+                (reasoning if self.inside else content).append(self.buf[:idx])
+                self.buf = self.buf[idx + len(tag):]
+                self.inside = not self.inside
+                continue
+            keep = max((k for k in range(1, len(tag)) if self.buf.endswith(tag[:k])), default=0)
+            (reasoning if self.inside else content).append(self.buf[:len(self.buf) - keep])
+            self.buf = self.buf[len(self.buf) - keep:]
+            break
+        return "".join(content), "".join(reasoning)
 
-    def flush(self) -> str:
-        rest = "" if self.inside else self.buf
-        self.buf = ""
-        return rest
+    def flush(self) -> tuple[str, str]:
+        rest, self.buf = self.buf, ""
+        return ("", rest) if self.inside else (rest, "")
 
 
 def strip_think(text: str) -> str:
@@ -66,125 +86,140 @@ def strip_think(text: str) -> str:
 
 
 class LLMClient:
-    def __init__(self, cfg: LLMConfig, transport: Optional[httpx.BaseTransport] = None):
+    def __init__(self, cfg: LLMConfig, transport: Optional[httpx.BaseTransport] = None,
+                 service: Optional[ServiceConfig] = None):
         self.cfg = cfg
-        headers = {"Authorization": f"Bearer {cfg.api_key}"} if cfg.api_key else {}
-        self.client = httpx.Client(timeout=httpx.Timeout(cfg.timeout, connect=10.0), headers=headers,
-                                   transport=transport)
-        self._send_think = cfg.think is not None
+        self.api = APIClient(service or cfg, transport)
+        self.model = (service or cfg).model
+        self._send_template_kwargs = cfg.thinking_control == "chat_template"
+        self._send_effort = cfg.thinking_control == "reasoning_effort"
+        self._json_mode_ok = True
+        self.tools_supported: Optional[bool] = None if cfg.tools == "auto" else cfg.tools == "on"
 
-    @property
-    def base(self) -> str:
-        return self.cfg.base_url.rstrip("/")
-
-    # ---------------------------------------------------------------- public
-    def chat(self, messages: Sequence[Message], *, json_mode: bool = False, max_tokens: Optional[int] = None,
-             temperature: Optional[float] = None) -> str:
-        return strip_think("".join(self.stream(messages, json_mode=json_mode, max_tokens=max_tokens,
-                                               temperature=temperature)))
-
-    def stream(self, messages: Sequence[Message], *, json_mode: bool = False, max_tokens: Optional[int] = None,
-               temperature: Optional[float] = None) -> Iterator[str]:
-        filt = ThinkFilter()
-        source = self._ollama if self.cfg.provider == "ollama" else self._openai
-        try:
-            for piece in source(list(messages), json_mode, max_tokens, temperature):
-                text = filt.feed(piece)
-                if text:
-                    yield text
-        except httpx.ConnectError as exc:
-            raise LLMError(f"LLM server unreachable at {self.base} ({exc}). Is it running?") from exc
-        rest = filt.flush()
-        if rest:
-            yield rest
-
-    def health(self) -> dict:
-        """Check that the server is up and the configured model is available."""
-        try:
-            if self.cfg.provider == "ollama":
-                r = self.client.get(f"{self.base}/api/tags", timeout=10)
-                r.raise_for_status()
-                names = [m.get("name", "") for m in r.json().get("models", [])]
-            else:
-                r = self.client.get(f"{self.base}/models", timeout=10)
-                r.raise_for_status()
-                names = [m.get("id", "") for m in r.json().get("data", [])]
-        except Exception as exc:
-            return {"ok": False, "error": str(exc), "models": []}
-        wanted = self.cfg.model
-        present = any(n == wanted or n.split(":")[0] == wanted or n == f"{wanted}:latest" for n in names)
-        return {"ok": present, "models": names,
-                "error": None if present else f"model '{wanted}' not found on server"}
-
-    # ------------------------------------------------------------- backends
-    def _ollama(self, messages, json_mode, max_tokens, temperature) -> Iterator[str]:
-        payload = {
-            "model": self.cfg.model,
-            "messages": messages,
-            "stream": True,
-            "keep_alive": "30m",
-            "options": {
-                "temperature": self.cfg.temperature if temperature is None else temperature,
-                "num_ctx": self.cfg.num_ctx,
-                "num_predict": max_tokens or self.cfg.max_tokens,
-            },
-        }
-        if json_mode:
-            payload["format"] = "json"
-        if self._send_think:
-            payload["think"] = self.cfg.think
-        with self.client.stream("POST", f"{self.base}/api/chat", json=payload) as r:
-            if r.status_code >= 400:
-                body = r.read().decode("utf-8", "replace")
-                if self._send_think and "think" in body.lower():
-                    # Older Ollama or a model without a thinking switch: retry without the flag.
-                    self._send_think = False
-                    yield from self._ollama(messages, json_mode, max_tokens, temperature)
-                    return
-                raise LLMError(f"Ollama error {r.status_code}: {body[:500]}")
-            for line in r.iter_lines():
-                if not line.strip():
-                    continue
-                data = json.loads(line)
-                if data.get("error"):
-                    raise LLMError(f"Ollama error: {data['error']}")
-                content = (data.get("message") or {}).get("content") or ""
-                if content:
-                    yield content
-                if data.get("done"):
-                    break
-
-    def _openai(self, messages, json_mode, max_tokens, temperature) -> Iterator[str]:
-        payload = {
-            "model": self.cfg.model,
-            "messages": messages,
+    # ------------------------------------------------------------------ payload
+    def _payload(self, messages, tools, thinking, json_mode, max_tokens, temperature) -> dict:
+        p: dict = {
+            "model": self.model,
+            "messages": list(messages),
             "stream": True,
             "temperature": self.cfg.temperature if temperature is None else temperature,
             "max_tokens": max_tokens or self.cfg.max_tokens,
         }
-        with self.client.stream("POST", f"{self.base}/chat/completions", json=payload) as r:
-            if r.status_code >= 400:
-                raise LLMError(f"LLM server error {r.status_code}: {r.read().decode('utf-8', 'replace')[:500]}")
-            for line in r.iter_lines():
-                line = line.strip()
-                if not line.startswith("data:"):
+        if tools:
+            p["tools"] = tools
+            p["tool_choice"] = "auto"
+        if self._send_template_kwargs:
+            p["chat_template_kwargs"] = {"enable_thinking": bool(thinking)}
+        elif self._send_effort and thinking:
+            p["reasoning_effort"] = self.cfg.reasoning_effort
+        if json_mode and self._json_mode_ok:
+            p["response_format"] = {"type": "json_object"}
+        return p
+
+    # ------------------------------------------------------------------- stream
+    def stream(self, messages: Sequence[Message], *, tools: Optional[list] = None, thinking: bool = False,
+               json_mode: bool = False, max_tokens: Optional[int] = None,
+               temperature: Optional[float] = None) -> Iterator[tuple[str, object]]:
+        """Yields ("content", str), ("reasoning", str) and finally ("result", ChatResult)."""
+        if not self.model:
+            raise LLMError("no chat model configured (Settings > Chat model)")
+        for attempt in range(4):
+            payload = self._payload(messages, tools, thinking, json_mode, max_tokens, temperature)
+            try:
+                yield from self._stream_once(payload)
+                return
+            except APIError as exc:
+                body = (exc.body or str(exc)).lower()
+                if exc.status in (400, 422) and "chat_template_kwargs" in body and self._send_template_kwargs:
+                    self._send_template_kwargs = False
                     continue
-                data = line[5:].strip()
-                if data == "[DONE]":
-                    break
-                obj = json.loads(data)
-                choices = obj.get("choices") or []
-                if not choices:
+                if exc.status in (400, 422) and "reasoning_effort" in body and self._send_effort:
+                    self._send_effort = False
                     continue
-                delta = choices[0].get("delta") or choices[0].get("message") or {}
-                content = delta.get("content") or ""
-                if content:
-                    yield content
+                if exc.status in (400, 422) and "response_format" in body and json_mode and self._json_mode_ok:
+                    self._json_mode_ok = False
+                    continue
+                if tools and exc.status in (400, 422) and "tool" in body:
+                    self.tools_supported = False
+                    raise ToolsUnsupported(str(exc)) from exc
+                raise LLMError(str(exc)) from exc
+
+    def _stream_once(self, payload: dict) -> Iterator[tuple[str, object]]:
+        result = ChatResult()
+        calls: dict[int, ToolCall] = {}
+        filt = ThinkFilter()
+        try:
+            with self.api.http.stream("POST", self.api.url("chat/completions"), json=payload) as r:
+                if r.status_code >= 400:
+                    body = r.read().decode("utf-8", "replace")
+                    raise APIError(f"LLM HTTP {r.status_code}: {body[:400]}", r.status_code, body)
+                for line in r.iter_lines():
+                    line = line.strip()
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    obj = json.loads(data)
+                    for choice in obj.get("choices") or []:
+                        delta = choice.get("delta") or choice.get("message") or {}
+                        rc = delta.get("reasoning_content") or delta.get("reasoning") or ""
+                        if rc:
+                            result.reasoning += rc
+                            yield "reasoning", rc
+                        text = delta.get("content") or ""
+                        if text:
+                            c, rs = filt.feed(text)
+                            if rs:
+                                result.reasoning += rs
+                                yield "reasoning", rs
+                            if c:
+                                result.content += c
+                                yield "content", c
+                        for tc in delta.get("tool_calls") or []:
+                            idx = tc.get("index", len(calls))
+                            call = calls.setdefault(idx, ToolCall(id=tc.get("id") or f"call_{idx}", name=""))
+                            if tc.get("id"):
+                                call.id = tc["id"]
+                            fn = tc.get("function") or {}
+                            if fn.get("name"):
+                                call.name += fn["name"]
+                            if fn.get("arguments"):
+                                args = fn["arguments"]
+                                call.arguments += args if isinstance(args, str) else json.dumps(args)
+                        if choice.get("finish_reason"):
+                            result.finish_reason = choice["finish_reason"]
+        except httpx.ConnectError as exc:
+            raise LLMError(f"LLM server unreachable at {self.api.base} ({exc})") from exc
+        c, rs = filt.flush()
+        if c:
+            result.content += c
+            yield "content", c
+        if rs:
+            result.reasoning += rs
+        result.tool_calls = [calls[k] for k in sorted(calls) if calls[k].name]
+        if result.tool_calls and self.tools_supported is None:
+            self.tools_supported = True
+        yield "result", result
+
+    def chat(self, messages: Sequence[Message], **kw) -> ChatResult:
+        result = ChatResult()
+        for kind, value in self.stream(messages, **kw):
+            if kind == "result":
+                result = value  # type: ignore[assignment]
+        result.content = strip_think(result.content) if "</think>" in result.content else result.content.strip()
+        return result
+
+    def text(self, messages: Sequence[Message], **kw) -> str:
+        return self.chat(messages, **kw).content
+
+    def list_models(self) -> list[str]:
+        return self.api.list_models()
 
 
 def parse_json_object(text: str) -> Optional[dict]:
-    """Extract the first JSON object from model output (tolerates code fences and chatter)."""
-    text = strip_think(text)
+    """First JSON object in model output (tolerates code fences and surrounding prose)."""
+    text = strip_think(text or "")
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip())
     try:
         obj = json.loads(text)
@@ -193,9 +228,7 @@ def parse_json_object(text: str) -> Optional[dict]:
         pass
     start = text.find("{")
     while start >= 0:
-        depth = 0
-        in_str = False
-        esc = False
+        depth, in_str, esc = 0, False, False
         for i in range(start, len(text)):
             ch = text[i]
             if in_str:
@@ -220,3 +253,9 @@ def parse_json_object(text: str) -> Optional[dict]:
                         break
         start = text.find("{", start + 1)
     return None
+
+
+def image_part(png_bytes: bytes) -> dict:
+    import base64
+
+    return {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(png_bytes).decode()}}

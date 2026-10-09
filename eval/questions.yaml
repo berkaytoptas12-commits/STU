@@ -1,15 +1,15 @@
-# Değerlendirme soru seti  —  çalıştırma:  techrag eval            (tam: arama + cevap)
-#                                           techrag eval --retrieval-only   (LLM çağırmadan arama kalitesi)
+# Gold question set.  Run:  techrag eval                  (retrieval + answers)
+#                           techrag eval --retrieval-only (no LLM: recall@k / MRR only)
 #
-# Her madde:
-#   question      : kullanıcı sorusu
-#   expected      : cevapta (ve getirilen pasajlarda) bulunması gereken ifadeler. HEPSİ gerekir.
-#                   Bir madde liste ise alternatiflerdir: [["8.0 GT/s", "8 GT/s"]] -> ikisinden biri yeter.
-#   expected_doc  : (isteğe bağlı) kaynak doküman adında/yolunda geçmesi gereken parça, örn. "UM10204"
+# Item fields:
+#   question       user question (TR or EN)
+#   expected       strings that must appear in the answer; an inner list = alternatives
+#   expected_doc   (recommended) substring of the source document title/path, e.g. "JESD79-4"
+#   expected_pages (recommended) page number(s) holding the answer -> exact recall@k
 #
-# Buradaki beklenen değerler yaygın olarak bilinen, standart metinlerinde geçen değerlerdir. Kendi
-# doküman revizyonlarınıza göre kontrol edin; mühendislerinizin gerçek sorularıyla seti büyütün.
-# Doğruluğu artırmanın en etkili yolu: bu seti 100+ gerçek soruya çıkarıp her ayar değişikliğinde koşmak.
+# The expected values below are widely documented facts; check them against YOUR document revisions and add
+# expected_doc / expected_pages. Grow the set to a few hundred real questions from your engineers and tune
+# parsing, chunking and reranking on recall@k BEFORE touching prompts; then watch faithfulness.
 
 # ----------------------------------------------------------------- ARINC
 - id: arinc-01

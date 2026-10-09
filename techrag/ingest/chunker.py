@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Optional
 
 from techrag.ingest.loaders import TABLE_KIND, TEXT_KIND
 from techrag.ingest.structure import SectionedBlock
@@ -32,6 +33,7 @@ class Chunk:
     page_end: int
     kind: str = TEXT_KIND
     overlap: int = 0  # number of leading characters copied from the previous chunk
+    ref: Optional[int] = None  # extracted-table index for table chunks
 
     @property
     def tokens(self) -> int:
@@ -79,10 +81,17 @@ def _tail(text: str, overlap_tokens: int) -> str:
 
 
 def split_table(markdown: str, max_tokens: int) -> list[str]:
+    """Split a Markdown table by rows, repeating the header (and a leading caption/note lines) in each part."""
     lines = markdown.split("\n")
+    lead = []
+    while lines and not lines[0].lstrip().startswith("|"):
+        lead.append(lines.pop(0))
+    tail = []
+    while lines and not lines[-1].lstrip().startswith("|"):
+        tail.insert(0, lines.pop())
     if estimate_tokens(markdown) <= max_tokens or len(lines) <= 3:
         return [markdown]
-    header, rows = lines[:2], lines[2:]
+    header, rows = lead + lines[:2], lines[2:]
     parts, buf = [], []
     for row in rows:
         if buf and estimate_tokens("\n".join(header + buf + [row])) > max_tokens:
@@ -90,7 +99,7 @@ def split_table(markdown: str, max_tokens: int) -> list[str]:
             buf = []
         buf.append(row)
     if buf:
-        parts.append("\n".join(header + buf))
+        parts.append("\n".join(header + buf + tail))
     return parts
 
 
@@ -102,8 +111,8 @@ def chunk_blocks(blocks: list[SectionedBlock], target_tokens: int = 380, max_tok
     section: tuple[str, ...] | None = None
     last_text_line = ""
 
-    def emit(text: str, pages: list[int], kind: str, overlap: int = 0):
-        chunks.append(Chunk(len(chunks), text, section or (), min(pages), max(pages), kind, overlap))
+    def emit(text: str, pages: list[int], kind: str, overlap: int = 0, ref: Optional[int] = None):
+        chunks.append(Chunk(len(chunks), text, section or (), min(pages), max(pages), kind, overlap, ref))
 
     def flush(carry_overlap: bool):
         nonlocal buf, buf_overlap
@@ -124,10 +133,10 @@ def chunk_blocks(blocks: list[SectionedBlock], target_tokens: int = 380, max_tok
             section = b.section
         if b.kind == TABLE_KIND:
             flush(carry_overlap=False)
-            caption = last_text_line if _CAPTION.match(last_text_line) else ""
+            caption = last_text_line if _CAPTION.match(last_text_line) and not _CAPTION.match(b.text) else ""
             last_text_line = ""
             for part in split_table(b.text, max_tokens):
-                emit(f"{caption}\n{part}" if caption else part, [b.page], TABLE_KIND)
+                emit(f"{caption}\n{part}" if caption else part, [b.page], TABLE_KIND, ref=b.ref)
             continue
         lines = [ln for ln in b.text.split("\n") if ln.strip()]
         last_text_line = lines[-1].strip() if lines else ""

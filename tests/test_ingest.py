@@ -11,7 +11,7 @@ from techrag.ingest.structure import SectionedBlock, detect_heading
 
 
 def test_pdf_pipeline_cleans_and_structures(tmp_path: Path):
-    pdf = make_standard_pdf(tmp_path / "acme.pdf")
+    pdf = make_standard_pdf(tmp_path / "ddr4.pdf")
     doc, blocks, chunks = build_chunks(Config(), pdf)
 
     assert doc.n_pages == 7
@@ -22,16 +22,17 @@ def test_pdf_pipeline_cleans_and_structures(tmp_path: Path):
     assert "Table of Contents" not in text, "printed TOC page must be skipped"
 
     by_section = {c.section[-1]: c for c in chunks if c.section and c.kind == "text"}
-    assert "Label 310" in by_section["2.1 Label Encoding"].text
-    assert by_section["2.1 Label Encoding"].page_start == 5
-    assert by_section["2.1 Label Encoding"].section == ("2 Word Format", "2.1 Label Encoding")
-    assert "10.0 V" in by_section["3 Electrical Interface"].text
+    timing = by_section["3.2 Refresh Timing"]
+    assert "350 ns" in timing.text
+    assert timing.section == ("3 Refresh", "3.2 Refresh Timing")
+    assert (timing.page_start, timing.page_end) == (5, 6), "short parent section folded into its first child"
+    assert "1.2 V" in by_section["2 Electrical Interface"].text
 
     tables = [c for c in chunks if c.kind == "table"]
     assert len(tables) == 1
     assert tables[0].text.startswith("Table 3-1 Timing parameters"), "caption is attached to the table"
     assert "| tRFC | 350 | - | ns |" in tables[0].text
-    assert tables[0].page_start == 7
+    assert doc.page_stats[7].drawings >= 30, "figure page drawings are counted"
 
 
 def test_normalize_text_dehyphenates_and_fixes_ligatures():

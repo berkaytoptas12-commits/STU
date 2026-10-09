@@ -1,28 +1,35 @@
-"""FastAPI app: JSON/SSE API + the offline single-page UI (no CDN, no external requests)."""
+"""FastAPI backend for the desktop window (and optional browser use). Serves the offline UI and the API."""
 
 from __future__ import annotations
 
 import json
 import mimetypes
-from contextlib import asynccontextmanager
+import os
 import re
+import shutil
+import subprocess
+import sys
 import threading
 import time
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from techrag import __version__
-from techrag.config import Config
+from techrag.api import APIClient, check_service
+from techrag.config import Config, ServiceConfig, resource_path
 from techrag.engine import RAGEngine
 from techrag.ingest.loaders import SUPPORTED_SUFFIXES
+from techrag.settings import MASK, public_settings, update_settings
 
-WEB_DIR = Path(__file__).parent / "web"
+WEB_DIR = resource_path("web")
+SERVICES = ("llm", "vision", "embedding", "reranker")
 
 
 class ChatTurn(BaseModel):
@@ -46,45 +53,93 @@ class SearchRequest(BaseModel):
     top_k: Optional[int] = Field(default=None, ge=1, le=50)
 
 
+class ServiceProbe(BaseModel):
+    service: str
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+    model: Optional[str] = None
+
+
+class LibraryOpen(BaseModel):
+    path: str
+    read_only: bool = False
+
+
+class PathsRequest(BaseModel):
+    paths: list[str]
+    collection: str = "general"
+
+
+class PublishRequest(BaseModel):
+    dest: str
+
+
+class IngestRequest(BaseModel):
+    rebuild: bool = False
+
+
 class Jobs:
     def __init__(self):
         self.items: dict[str, dict] = {}
-        self.lock = threading.Lock()  # one ingestion at a time
+        self.lock = threading.Lock()
 
     def create(self, kind: str) -> dict:
-        job = {"id": uuid.uuid4().hex[:12], "kind": kind, "status": "queued", "messages": [],
-               "report": None, "created": time.time()}
+        job = {"id": uuid.uuid4().hex[:12], "kind": kind, "status": "queued", "messages": [], "report": None,
+               "created": time.time()}
         self.items[job["id"]] = job
         return job
 
 
 def _safe_filename(name: str) -> str:
     name = Path(name).name
-    name = re.sub(r"[^\w.\- ()]+", "_", name, flags=re.UNICODE).strip(" .")
-    return name or "upload"
+    return re.sub(r"[^\w.\- ()]+", "_", name, flags=re.UNICODE).strip(" .") or "upload"
 
 
-def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = True) -> FastAPI:
-    engine = engine or RAGEngine(cfg)
+def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = True,
+               desktop: bool = False) -> FastAPI:
     jobs = Jobs()
+    state = {"cfg": cfg, "engine": engine, "error": None}
+    engine_lock = threading.Lock()
+
+    def build_engine(c: Config) -> None:
+        try:
+            state["engine"] = RAGEngine(c)
+            state["error"] = None
+        except Exception as exc:
+            state["engine"] = None
+            state["error"] = f"{exc.__class__.__name__}: {exc}"
+
+    if engine is None:
+        build_engine(cfg)
+
+    def eng() -> RAGEngine:
+        e = state["engine"]
+        if e is None:
+            raise HTTPException(503, state["error"] or "library not available")
+        return e
+
+    def warm():
+        e = state["engine"]
+        if not e:
+            return
+        try:
+            e.store.vectors()
+        except Exception as exc:
+            state["error"] = str(exc)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if warmup:
-            def run():
-                try:
-                    engine.warmup()
-                except Exception as exc:  # surfaced via /api/info
-                    app.state.warmup_error = str(exc)
-            threading.Thread(target=run, daemon=True).start()
+            threading.Thread(target=warm, daemon=True).start()
         yield
 
     # Swagger UI pulls assets from a CDN, which does not exist in an air-gapped network.
     app = FastAPI(title="techrag", version=__version__, docs_url=None, redoc_url=None, lifespan=lifespan)
-    app.state.engine = engine
+    app.state.jobs = jobs
+    app.state.state = state
 
     def auth(request: Request) -> None:
-        token = cfg.server.api_token
+        token = state["cfg"].server.api_token
         if not token:
             return
         header = request.headers.get("authorization", "")
@@ -92,89 +147,188 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         if supplied != token:
             raise HTTPException(status_code=401, detail="invalid or missing API token")
 
-    # ------------------------------------------------------------------ UI
+    guard = [Depends(auth)]
     app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
 
     @app.get("/", include_in_schema=False)
     def index():
         return FileResponse(WEB_DIR / "index.html")
 
-    # ----------------------------------------------------------------- info
-    @app.get("/api/info", dependencies=[Depends(auth)])
+    # ------------------------------------------------------------------ info
+    @app.get("/api/info", dependencies=guard)
     def info():
-        stats = engine.store.stats()
-        return {
-            "version": __version__,
-            "llm": {"provider": cfg.llm.provider, "model": cfg.llm.model},
-            "embedding": {"backend": cfg.embedding.backend, "model": cfg.embedding.model},
-            "reranker": {"enabled": cfg.reranker.enabled, "model": cfg.reranker.model},
-            "query_rewrite": cfg.retrieval.query_rewrite,
-            "domains": [{"key": k, "name": engine.domains.name(k),
-                         **stats["per_domain"].get(k, {"documents": 0, "chunks": 0})}
-                        for k in engine.domains.keys()],
-            "stats": stats,
-            "allow_upload": cfg.server.allow_upload,
-            "warmup_error": getattr(app.state, "warmup_error", None),
-        }
+        c: Config = state["cfg"]
+        e = state["engine"]
+        stats = e.store.stats() if e else {"documents": 0, "chunks": 0, "tables": 0, "parameters": 0,
+                                           "per_domain": {}}
+        domains = []
+        if e:
+            for k in e.domains.keys():
+                domains.append({"key": k, "name": e.domains.name(k),
+                                **stats["per_domain"].get(k, {"documents": 0, "chunks": 0})})
+            for k, v in stats["per_domain"].items():
+                if k not in e.domains.keys():
+                    domains.append({"key": k, "name": k, **v})
+        return {"version": __version__, "desktop": desktop, "library": str(c.library_dir.resolve()),
+                "read_only": c.read_only, "language": c.ui.language,
+                "models": {s: getattr(c, s).model for s in SERVICES},
+                "stats": stats, "domains": domains, "error": state["error"],
+                "allow_upload": c.server.allow_upload and not c.read_only}
 
-    @app.get("/api/health", dependencies=[Depends(auth)])
-    def health():
-        return {"llm": engine.llm.health(), "index": engine.store.stats()["chunks"]}
+    # -------------------------------------------------------------- settings
+    @app.get("/api/settings", dependencies=guard)
+    def get_settings():
+        return public_settings(state["cfg"])
 
-    # ------------------------------------------------------------ documents
-    @app.get("/api/documents", dependencies=[Depends(auth)])
+    @app.put("/api/settings", dependencies=guard)
+    def put_settings(patch: dict):
+        with engine_lock:
+            try:
+                new_cfg = update_settings(state["cfg"], patch)
+            except (ValueError, TypeError) as exc:
+                raise HTTPException(400, str(exc))
+            new_cfg.server = state["cfg"].server
+            state["cfg"] = new_cfg
+            if set(patch) - {"ui"} or state["engine"] is None:
+                build_engine(new_cfg)
+            else:
+                state["engine"].cfg = new_cfg
+        return {"settings": public_settings(new_cfg), "error": state["error"]}
+
+    def _probe_service(p: ServiceProbe) -> ServiceConfig:
+        if p.service not in SERVICES:
+            raise HTTPException(400, f"unknown service '{p.service}'")
+        c: Config = state["cfg"]
+        saved = c.vision_service() if p.service == "vision" else getattr(c, p.service)
+        key = saved.api_key if (p.api_key in (None, MASK)) else p.api_key
+        return ServiceConfig(base_url=p.base_url if p.base_url is not None else saved.base_url,
+                             api_key=key or "", model=p.model if p.model is not None else saved.model,
+                             timeout=30.0)
+
+    @app.post("/api/settings/models", dependencies=guard)
+    def list_models(p: ServiceProbe):
+        svc = _probe_service(p)
+        try:
+            return {"ok": True, "models": APIClient(svc).list_models()}
+        except Exception as exc:
+            return {"ok": False, "models": [], "error": str(exc)}
+
+    @app.post("/api/settings/test", dependencies=guard)
+    def test_service(p: ServiceProbe):
+        svc = _probe_service(p)
+        result = check_service(svc)
+        if not result["ok"] or not svc.model:
+            return result
+        t = time.time()
+        try:
+            c: Config = state["cfg"]
+            if p.service in ("llm", "vision"):
+                from techrag.llm import LLMClient
+
+                client = LLMClient(c.llm, service=svc)
+                txt = client.chat([{"role": "user", "content": "Reply with the single word OK."}],
+                                  max_tokens=16, thinking=False).content
+                result["detail"] = f"reply: {txt[:40]!r}"
+            elif p.service == "embedding":
+                from techrag.embeddings import APIEmbedder
+
+                ec = c.embedding.__class__(**{**c.embedding.__dict__, "base_url": svc.base_url,
+                                              "api_key": svc.api_key, "model": svc.model})
+                result["detail"] = f"dimension {APIEmbedder(ec).dim}"
+            else:
+                from techrag.reranker import APIReranker
+
+                rc = c.reranker.__class__(**{**c.reranker.__dict__, "base_url": svc.base_url,
+                                             "api_key": svc.api_key, "model": svc.model})
+                s = APIReranker(rc).score("PCIe link training", ["The LTSSM controls link training.",
+                                                                  "A recipe for banana bread."])
+                result["ok"] = s[0] > s[1]
+                result["detail"] = f"scores {s[0]:.3f} vs {s[1]:.3f}"
+            result["latency_ms"] = int((time.time() - t) * 1000)
+        except Exception as exc:
+            result.update(ok=False, error=f"{exc.__class__.__name__}: {exc}")
+        return result
+
+    # --------------------------------------------------------------- library
+    @app.post("/api/library/open", dependencies=guard)
+    def library_open(req: LibraryOpen):
+        path = Path(req.path).expanduser()
+        if req.read_only and not (path / "index.sqlite").exists():
+            raise HTTPException(400, "no index.sqlite in that folder")
+        return put_settings({"paths": {"library_dir": str(path)}, "read_only": req.read_only})
+
+    @app.post("/api/library/publish", dependencies=guard)
+    def library_publish(req: PublishRequest):
+        c: Config = state["cfg"]
+        dest = Path(req.dest).expanduser()
+        if dest.resolve() == c.library_dir.resolve():
+            raise HTTPException(400, "destination is the current library")
+        target = eng().store.publish(dest, c.sources_dir, c.vlm_cache_dir)
+        return {"ok": True, "path": str(target.parent)}
+
+    # ------------------------------------------------------------- documents
+    @app.get("/api/documents", dependencies=guard)
     def documents():
-        return [{"id": d.id, "title": d.title, "domain": d.domain, "path": d.path, "n_pages": d.n_pages,
-                 "n_chunks": d.n_chunks, "warnings": d.warnings, "ingested_at": d.ingested_at,
-                 "has_toc": bool(d.toc)} for d in engine.store.documents()]
+        return [d.to_dict() | {"has_toc": bool(d.toc)} for d in eng().store.documents()]
 
-    @app.get("/api/documents/{doc_id}", dependencies=[Depends(auth)])
+    @app.get("/api/documents/{doc_id}", dependencies=guard)
     def document(doc_id: int):
-        d = engine.store.document(doc_id)
+        d = eng().store.document(doc_id)
         if not d:
             raise HTTPException(404, "document not found")
-        return {"id": d.id, "title": d.title, "domain": d.domain, "path": d.path, "n_pages": d.n_pages,
-                "n_chunks": d.n_chunks, "toc": d.toc, "metadata": d.metadata, "warnings": d.warnings,
-                "ingested_at": d.ingested_at}
+        return d.to_dict(with_toc=True)
 
-    @app.get("/api/documents/{doc_id}/file", dependencies=[Depends(auth)])
+    @app.get("/api/documents/{doc_id}/page/{page}.png", dependencies=guard)
+    def page_image(doc_id: int, page: int, dpi: int = 110):
+        e = eng()
+        d = e.store.document(doc_id)
+        if not d or not (1 <= page <= max(d.n_pages, 1)):
+            raise HTTPException(404, "page not found")
+        png = e.render_page(doc_id, page, max(60, min(dpi, 220)))
+        if png is None:
+            raise HTTPException(404, "page cannot be rendered (file missing or not a PDF)")
+        return Response(png, media_type="image/png", headers={"Cache-Control": "max-age=3600"})
+
+    @app.get("/api/documents/{doc_id}/file", dependencies=guard)
     def document_file(doc_id: int):
-        d = engine.store.document(doc_id)
-        if not d:
-            raise HTTPException(404, "document not found")
-        path = Path(d.path)
-        if not path.is_absolute():
-            path = (cfg.sources_dir / path).resolve()
-            if cfg.sources_dir.resolve() not in path.parents:
-                raise HTTPException(403, "path outside sources dir")
-        if not path.exists():
-            raise HTTPException(404, "file no longer exists")
+        path = eng().document_path(doc_id)
+        if not path or not path.exists():
+            raise HTTPException(404, "file not found")
         media = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         return FileResponse(path, media_type=media, filename=path.name, content_disposition_type="inline")
 
-    @app.get("/api/chunks/{chunk_id}", dependencies=[Depends(auth)])
-    def chunk(chunk_id: int):
-        rows = engine.store.chunks_by_ids([chunk_id])
-        if chunk_id not in rows:
-            raise HTTPException(404, "chunk not found")
-        return rows[chunk_id].__dict__
+    @app.post("/api/documents/{doc_id}/open", dependencies=guard)
+    def document_open(doc_id: int):
+        """Desktop only: open the original file in the system's default viewer (not a browser tab)."""
+        if not desktop:
+            raise HTTPException(400, "only available in the desktop app")
+        path = eng().document_path(doc_id)
+        if not path or not path.exists():
+            raise HTTPException(404, "file not found")
+        if sys.platform.startswith("win"):
+            os.startfile(str(path))  # type: ignore[attr-defined]
+        else:
+            subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(path)])
+        return {"ok": True}
 
-    # --------------------------------------------------------------- search
-    @app.post("/api/search", dependencies=[Depends(auth)])
+    # ---------------------------------------------------------------- search
+    @app.post("/api/search", dependencies=guard)
     def search(req: SearchRequest):
-        res = engine.retrieve(req.query, domains=req.domains, doc_ids=req.doc_ids, top_k=req.top_k)
-        return {"plan": res.plan.to_dict(), "routed_domains": res.routed_domains, "confidence": res.confidence,
-                "timings": res.timings, "sources": [p.to_dict() for p in res.passages]}
+        res = eng().retrieve(req.query, domains=req.domains, doc_ids=req.doc_ids, top_k=req.top_k)
+        return {"plan": res.plan.to_dict(), "scope": res.scope.__dict__, "confidence": res.confidence,
+                "timings": res.timings, "sources": [p.to_dict() for p in res.passages],
+                "parameters": [p.__dict__ for p in res.parameters]}
 
-    @app.post("/api/ask", dependencies=[Depends(auth)])
+    @app.post("/api/ask", dependencies=guard)
     def ask(req: AskRequest):
-        history = [t.model_dump() if hasattr(t, "model_dump") else t.dict() for t in req.history]
+        e = eng()
+        history = [t.model_dump() for t in req.history]
         if not req.stream:
-            return engine.ask(req.question, history, req.domains, req.doc_ids, req.top_k).to_dict()
+            return e.ask(req.question, history, req.domains, req.doc_ids, req.top_k)
 
         def events():
             try:
-                for ev in engine.ask_stream(req.question, history, req.domains, req.doc_ids, req.top_k):
+                for ev in e.ask_stream(req.question, history, req.domains, req.doc_ids, req.top_k):
                     yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
             except Exception as exc:
                 err = {"type": "error", "message": f"{exc.__class__.__name__}: {exc}"}
@@ -183,19 +337,23 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         return StreamingResponse(events(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
-    # ------------------------------------------------------------ ingestion
-    def start_job(kind: str, target: Optional[Path]) -> dict:
+    # ------------------------------------------------------------- ingestion
+    def start_job(kind: str, target: Optional[Path], rebuild: bool = False) -> dict:
         from techrag.ingest.pipeline import Ingestor
 
+        c: Config = state["cfg"]
+        if c.read_only:
+            raise HTTPException(403, "the library is opened read-only")
+        e = eng()
         job = jobs.create(kind)
 
         def run():
             with jobs.lock:
                 job["status"] = "running"
                 try:
-                    ing = Ingestor(cfg, engine.store, engine.embedder, engine.domains,
-                                   progress=lambda m: job["messages"].append(m))
-                    report = ing.run(target, prune=target is None)
+                    ing = Ingestor(c, e.store, e.embedder, e.domains, progress=lambda m: job["messages"].append(m),
+                                   llm=e.llm if c.llm.model else None, vision=e.vision)
+                    report = ing.run(target, rebuild=rebuild, prune=target is None)
                     job["report"] = {"summary": report.summary(), "failed": report.failed,
                                      "warnings": report.warnings}
                     job["status"] = "failed" if report.failed else "done"
@@ -206,31 +364,43 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         threading.Thread(target=run, daemon=True).start()
         return job
 
-    @app.post("/api/upload", dependencies=[Depends(auth)])
+    def collection_dir(collection: str) -> Path:
+        key = re.sub(r"[^\w\-]+", "_", collection.strip().lower()).strip("_") or "general"
+        d = state["cfg"].sources_dir / key
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    @app.post("/api/sources/add", dependencies=guard)
+    def sources_add(req: PathsRequest):
+        dest_dir = collection_dir(req.collection)
+        copied = []
+        for p in req.paths:
+            src = Path(p)
+            if not src.is_file() or src.suffix.lower() not in SUPPORTED_SUFFIXES:
+                continue
+            dest = dest_dir / _safe_filename(src.name)
+            shutil.copy2(src, dest)
+            copied.append(str(dest))
+        if not copied:
+            raise HTTPException(400, f"no supported files ({', '.join(sorted(SUPPORTED_SUFFIXES))})")
+        return {"job": start_job("add", dest_dir)["id"], "copied": copied}
+
+    @app.post("/api/upload", dependencies=guard)
     async def upload(file: UploadFile = File(...), domain: str = Form("general")):
-        if not cfg.server.allow_upload:
-            raise HTTPException(403, "upload disabled (server.allow_upload)")
-        if domain not in engine.domains.keys():
-            raise HTTPException(400, f"unknown collection '{domain}'")
         name = _safe_filename(file.filename or "upload")
         if Path(name).suffix.lower() not in SUPPORTED_SUFFIXES:
             raise HTTPException(400, f"unsupported file type; allowed: {', '.join(sorted(SUPPORTED_SUFFIXES))}")
-        dest_dir = cfg.sources_dir / domain
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        dest = dest_dir / name
+        dest = collection_dir(domain) / name
         with open(dest, "wb") as fh:
-            while chunk_bytes := await file.read(1 << 20):
-                fh.write(chunk_bytes)
-        job = start_job("upload", dest)
-        return {"job": job["id"], "path": str(dest)}
+            while chunk := await file.read(1 << 20):
+                fh.write(chunk)
+        return {"job": start_job("upload", dest)["id"], "path": str(dest)}
 
-    @app.post("/api/ingest", dependencies=[Depends(auth)])
-    def ingest_all():
-        if not cfg.server.allow_upload:
-            raise HTTPException(403, "ingestion from the UI is disabled (server.allow_upload)")
-        return {"job": start_job("ingest", None)["id"]}
+    @app.post("/api/ingest", dependencies=guard)
+    def ingest_all(req: IngestRequest = IngestRequest()):
+        return {"job": start_job("ingest", None, req.rebuild)["id"]}
 
-    @app.get("/api/jobs/{job_id}", dependencies=[Depends(auth)])
+    @app.get("/api/jobs/{job_id}", dependencies=guard)
     def job_status(job_id: str):
         job = jobs.items.get(job_id)
         if not job:

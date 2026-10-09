@@ -1,0 +1,3 @@
+-r requirements.txt
+# Native window (Microsoft Edge WebView2 on Windows; pulls pythonnet there)
+pywebview>=5.0

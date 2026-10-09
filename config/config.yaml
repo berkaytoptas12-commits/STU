@@ -1,72 +1,70 @@
-# techrag - kapalı ağ (air-gapped) RAG konfigürasyonu
-# Göreli yollar, komutun çalıştırıldığı dizine (proje kökü) göredir.
-# Her değer ortam değişkeniyle ezilebilir: TECHRAG_<BÖLÜM>__<ANAHTAR>, örn. TECHRAG_LLM__MODEL=qwen3:32b
+# techrag example configuration (optional).
+# The desktop app stores its settings in %APPDATA%\TechRAG\settings.json (Settings dialog); this file is
+# for CLI / server use. Layering: defaults -> this file -> settings.json -> TECHRAG_<SECTION>__<KEY> env vars.
+# All models are reached over OpenAI-compatible HTTP endpoints (vLLM / SGLang). base_url ends with /v1.
 
-offline: true            # HF_HUB_OFFLINE / TRANSFORMERS_OFFLINE zorlanır, hiçbir model internetten indirilmeye çalışılmaz
+offline: true
+read_only: false                     # true: open a shared library without writing (e.g. from a network share)
 
 paths:
-  sources_dir: data/sources        # Standart dokümanları: data/sources/<koleksiyon>/*.pdf
-  index_dir: data/index            # SQLite indeks (FTS5 + vektörler) burada tutulur
-  domains_file: config/domains.yaml
+  library_dir: data/library          # sources/<collection>/*.pdf + index.sqlite + cache/vlm
+  cache_dir: ""                      # local page-render cache ("" = per-user cache folder)
+  domains_file: ""                   # "" = bundled techrag/resources/domains.yaml
 
-llm:
-  provider: ollama                 # ollama | openai (vLLM, llama.cpp server, LM Studio, TGI ...)
-  base_url: http://localhost:11434 # openai sağlayıcısında /v1 ile bitmeli, örn. http://localhost:8001/v1
-  model: qwen3:14b                 # donanıma göre README'deki tabloya bakın
+llm:                                 # answering model (tool calling + vision capable)
+  base_url: http://localhost:8000/v1
   api_key: ""
-  temperature: 0.1                 # standart sorularında düşük sıcaklık = daha az uydurma
-  max_tokens: 2048
-  num_ctx: 16384                   # Ollama varsayılanı küçüktür; kaynaklar kesilmesin diye büyütülür
-  timeout: 600
-  think: false                     # qwen3 / deepseek-r1 gibi "düşünen" modellerde düşünmeyi kapatır (null = gönderme)
+  model: ""                          # pick from the server's /v1/models (Settings dialog shows a dropdown)
+  temperature: 0.1
+  max_tokens: 4096
+  thinking: auto                     # auto: on for multi-part / comparison questions | on | off
+  thinking_control: chat_template    # chat_template (Qwen enable_thinking) | reasoning_effort | none
+  reasoning_effort: medium
+  tools: auto                        # vLLM: --enable-auto-tool-choice --tool-call-parser hermes
+  max_tool_rounds: 4
+  context_tokens: 16000              # curated source context; keep far below the model maximum
+
+vision:                              # table extraction at ingestion + page images; empty = same as llm
+  enabled: true
+  base_url: ""
+  model: ""
+  dpi: 150
+  concurrency: 4
+  min_page_score: 4.0                # only table-like pages are sent to the VLM
+  max_pages_per_doc: 600
 
 embedding:
-  backend: sentence_transformers   # sentence_transformers | ollama | openai | hash(sadece test)
-  model: models/bge-m3             # yerel klasör (scripts/download_models.py ile indirilir)
-  # backend: ollama ise:  model: bge-m3   base_url: http://localhost:11434
-  base_url: http://localhost:11434
-  device: cpu                      # cpu | cuda
-  batch_size: 16
-  max_seq_length: 1024
-  query_prefix: ""                 # e5 modelleri için "query: "
-  passage_prefix: ""               # e5 modelleri için "passage: "
+  base_url: http://localhost:8001/v1 # vLLM --runner pooling (e.g. Qwen3-Embedding-0.6B)
+  model: ""
+  batch_size: 32
+  concurrency: 4
+  query_instruction: auto            # auto = derived from model name (Qwen3-Embedding instruct format)
 
 reranker:
   enabled: true
-  backend: sentence_transformers
-  model: models/bge-reranker-v2-m3 # çok dilli cross-encoder: Türkçe soru <-> İngilizce standart
-  device: cpu
-  batch_size: 16
-  max_length: 1024
-  candidates: 40                   # yeniden sıralanacak aday sayısı (CPU'da yavaşsa 20'ye indirin)
-
-chunking:
-  target_tokens: 380
-  max_tokens: 650
-  overlap_tokens: 60
-  min_tokens: 40
-  extract_tables: true             # PDF tablolarını Markdown tablo olarak ayrı parçalar halinde saklar
-  strip_headers_footers: true      # her sayfada tekrar eden üst/alt bilgileri siler
-  skip_toc_pages: true             # içindekiler / şekil listesi sayfalarını indekslemez
+  base_url: http://localhost:8002/v1 # vLLM /v1/rerank (e.g. Qwen3-Reranker-0.6B, bge-reranker-v2-m3)
+  model: ""
+  template: auto                     # auto = Qwen3-Reranker yes/no prompt when the model name matches
+  candidates: 40
 
 retrieval:
-  bm25_top_k: 40
-  dense_top_k: 40
-  rrf_k: 60
-  final_top_k: 8                   # LLM'e verilen kaynak pasaj sayısı
-  neighbor_window: 1               # bulunan parçanın aynı bölümdeki komşularını da bağlama ekler
-  max_context_tokens: 7000
-  domain_routing: true             # soruda "PCIe", "ARINC 429" vb. geçiyorsa aramayı o koleksiyona daraltır
-  min_results_for_filter: 1        # daraltılmış arama bundan az sonuç verirse tüm koleksiyonlarda aranır
-  query_rewrite: true              # LLM ile: Türkçe -> İngilizce terminoloji, takip sorusu çözümleme, anahtar kelime
+  final_top_k: 8
+  section_expand_tokens: 1800        # small-to-big: expand hits to their section up to this size
+  entity_filter: true                # hard filter on standards/versions named in the question
+  domain_routing: true
+  query_rewrite: true
+  parameter_rows: 12
 
 answer:
-  verify: true                     # atıf + sayısal değer doğrulaması
-  self_correct: false              # doğrulanamayan değer bulunursa LLM'e cevabı düzelttir (ekstra çağrı)
-  history_turns: 3
+  verify: true                       # deterministic number/unit/citation check
+  judge: true                        # fresh-context entailment judge
+  regenerate: true                   # one correction pass for failing claims
+  failed_claims: strip               # strip | flag
 
 server:
-  host: 127.0.0.1                  # yerel ağdan erişim için 0.0.0.0
-  port: 8000
-  allow_upload: true
-  api_token: ""                    # doluysa API "Authorization: Bearer <token>" ister
+  host: 127.0.0.1
+  port: 8765
+  api_token: ""
+
+ui:
+  language: tr                       # tr | en

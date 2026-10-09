@@ -8,15 +8,11 @@ venv/
 build/
 dist/
 
-# Index, reports and model weights (large / regenerated)
-data/index/
+# Library contents (indexes, caches, licensed standard documents) and reports
+data/library/**
+!data/library/sources/
+!data/library/sources/*/
+!data/library/sources/*/.gitkeep
 data/eval_reports/
-models/
-ollama/
-offline_bundle/
 *.tgz
-
-# Standard documents are licensed material: keep them out of git.
-data/sources/**
-!data/sources/*/
-!data/sources/*/.gitkeep
+*.zip

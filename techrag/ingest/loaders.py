@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
+from typing import Optional
 
 SUPPORTED_SUFFIXES = {".pdf", ".txt", ".md", ".markdown", ".html", ".htm", ".docx"}
 
@@ -19,6 +20,14 @@ class Block:
     page: int  # 1-based
     text: str
     kind: str = TEXT_KIND
+    ref: Optional[int] = None  # index into the document's extracted tables (VLM), if any
+
+
+@dataclass
+class PageStats:
+    drawings: int = 0
+    images: int = 0
+    pdf_tables: int = 0
 
 
 @dataclass
@@ -30,6 +39,7 @@ class LoadedDocument:
     toc: list[tuple[int, str, int]] = field(default_factory=list)  # (level, title, page)
     metadata: dict = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    page_stats: dict[int, PageStats] = field(default_factory=dict)
 
 
 def title_from_path(path: Path) -> str:
@@ -83,12 +93,12 @@ def _cell(value) -> str:
     return re.sub(r"\s+", " ", str(value)).replace("|", "/").strip()
 
 
-def _has_ruling_lines(page) -> bool:
+def _drawing_count(page) -> int:
     try:
         getter = getattr(page, "get_cdrawings", None) or page.get_drawings
-        return len(getter()) >= 4
+        return len(getter())
     except Exception:
-        return True
+        return 0
 
 
 def load_pdf(path: Path, extract_tables: bool = True) -> LoadedDocument:
@@ -99,12 +109,18 @@ def load_pdf(path: Path, extract_tables: bool = True) -> LoadedDocument:
     blocks: list[Block] = []
     warnings: list[str] = []
     empty_pages = 0
+    page_stats: dict[int, PageStats] = {}
     for index, page in enumerate(doc):
         page_no = index + 1
         tables = []
+        stats = page_stats[page_no] = PageStats(drawings=_drawing_count(page))
+        try:
+            stats.images = len(page.get_images())
+        except Exception:
+            pass
         # Table detection looks for ruling lines; pages without vector drawings cannot have such tables,
         # and skipping them makes ingestion of long text-only chapters much faster.
-        if extract_tables and _has_ruling_lines(page):
+        if extract_tables and stats.drawings >= 4:
             try:
                 found = page.find_tables()
                 for t in found.tables:
@@ -127,8 +143,9 @@ def load_pdf(path: Path, extract_tables: bool = True) -> LoadedDocument:
             pos = next((i for i, (y, _) in enumerate(items) if y > bbox[1]), len(items))
             items.insert(pos, (bbox[1], Block(page_no, md, TABLE_KIND)))
 
+        stats.pdf_tables = len(tables)
         if not items or sum(len(b.text) for _, b in items) < 20:
-            if page.get_images():
+            if stats.images:
                 empty_pages += 1
         blocks.extend(b for _, b in items)
 
@@ -150,7 +167,7 @@ def load_pdf(path: Path, extract_tables: bool = True) -> LoadedDocument:
     meta = {k: v for k, v in (doc.metadata or {}).items() if v}
     n_pages = doc.page_count
     doc.close()
-    return LoadedDocument(path, title_from_path(path), blocks, n_pages, toc, meta, warnings)
+    return LoadedDocument(path, title_from_path(path), blocks, n_pages, toc, meta, warnings, page_stats)
 
 
 # --------------------------------------------------------------------- text / md

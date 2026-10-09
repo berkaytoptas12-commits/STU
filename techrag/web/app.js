@@ -1,50 +1,137 @@
 "use strict";
-// Offline single-page UI. No external libraries or network requests besides this server's /api.
+// TechRAG desktop UI. Offline: no external libraries, no requests except to this app's own /api.
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const TOKEN = new URLSearchParams(location.search).get("token") || "";
+const SERVICES = ["llm", "vision", "embedding", "reranker"];
+const MASK = "••••••••";
 
-const state = {
-  token: safeGet("techrag.token") || "",
-  info: null,
-  docs: [],
-  selected: new Set(), // selected document ids; empty = all sources (automatic routing)
-  history: [],         // [{role, content}]
-  busy: false,
-  notes: loadNotes(),
+// ------------------------------------------------------------------ i18n
+const I18N = {
+  tr: {
+    newChat: "Yeni sohbet", library: "Kütüphane", settings: "Ayarlar", sources: "Kaynaklar",
+    sourcesHint: "Seçim yapmazsanız tüm kaynaklarda aranır. Soruda adı geçen standart (DDR5, PCIe 4.0, ARINC 429 …) aramayı yalnızca o standarda kesin olarak daraltır.",
+    addDocs: "Doküman ekle", collection: "Koleksiyon (klasör)", chooseFiles: "Dosya seç…", reindex: "Yeniden indeksle",
+    emptyTitle: "Standartlara sorun", emptyText: "Cevaplar yalnızca yüklü dokümanlardan üretilir; her ifade [n] atfıyla kaynağına bağlanır, sayılar ve iddialar cevaptan önce kaynaklara karşı denetlenir.",
+    ask: "Sor", tabSource: "Kaynak", tabNotes: "Notlar", viewerEmpty: "Bir [n] atfına veya bir dokümana tıklayın.",
+    exportNotes: "Markdown kaydet", clearNotes: "Tümünü sil", answering: "Cevaplama", thinking: "Düşünme modu",
+    thinkingControl: "Düşünme kontrolü", tools: "Araç kullanımı (tool calling)", judge: "Bağımsız denetçi (her iddia için ayrı LLM kontrolü)",
+    regenerate: "Hatalı iddiaları bir kez yeniden ürettir", failedClaims: "Doğrulanamayan iddialar", strip: "Kaldır", flag: "İşaretle",
+    visionEnabled: "VLM ile tablo çıkarımı ve sayfa görüntüleri", cancel: "Vazgeç", save: "Kaydet", close: "Kapat",
+    currentLibrary: "Açık kütüphane", libraryHint: "Kütüphane klasörü: sources/<koleksiyon>/*.pdf + index.sqlite + cache/. Bir kişi indeksler, diğerleri kopyasını veya ağ paylaşımındaki yayımlanmış sürümü salt-okunur açar.",
+    libraryFolder: "Kütüphane klasörü", openReadOnly: "Salt-okunur aç (paylaşılan kütüphane)", openLibrary: "Aç",
+    publishTo: "Yayımlanacak hedef klasör (ör. ağ paylaşımı)", publish: "Yayımla", rebuild: "Tamamen yeniden oluştur",
+    reasoning: "Model düşünmesi", saveNote: "Not olarak kaydet", copy: "Kopyala", saved: "Kaydedildi ✓", copied: "Kopyalandı ✓",
+    placeholder: "Sorunuzu yazın (Türkçe veya İngilizce)… Enter: gönder, Shift+Enter: yeni satır",
+    stPlanning: "Soru çözümleniyor ve kaynaklar aranıyor…", stAnswering: "Cevap yazılıyor…", stVerifying: "İfadeler kaynaklara karşı doğrulanıyor…",
+    stRegenerating: "{0} ifade doğrulanamadı, düzeltiliyor…", stNoTools: "Sunucu araç çağrısını desteklemiyor; araçsız devam ediliyor.",
+    scopeEntity: "kapsam: {0} (soruda geçen standart)", scopeUser: "kapsam: seçili dokümanlar", scopeDomain: "koleksiyon: {0}", scopeAll: "kapsam: tüm kütüphane",
+    thinkingOn: "düşünme açık", searchAs: "arama", vOk: "✓ {0}/{1} ifade kaynaklarla doğrulandı.", vCorrected: "✓ {0}/{1} ifade doğrulandı; doğrulanamayan {2} ifade cevaptan çıkarıldı.",
+    vWarning: "⚠ {0} ifade doğrulanamadı (⚠ ile işaretli) — orijinal sayfadan kontrol edin.", vNotFound: "Yüklü dokümanlarda bu sorunun cevabı bulunamadı.",
+    vRegenerated: "Cevap bir kez düzeltilerek yeniden üretildi.", vJudge: "Sayısal kontrol + bağımsız denetçi", vDet: "Sayısal/atıf kontrolü",
+    removedList: "Çıkarılan ifadeler", prev: "‹ Önceki", next: "Sonraki ›", zoom: "Yakınlaştır", openOriginal: "Orijinal dosyayı aç",
+    page: "Sayfa", pages: "sayfa", chunks: "parça", superseded: "eski revizyon", toc: "İçindekiler", noToc: "Bu dokümanda yer imi yok.",
+    readOnly: "salt-okunur", docs: "doküman", params: "parametre", modelsLoad: "Modelleri getir", test: "Test et",
+    sameAsChat: "Sohbet modeliyle aynı", baseUrl: "API adresi (…/v1)", apiKey: "API anahtarı", model: "Model",
+    svc_llm: "Sohbet modeli (LLM)", svc_vision: "Görsel model (VLM)", svc_embedding: "Embedding", svc_reranker: "Reranker",
+    enabled: "etkin", notOnServer: "(sunucuda yok)", savedSettings: "Ayarlar kaydedildi.", noModels: "Model listesi alınamadı",
+    errorPrefix: "Hata", needToken: "Bu sunucu bir API anahtarı istiyor:", confirmClear: "Tüm notlar silinsin mi?",
+    noNotes: "Henüz not yok.", newChatStarted: "Yeni sohbet başladı.", calc: "hesap", parameter: "parametre", table: "tablo", pageKind: "sayfa", unverified: "doğrulanmamış çıkarım",
+    published: "Yayımlandı: {0}", opened: "Kütüphane açıldı.", pickFolderPrompt: "Klasör yolu:",
+    ex: ["DDR4 ile DDR5 arasında VDD ve burst length farkları nelerdir?", "PCIe 5.0 LTSSM Polling alt durumları ve geçiş koşulları nelerdir?",
+         "ARINC 429 kelimesinde SSM bitleri hangi bitlerdir ve BNR verisi için anlamları nedir?", "I2C Fast-mode Plus için maksimum yükselme süresi ve bus kapasitansı nedir?"],
+  },
+  en: {
+    newChat: "New chat", library: "Library", settings: "Settings", sources: "Sources",
+    sourcesHint: "With nothing selected, all sources are searched. A standard named in the question (DDR5, PCIe 4.0, ARINC 429 …) hard-restricts the search to that standard.",
+    addDocs: "Add documents", collection: "Collection (folder)", chooseFiles: "Choose files…", reindex: "Re-index",
+    emptyTitle: "Ask the standards", emptyText: "Answers come only from the loaded documents; every statement is tied to its source with an [n] citation, and numbers and claims are checked against the sources before you see the answer.",
+    ask: "Ask", tabSource: "Source", tabNotes: "Notes", viewerEmpty: "Click an [n] citation or a document.",
+    exportNotes: "Save as Markdown", clearNotes: "Delete all", answering: "Answering", thinking: "Thinking mode",
+    thinkingControl: "Thinking control", tools: "Tool calling", judge: "Independent judge (separate LLM check per claim)",
+    regenerate: "Regenerate failing claims once", failedClaims: "Unverifiable claims", strip: "Remove", flag: "Flag",
+    visionEnabled: "VLM table extraction and page images", cancel: "Cancel", save: "Save", close: "Close",
+    currentLibrary: "Open library", libraryHint: "A library folder holds sources/<collection>/*.pdf + index.sqlite + cache/. One person indexes; others open a copy or a published version on a network share read-only.",
+    libraryFolder: "Library folder", openReadOnly: "Open read-only (shared library)", openLibrary: "Open",
+    publishTo: "Publish to folder (e.g. a network share)", publish: "Publish", rebuild: "Full rebuild",
+    reasoning: "Model reasoning", saveNote: "Save as note", copy: "Copy", saved: "Saved ✓", copied: "Copied ✓",
+    placeholder: "Type your question (English or Turkish)… Enter: send, Shift+Enter: new line",
+    stPlanning: "Analysing the question and searching…", stAnswering: "Writing the answer…", stVerifying: "Checking statements against the sources…",
+    stRegenerating: "{0} statement(s) failed verification, correcting…", stNoTools: "The server does not support tool calls; continuing without tools.",
+    scopeEntity: "scope: {0} (named in the question)", scopeUser: "scope: selected documents", scopeDomain: "collection: {0}", scopeAll: "scope: whole library",
+    thinkingOn: "thinking on", searchAs: "search", vOk: "✓ {0}/{1} statements verified against the sources.", vCorrected: "✓ {0}/{1} statements verified; {2} unverifiable statement(s) removed.",
+    vWarning: "⚠ {0} statement(s) could not be verified (marked ⚠) — check the original page.", vNotFound: "The loaded documents do not answer this question.",
+    vRegenerated: "The answer was corrected and regenerated once.", vJudge: "Numeric check + independent judge", vDet: "Numeric/citation check",
+    removedList: "Removed statements", prev: "‹ Prev", next: "Next ›", zoom: "Zoom", openOriginal: "Open original file",
+    page: "Page", pages: "pages", chunks: "chunks", superseded: "superseded", toc: "Contents", noToc: "This document has no outline.",
+    readOnly: "read-only", docs: "documents", params: "parameters", modelsLoad: "Load models", test: "Test",
+    sameAsChat: "Same as chat model", baseUrl: "API base URL (…/v1)", apiKey: "API key", model: "Model",
+    svc_llm: "Chat model (LLM)", svc_vision: "Vision model (VLM)", svc_embedding: "Embedding", svc_reranker: "Reranker",
+    enabled: "enabled", notOnServer: "(not on server)", savedSettings: "Settings saved.", noModels: "Could not load models",
+    errorPrefix: "Error", needToken: "This server requires an API token:", confirmClear: "Delete all notes?",
+    noNotes: "No notes yet.", newChatStarted: "New chat started.", calc: "calculation", parameter: "parameter", table: "table", pageKind: "page", unverified: "unverified extraction",
+    published: "Published: {0}", opened: "Library opened.", pickFolderPrompt: "Folder path:",
+    ex: ["What are the VDD and burst length differences between DDR4 and DDR5?", "What are the PCIe 5.0 LTSSM Polling substates and their exit conditions?",
+         "Which bits are the SSM in an ARINC 429 word and what do they mean for BNR data?", "What is the maximum rise time and bus capacitance for I2C Fast-mode Plus?"],
+  },
 };
+let LANG = "tr";
+function t(key, ...args) {
+  let s = (I18N[LANG] && I18N[LANG][key]) ?? I18N.en[key] ?? key;
+  args.forEach((a, i) => { s = String(s).replace(`{${i}}`, a); });
+  return s;
+}
+function applyI18n() {
+  document.documentElement.lang = LANG;
+  $$("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  $("#question").placeholder = t("placeholder");
+  $$(".lang").forEach((b) => b.classList.toggle("active", b.dataset.lang === LANG));
+  const ex = $("#examples");
+  if (ex) {
+    ex.innerHTML = "";
+    for (const q of t("ex")) {
+      const b = document.createElement("button");
+      b.className = "example";
+      b.textContent = q;
+      b.addEventListener("click", () => ask(q));
+      ex.append(b);
+    }
+  }
+}
+
+// ------------------------------------------------------------------ state + api
+const state = { info: null, docs: [], selected: new Set(), history: [], busy: false, notes: loadNotes(), token: TOKEN };
 
 function safeGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
-function safeSet(k, v) { try { localStorage.setItem(k, v); } catch { /* storage unavailable */ } }
+function safeSet(k, v) { try { localStorage.setItem(k, v); } catch { /* unavailable */ } }
+const desk = () => (window.pywebview && window.pywebview.api) || null;
 
-// ------------------------------------------------------------------ API
 async function api(path, opts = {}) {
   const headers = Object.assign({}, opts.headers || {});
-  if (state.token) headers["Authorization"] = "Bearer " + state.token;
+  if (state.token) headers.Authorization = "Bearer " + state.token;
   const res = await fetch(path, Object.assign({}, opts, { headers }));
-  if (res.status === 401) {
-    const t = prompt("Bu sunucu bir API anahtarı istiyor:");
-    if (t) { state.token = t.trim(); safeSet("techrag.token", state.token); return api(path, opts); }
+  if (res.status === 401 && !TOKEN) {
+    const tok = prompt(t("needToken"));
+    if (tok) { state.token = tok.trim(); return api(path, opts); }
   }
   if (!res.ok) {
-    let msg = res.status + " " + res.statusText;
+    let msg = `${res.status} ${res.statusText}`;
     try { const j = await res.json(); msg = j.detail || msg; } catch { /* not json */ }
     throw new Error(msg);
   }
   return res;
 }
 const getJSON = async (p) => (await api(p)).json();
+const postJSON = async (p, body, method = "POST") =>
+  (await api(p, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
+const tokenQ = () => (state.token ? `?token=${encodeURIComponent(state.token)}` : "");
+const pageUrl = (docId, page, dpi) => `/api/documents/${docId}/page/${page}.png${tokenQ()}${dpi ? (tokenQ() ? "&" : "?") + "dpi=" + dpi : ""}`;
 
-function fileUrl(docId, page) {
-  const q = state.token ? `?token=${encodeURIComponent(state.token)}` : "";
-  return `/api/documents/${docId}/file${q}#page=${page || 1}`;
-}
-
-// ------------------------------------------------------------- markdown
+// ------------------------------------------------------------------ markdown
 function esc(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-
 function expandCites(inner) {
   const out = [];
   for (const part of inner.split(/\s*,\s*/)) {
@@ -54,23 +141,20 @@ function expandCites(inner) {
   }
   return out;
 }
-
-function inline(s, cites = true) {
+function inline(s, cites) {
   const codes = [];
   s = s.replace(/`([^`]+)`/g, (m, c) => { codes.push(c); return `\u0000${codes.length - 1}\u0000`; });
   s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   s = s.replace(/(^|[\s(])\*([^*\s][^*]*?)\*(?=[\s.,;:)]|$)/g, "$1<em>$2</em>");
   if (cites) {
     s = s.replace(/\[(\d+(?:\s*[,–-]\s*\d+)*)\]/g, (m, inner) =>
-      expandCites(inner).map((n) => `<button class="cite" data-n="${n}" title="Kaynak ${n}">${n}</button>`).join(""));
+      expandCites(inner).map((n) => `<button class="cite" data-n="${n}">${n}</button>`).join(""));
+    s = s.replace(/⚠/g, '<span class="flag">⚠</span>');
   }
-  s = s.replace(/\u0000(\d+)\u0000/g, (m, i) => `<code>${codes[+i]}</code>`);
-  return s;
+  return s.replace(/\u0000(\d+)\u0000/g, (m, i) => `<code>${codes[+i]}</code>`);
 }
-
 const LIST_RE = /^\s*([-*•]|\d+[.)])\s+/;
-
-function renderTable(rows, cites = true) {
+function renderTable(rows, cites) {
   const cells = (r) => r.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
   const body = rows.filter((r) => !/^\s*\|?\s*:?-{2,}/.test(r));
   if (!body.length) return "";
@@ -78,10 +162,9 @@ function renderTable(rows, cites = true) {
   for (const r of body.slice(1)) h += "<tr>" + cells(r).map((c) => `<td>${inline(c, cites)}</td>`).join("") + "</tr>";
   return h + "</tbody></table>";
 }
-
 function renderMarkdown(md, cites = true) {
-  const inl = (t) => inline(t, cites);
   const lines = esc(md).split("\n");
+  const inl = (x) => inline(x, cites);
   let html = "";
   let i = 0;
   while (i < lines.length) {
@@ -101,143 +184,171 @@ function renderMarkdown(md, cites = true) {
       continue;
     }
     const h = line.match(/^(#{1,6})\s+(.*)$/);
-    if (h) {
-      const lvl = Math.min(h[1].length + 2, 4);
-      html += `<h${lvl}>${inl(h[2])}</h${lvl}>`;
-      i++;
-      continue;
-    }
+    if (h) { const lvl = Math.min(h[1].length + 1, 4); html += `<h${lvl}>${inl(h[2])}</h${lvl}>`; i++; continue; }
     if (LIST_RE.test(line)) {
       const ordered = /^\s*\d+[.)]/.test(line);
       const items = [];
       while (i < lines.length && LIST_RE.test(lines[i])) {
         items.push(lines[i].replace(LIST_RE, ""));
         i++;
-        while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !LIST_RE.test(lines[i])) {
-          items[items.length - 1] += " " + lines[i].trim();
-          i++;
-        }
+        while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !LIST_RE.test(lines[i])) { items[items.length - 1] += " " + lines[i].trim(); i++; }
       }
       const tag = ordered ? "ol" : "ul";
-      html += `<${tag}>${items.map((t) => `<li>${inl(t)}</li>`).join("")}</${tag}>`;
+      html += `<${tag}>${items.map((x) => `<li>${inl(x)}</li>`).join("")}</${tag}>`;
       continue;
     }
     if (!line.trim()) { i++; continue; }
     const para = [line];
     i++;
-    while (i < lines.length && lines[i].trim() && !/^(\s*```|\s*\||#{1,6}\s)/.test(lines[i]) && !LIST_RE.test(lines[i])) {
-      para.push(lines[i++]);
-    }
+    while (i < lines.length && lines[i].trim() && !/^(\s*```|\s*\||#{1,6}\s)/.test(lines[i]) && !LIST_RE.test(lines[i])) para.push(lines[i++]);
     html += `<p>${inl(para.join("<br>"))}</p>`;
   }
   return html;
 }
 
-// --------------------------------------------------------------- sources
+// ------------------------------------------------------------------ info + sources panel
 async function loadInfo() {
   state.info = await getJSON("/api/info");
   const i = state.info;
-  $("#model-info").textContent = `LLM: ${i.llm.model} · ${i.stats.documents} doküman · ${i.stats.chunks} parça`;
-  $("#upload-box").hidden = !i.allow_upload;
-  $("#upload-domain").innerHTML = i.domains.map((d) => `<option value="${esc(d.key)}">${esc(d.name)}</option>`).join("");
-  if (i.warmup_error) console.warn("warmup:", i.warmup_error);
+  if (!safeGet("techrag.lang")) LANG = i.language || LANG;
+  const ro = i.read_only ? ` · ${t("readOnly")}` : "";
+  $("#lib-info").textContent = `${i.library} · ${i.stats.documents} ${t("docs")} · ${i.stats.parameters || 0} ${t("params")}${ro}`;
+  $("#add-box").hidden = !i.allow_upload;
+  const banner = $("#banner");
+  const missing = SERVICES.filter((s) => s !== "vision" && !i.models[s]);
+  if (i.error) { banner.hidden = false; banner.textContent = `${t("errorPrefix")}: ${i.error}`; }
+  else if (missing.length) { banner.hidden = false; banner.textContent = `${t("settings")}: ${missing.map((s) => t("svc_" + s)).join(", ")} — ${t("model")}?`; }
+  else banner.hidden = true;
+  $("#collection-list").innerHTML = i.domains.map((d) => `<option value="${esc(d.key)}">${esc(d.name)}</option>`).join("");
 }
 
 async function loadDocs() {
-  state.docs = await getJSON("/api/documents");
+  try { state.docs = await getJSON("/api/documents"); } catch { state.docs = []; }
   const ids = new Set(state.docs.map((d) => d.id));
   for (const id of [...state.selected]) if (!ids.has(id)) state.selected.delete(id);
   renderCollections();
 }
 
+function docTags(d) {
+  const tags = (d.entities || []).slice(0, 2).map((e) => `<span class="tag">${esc(e)}</span>`);
+  if (d.doc_type && d.doc_type !== "base") tags.push(`<span class="tag errata">${esc(d.doc_type.toUpperCase())}</span>`);
+  if (d.revision) tags.push(`<span class="tag">rev ${esc(d.revision)}</span>`);
+  if (d.superseded_by) tags.push(`<span class="tag">${t("superseded")}</span>`);
+  return tags.join("");
+}
+
 function renderCollections() {
   const wrap = $("#collections");
-  const domains = state.info ? state.info.domains : [];
   wrap.innerHTML = "";
+  const domains = state.info ? state.info.domains.filter((d) => d.documents > 0) : [];
   for (const d of domains) {
     const docs = state.docs.filter((x) => x.domain === d.key);
     const sec = document.createElement("div");
     sec.className = "collection";
     const allSel = docs.length > 0 && docs.every((x) => state.selected.has(x.id));
     const someSel = docs.some((x) => state.selected.has(x.id));
-    sec.innerHTML = `<label><input type="checkbox" ${allSel ? "checked" : ""} ${docs.length ? "" : "disabled"}>
-      <span title="${esc(d.name)}">${esc(d.key.toUpperCase())}</span><span class="count">${docs.length}</span></label>`;
+    sec.innerHTML = `<label><input type="checkbox" ${allSel ? "checked" : ""}><span title="${esc(d.name)}">${esc(d.key.toUpperCase())}</span><span class="count">${docs.length}</span></label>`;
     const cb = $("input", sec);
     cb.indeterminate = someSel && !allSel;
-    cb.addEventListener("change", () => {
-      for (const x of docs) cb.checked ? state.selected.add(x.id) : state.selected.delete(x.id);
-      renderCollections();
-    });
+    cb.addEventListener("change", () => { for (const x of docs) cb.checked ? state.selected.add(x.id) : state.selected.delete(x.id); renderCollections(); });
     for (const doc of docs) {
       const row = document.createElement("div");
-      row.className = "doc";
-      const warn = doc.warnings && doc.warnings.length ? ` <span class="warn" title="${esc(doc.warnings.join("\n"))}">⚠</span>` : "";
-      row.innerHTML = `<input type="checkbox" ${state.selected.has(doc.id) ? "checked" : ""}>
-        <a href="#" title="${esc(doc.path)}">${esc(doc.title)}</a>${warn}`;
-      $("input", row).addEventListener("change", (e) => {
-        e.target.checked ? state.selected.add(doc.id) : state.selected.delete(doc.id);
-        renderCollections();
-      });
+      row.className = "doc" + (doc.superseded_by ? " superseded" : "");
+      const warn = doc.warnings && doc.warnings.length ? ` <span class="tag errata" title="${esc(doc.warnings.join("\n"))}">⚠</span>` : "";
+      row.innerHTML = `<input type="checkbox" ${state.selected.has(doc.id) ? "checked" : ""}><span><a href="#" title="${esc(doc.path)}">${esc(doc.title)}</a> ${docTags(doc)}${warn}</span>`;
+      $("input", row).addEventListener("change", (e) => { e.target.checked ? state.selected.add(doc.id) : state.selected.delete(doc.id); renderCollections(); });
       $("a", row).addEventListener("click", (e) => { e.preventDefault(); showDocument(doc.id); });
       sec.append(row);
     }
     wrap.append(sec);
   }
-  const s = state.info ? state.info.stats : { documents: 0 };
-  $("#index-stats").textContent = state.selected.size ? `${state.selected.size} seçili` : `tümü (${s.documents})`;
+  $("#scope-info").textContent = state.selected.size ? `${state.selected.size} ✓` : "";
 }
 
-function scope() {
-  return state.selected.size ? { doc_ids: [...state.selected] } : {};
+const scope = () => (state.selected.size ? { doc_ids: [...state.selected] } : {});
+
+// ------------------------------------------------------------------ viewer
+function openTab(name) {
+  $$(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+  $("#tab-source").hidden = name !== "source";
+  $("#tab-notes").hidden = name !== "notes";
+}
+
+function pageViewer(container, docId, page, nPages) {
+  let p = page;
+  const box = document.createElement("div");
+  box.innerHTML = `<div class="page-nav"><button type="button" class="ghost small pv-prev">${t("prev")}</button>
+    <span class="pv-label"></span><button type="button" class="ghost small pv-next">${t("next")}</button>
+    <button type="button" class="ghost small pv-zoom">${t("zoom")}</button>
+    ${state.info && state.info.desktop ? `<button type="button" class="ghost small pv-open">${t("openOriginal")}</button>` : ""}</div>
+    <div class="page-view"><img alt=""></div>`;
+  const img = $("img", box);
+  const show = () => {
+    img.src = pageUrl(docId, p, 130);
+    $(".pv-label", box).textContent = `${t("page")} ${p}${nPages ? " / " + nPages : ""}`;
+    $(".pv-prev", box).disabled = p <= 1;
+    $(".pv-next", box).disabled = nPages ? p >= nPages : false;
+  };
+  $(".pv-prev", box).addEventListener("click", () => { if (p > 1) { p--; show(); } });
+  $(".pv-next", box).addEventListener("click", () => { p++; show(); });
+  $(".pv-zoom", box).addEventListener("click", () => $(".page-view", box).classList.toggle("zoom"));
+  const open = $(".pv-open", box);
+  if (open) open.addEventListener("click", () => postJSON(`/api/documents/${docId}/open`, {}).catch((e) => alert(e.message)));
+  container.append(box);
+  show();
+}
+
+function kindLabel(s) {
+  return { parameter: t("parameter"), table: t("table"), page: t("pageKind"), calc: t("calc") }[s.kind] || "";
+}
+
+function showSource(s, chip) {
+  openTab("source");
+  const pane = $("#tab-source");
+  const pages = s.page_start === s.page_end ? `${t("page")} ${s.page_start}` : `${t("page")} ${s.page_start}–${s.page_end}`;
+  const meta = [(s.entities || []).join(", "), s.doc_type && s.doc_type !== "base" ? s.doc_type.toUpperCase() : "", s.section, s.doc_id ? pages : "",
+    kindLabel(s), s.verified === false ? t("unverified") : ""].filter(Boolean).map(esc).join(" · ");
+  pane.innerHTML = `<div class="source-card"><h3>[${s.n}] ${esc(s.kind === "calc" ? t("calc") : s.doc_title)}${s.revision ? ` <span class="tag">rev ${esc(s.revision)}</span>` : ""}</h3>
+    <div class="source-meta">${meta}</div><div class="pv"></div><div class="source-text markdown">${renderMarkdown(s.text, false)}</div></div>`;
+  if (s.doc_id) {
+    const doc = state.docs.find((d) => d.id === s.doc_id);
+    pageViewer($(".pv", pane), s.doc_id, s.page_start || 1, doc ? doc.n_pages : 0);
+  }
+  $$(".cite-chip.active").forEach((c) => c.classList.remove("active"));
+  if (chip) chip.classList.add("active");
 }
 
 async function showDocument(id) {
   const d = await getJSON(`/api/documents/${id}`);
-  const toc = (d.toc || []).slice(0, 400).map(([lvl, title, page]) =>
-    `<li style="padding-left:${(lvl - 1) * 12}px"><a href="${fileUrl(d.id, page)}" target="_blank">${esc(title)}</a><span class="pg">s.${page}</span></li>`).join("");
+  openTab("source");
+  const pane = $("#tab-source");
+  const toc = (d.toc || []).slice(0, 500).map(([lvl, title, page]) =>
+    `<li style="padding-left:${(lvl - 1) * 12}px"><a data-page="${page}">${esc(title)}</a><span class="pg">${page}</span></li>`).join("");
   const warn = (d.warnings || []).map((w) => `<li>${esc(w)}</li>`).join("");
-  openTab("source");
-  $("#tab-source").innerHTML = `<div class="source-card">
-    <h3>${esc(d.title)}</h3>
-    <div class="source-meta">${esc(d.domain)} · ${d.n_pages} sayfa · ${d.n_chunks} parça · ${esc(d.ingested_at)}</div>
-    <a class="open-pdf" href="${fileUrl(d.id, 1)}" target="_blank">Dokümanı aç ↗</a>
-    ${warn ? `<div class="verify warning"><ul>${warn}</ul></div>` : ""}
-    ${toc ? `<h4>İçindekiler</h4><ul class="toc">${toc}</ul>` : "<p class='muted'>Bu dokümanda yer imi (outline) yok.</p>"}
-  </div>`;
-}
-
-function showSource(p, activeChip) {
-  openTab("source");
-  const pages = p.page_start === p.page_end ? `s. ${p.page_start}` : `s. ${p.page_start}–${p.page_end}`;
-  $("#tab-source").innerHTML = `<div class="source-card">
-    <h3>[${p.number}] ${esc(p.doc_title)}</h3>
-    <div class="source-meta">${esc(p.domain)} · ${esc(p.section || "—")} · ${pages}${p.kind === "table" ? " · tablo" : ""} · skor ${p.score.toFixed(3)}</div>
-    <a class="open-pdf" href="${fileUrl(p.doc_id, p.page_start)}" target="_blank">Orijinal dokümanda aç (${pages}) ↗</a>
-    <div class="source-text markdown">${renderMarkdown(p.text, false)}</div>
-  </div>`;
-  $$(".cite-chip.active").forEach((c) => c.classList.remove("active"));
-  if (activeChip) activeChip.classList.add("active");
+  pane.innerHTML = `<div class="source-card"><h3>${esc(d.title)} ${docTags(d)}</h3>
+    <div class="source-meta">${esc(d.domain)} · ${d.n_pages} ${t("pages")} · ${d.n_chunks} ${t("chunks")} · ${esc(d.doc_date || "")}</div>
+    ${warn ? `<div class="verify warning"><ul>${warn}</ul></div>` : ""}<div class="pv"></div>
+    <h3 style="margin-top:10px">${t("toc")}</h3>${toc ? `<ul class="toc">${toc}</ul>` : `<p class="muted">${t("noToc")}</p>`}</div>`;
+  const pv = $(".pv", pane);
+  pageViewer(pv, d.id, 1, d.n_pages);
+  $$(".toc a", pane).forEach((a) => a.addEventListener("click", () => { pv.innerHTML = ""; pageViewer(pv, d.id, +a.dataset.page, d.n_pages); }));
 }
 
 // ------------------------------------------------------------------ chat
-function scrollDown() { const m = $("#messages"); m.scrollTop = m.scrollHeight; }
+const scrollDown = () => { const m = $("#messages"); m.scrollTop = m.scrollHeight; };
 
-function addUserMsg(q) {
-  const el = document.createElement("div");
-  el.className = "msg user";
-  el.textContent = q;
-  $("#messages").append(el);
-}
-
-function renderCites(el, sources) {
+function renderChips(el) {
   const wrap = $(".cites", el);
   wrap.innerHTML = "";
-  for (const p of sources) {
+  const list = [...el._sources].sort((a, b) => (b.cited === true) - (a.cited === true) || a.n - b.n);
+  for (const s of list) {
+    if (el._final && s.cited === false && list.some((x) => x.cited)) continue;
     const b = document.createElement("button");
-    b.className = "cite-chip";
-    b.innerHTML = `<b>[${p.number}]</b> ${esc(p.doc_title)} — ${esc(p.section ? p.section.split(" > ").pop() : "")} — s.${p.page_start}`;
-    b.title = `${p.doc_title}\n${p.section}\ns. ${p.page_start}-${p.page_end}`;
-    b.addEventListener("click", () => showSource(p, b));
+    b.className = "cite-chip" + (s.cited === false ? " uncited" : "");
+    const where = s.kind === "calc" ? s.text : `${s.doc_title}${s.section ? " — " + s.section.split(" > ").pop() : ""} — ${t("page")} ${s.page_start}`;
+    b.innerHTML = `<b>[${s.n}]</b> ${kindLabel(s) ? `<i>${esc(kindLabel(s))}</i> ` : ""}${esc(where)}`;
+    b.title = s.text.slice(0, 400);
+    b.addEventListener("click", () => showSource(s, b));
     wrap.append(b);
   }
 }
@@ -247,21 +358,26 @@ function renderVerification(el, v, confidence) {
   if (!v) { box.hidden = true; return; }
   box.hidden = false;
   box.className = "verify " + v.status;
-  const conf = confidence != null ? ` · geri getirme güveni ${(confidence * 100).toFixed(0)}%` : "";
-  if (v.status === "ok") {
-    box.innerHTML = `✓ Atıflar geçerli, sayısal değerler kaynaklarda bulundu${conf}`;
-  } else if (v.status === "not_found") {
-    box.innerHTML = `Kaynaklarda yeterli bilgi bulunamadı${conf}. Soruyu farklı terimlerle sorun veya ilgili standardı ekleyin.`;
-  } else {
-    const items = [];
-    if (v.unsupported_numbers.length) items.push(`Kaynaklarda bulunamayan değerler: <b>${esc(v.unsupported_numbers.join(", "))}</b>`);
-    if (v.invalid_citations.length) items.push(`Var olmayan kaynağa atıf: ${v.invalid_citations.map((n) => `[${n}]`).join(", ")}`);
-    if (!v.citations_used.length) items.push("Cevapta hiç [n] atfı yok");
-    box.innerHTML = `⚠ Doğrulama uyarısı${conf} — bu kısımları orijinal dokümandan kontrol edin:<ul>${items.map((t) => `<li>${t}</li>`).join("")}</ul>`;
+  let html = "";
+  if (v.status === "ok") html = t("vOk", v.supported, v.checked);
+  else if (v.status === "corrected") html = t("vCorrected", v.supported, v.checked, v.removed.length);
+  else if (v.status === "not_found") html = t("vNotFound");
+  else html = t("vWarning", (v.flagged || []).length || v.failed);
+  const notes = [v.judge_used ? t("vJudge") : t("vDet")];
+  if (v.regenerated) notes.push(t("vRegenerated"));
+  if (confidence != null) notes.push(`rerank ${(confidence * 100).toFixed(0)}%`);
+  html += `<div class="small">${notes.map(esc).join(" · ")}</div>`;
+  const failed = (v.details || []).filter((c) => c.status === "removed" || c.status === "fail");
+  if (failed.length) {
+    html += `<details><summary>${t("removedList")} (${failed.length})</summary><ul>${failed.map((c) =>
+      `<li>${esc(c.text)}<br><span class="small">${esc((c.reasons || []).join("; "))}</span></li>`).join("")}</ul></details>`;
   }
-  if (v.uncited_sentences && v.status !== "not_found") {
-    box.innerHTML += `<div class="small">${v.uncited_sentences}/${v.checked_sentences} cümlede atıf yok.</div>`;
-  }
+  box.innerHTML = html;
+}
+
+function stageText(ev) {
+  return { planning: t("stPlanning"), answering: t("stAnswering"), verifying: t("stVerifying"),
+    regenerating: t("stRegenerating", ev.failed || ""), tools_unsupported: t("stNoTools") }[ev.stage] || "";
 }
 
 async function ask(question) {
@@ -270,13 +386,18 @@ async function ask(question) {
   $("#btn-send").disabled = true;
   const empty = $("#empty-state");
   if (empty) empty.remove();
-  addUserMsg(question);
+  const u = document.createElement("div");
+  u.className = "msg user";
+  u.textContent = question;
+  $("#messages").append(u);
   const el = $("#tpl-answer").content.firstElementChild.cloneNode(true);
+  $$("[data-i18n]", el).forEach((x) => { x.textContent = t(x.dataset.i18n); });
   $("#messages").append(el);
-  scrollDown();
+  el._sources = [];
+  el._final = false;
   const body = $(".body", el);
+  const status = $(".status", el);
   let text = "";
-  let sources = [];
   let confidence = null;
   let pending = false;
   const render = () => {
@@ -284,58 +405,68 @@ async function ask(question) {
     pending = true;
     requestAnimationFrame(() => { pending = false; body.innerHTML = renderMarkdown(text); scrollDown(); });
   };
-  el._sources = sources;
+  scrollDown();
 
   const handle = (ev) => {
-    if (ev.type === "plan") {
-      const plan = ev.plan;
-      const routed = ev.routed_domains && ev.routed_domains.length ? ev.routed_domains.join(", ") : "tümü";
-      const parts = [];
-      if (plan.english && plan.english !== plan.question) parts.push(`Arama: “${esc(plan.english)}”`);
-      parts.push(`koleksiyon: ${esc(routed)}`);
-      if (plan.keywords && plan.keywords.length) parts.push(`terimler: ${esc(plan.keywords.slice(0, 8).join(", "))}`);
-      const p = $(".plan", el);
-      p.innerHTML = parts.join(" · ");
-      p.hidden = false;
-    } else if (ev.type === "sources") {
-      sources = ev.sources;
-      confidence = ev.confidence;
-      el._sources = sources;
-      renderCites(el, sources);
-      body.innerHTML = `<span class="typing">${sources.length} kaynak pasajı bulundu, cevap yazılıyor…</span>`;
-    } else if (ev.type === "token") {
-      text += ev.text;
-      render();
-    } else if (ev.type === "replace") {
-      text = ev.text;
-      render();
-    } else if (ev.type === "done") {
-      text = ev.answer;
-      body.innerHTML = renderMarkdown(text);
-      renderVerification(el, ev.verification, confidence);
-      const acts = $(".msg-actions", el);
-      acts.hidden = false;
-      const t = ev.timings || {};
-      $(".timing", acts).textContent = t.total ? `${t.total.toFixed(1)} sn` : "";
-      $(".btn-note", acts).addEventListener("click", (e) => { addNote(question, text, sources); e.target.textContent = "Kaydedildi ✓"; });
-      $(".btn-copy", acts).addEventListener("click", (e) => {
-        const refs = sources.map((p) => `[${p.number}] ${p.doc_title} — ${p.section} — s.${p.page_start}`).join("\n");
-        navigator.clipboard && navigator.clipboard.writeText(`${text}\n\nKaynaklar:\n${refs}`);
-        e.target.textContent = "Kopyalandı ✓";
-      });
-      state.history.push({ role: "user", content: question }, { role: "assistant", content: text });
-      state.history = state.history.slice(-12);
-    } else if (ev.type === "error") {
-      body.innerHTML = `<div class="verify warning">Hata: ${esc(ev.message)}</div>`;
+    switch (ev.type) {
+      case "status": status.textContent = stageText(ev); break;
+      case "plan": {
+        const s = ev.scope || {};
+        const parts = [];
+        if (s.reason === "entity") parts.push(t("scopeEntity", (s.entities || []).join(", ")));
+        else if (s.reason === "user") parts.push(t("scopeUser"));
+        else if (s.reason === "domain") parts.push(t("scopeDomain", (s.domains || []).join(", ")));
+        else parts.push(t("scopeAll"));
+        if (ev.plan.english && ev.plan.english !== ev.plan.question) parts.push(`${t("searchAs")}: “${esc(ev.plan.english)}”`);
+        if (ev.thinking) parts.push(t("thinkingOn"));
+        const p = $(".plan", el);
+        p.innerHTML = parts.join(" · ");
+        p.hidden = false;
+        break;
+      }
+      case "sources": el._sources = ev.sources; confidence = ev.confidence; renderChips(el); break;
+      case "sources_add": el._sources = el._sources.concat(ev.sources); renderChips(el); break;
+      case "reasoning": { const d = $(".reasoning", el); d.hidden = false; $("pre", d).textContent += ev.text; break; }
+      case "tool": {
+        const ul = $(".tool-log", el);
+        ul.hidden = false;
+        const li = document.createElement("li");
+        li.textContent = `${ev.name}: ${ev.summary}`;
+        ul.append(li);
+        break;
+      }
+      case "draft": body.classList.add("draft"); text += ev.text; render(); break;
+      case "draft_reset": text = ""; render(); break;
+      case "final": {
+        el._final = true;
+        status.textContent = "";
+        body.classList.remove("draft");
+        text = ev.answer;
+        body.innerHTML = renderMarkdown(text);
+        el._sources = ev.sources || el._sources;
+        renderChips(el);
+        renderVerification(el, ev.verification, confidence);
+        const acts = $(".msg-actions", el);
+        acts.hidden = false;
+        $(".timing", acts).textContent = ev.timings && ev.timings.total ? `${ev.timings.total.toFixed(1)} s` : "";
+        $(".btn-note", acts).addEventListener("click", (e) => { addNote(question, text, el._sources); e.target.textContent = t("saved"); });
+        $(".btn-copy", acts).addEventListener("click", (e) => {
+          const refs = el._sources.filter((s) => s.cited).map((s) => `[${s.n}] ${s.doc_title} — ${s.section} — p.${s.page_start}`).join("\n");
+          navigator.clipboard && navigator.clipboard.writeText(`${text}\n\n${refs}`);
+          e.target.textContent = t("copied");
+        });
+        state.history.push({ role: "user", content: question }, { role: "assistant", content: text });
+        state.history = state.history.slice(-12);
+        break;
+      }
+      case "error": status.textContent = ""; body.innerHTML = `<div class="verify warning">${t("errorPrefix")}: ${esc(ev.message)}</div>`; break;
+      default: break;
     }
   };
 
   try {
-    const res = await api("/api/ask", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(Object.assign({ question, history: state.history.slice(-6), stream: true }, scope())),
-    });
+    const res = await api("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(Object.assign({ question, history: state.history.slice(-6), stream: true }, scope())) });
     const reader = res.body.getReader();
     const dec = new TextDecoder();
     let buf = "";
@@ -352,7 +483,8 @@ async function ask(question) {
       }
     }
   } catch (e) {
-    body.innerHTML = `<div class="verify warning">Hata: ${esc(e.message)}</div>`;
+    status.textContent = "";
+    body.innerHTML = `<div class="verify warning">${t("errorPrefix")}: ${esc(e.message)}</div>`;
   } finally {
     state.busy = false;
     $("#btn-send").disabled = false;
@@ -360,118 +492,250 @@ async function ask(question) {
   }
 }
 
-// ----------------------------------------------------------------- notes
+// ------------------------------------------------------------------ notes
 function loadNotes() { try { return JSON.parse(safeGet("techrag.notes") || "[]"); } catch { return []; } }
 function saveNotes() { safeSet("techrag.notes", JSON.stringify(state.notes)); renderNotes(); }
-
 function addNote(q, a, sources) {
-  state.notes.unshift({
-    id: Date.now(), q, a, ts: new Date().toLocaleString(),
-    sources: sources.map((p) => ({ n: p.number, title: p.doc_title, section: p.section, page: p.page_start, doc_id: p.doc_id })),
-  });
+  state.notes.unshift({ id: Date.now(), q, a, ts: new Date().toLocaleString(),
+    sources: sources.filter((s) => s.cited !== false).map((s) => ({ n: s.n, title: s.doc_title, section: s.section, page: s.page_start })) });
   saveNotes();
 }
-
 function renderNotes() {
   $("#notes-count").textContent = state.notes.length ? `(${state.notes.length})` : "";
   const list = $("#notes-list");
-  if (!state.notes.length) { list.innerHTML = `<p class="muted">Henüz not yok. Bir cevabın altındaki “Not olarak kaydet” düğmesini kullanın.</p>`; return; }
+  if (!state.notes.length) { list.innerHTML = `<p class="muted">${t("noNotes")}</p>`; return; }
   list.innerHTML = "";
   for (const n of state.notes) {
     const div = document.createElement("div");
     div.className = "note";
-    const refs = n.sources.map((s) => `<li><a href="${fileUrl(s.doc_id, s.page)}" target="_blank">[${s.n}] ${esc(s.title)}</a> — ${esc(s.section || "")} — s.${s.page}</li>`).join("");
-    div.innerHTML = `<button class="ghost del">Sil</button><div class="q">${esc(n.q)}</div>
-      <div class="markdown">${renderMarkdown(n.a)}</div><ul class="small">${refs}</ul><div class="small muted">${esc(n.ts)}</div>`;
+    div.innerHTML = `<button class="ghost del">✕</button><div class="q">${esc(n.q)}</div><div class="markdown">${renderMarkdown(n.a, false)}</div>
+      <ul class="small">${n.sources.map((s) => `<li>[${s.n}] ${esc(s.title)} — ${esc(s.section || "")} — p.${s.page}</li>`).join("")}</ul><div class="small muted">${esc(n.ts)}</div>`;
     $(".del", div).addEventListener("click", () => { state.notes = state.notes.filter((x) => x.id !== n.id); saveNotes(); });
     list.append(div);
   }
 }
-
-function exportNotes() {
-  const md = state.notes.map((n) => {
-    const refs = n.sources.map((s) => `- [${s.n}] ${s.title} — ${s.section || ""} — s.${s.page}`).join("\n");
-    return `## ${n.q}\n\n${n.a}\n\n**Kaynaklar**\n${refs}\n\n_${n.ts}_\n`;
-  }).join("\n---\n\n");
-  const blob = new Blob([`# Standart Asistanı — Notlar\n\n${md}`], { type: "text/markdown" });
+async function exportNotes() {
+  const md = "# TechRAG\n\n" + state.notes.map((n) =>
+    `## ${n.q}\n\n${n.a}\n\n${n.sources.map((s) => `- [${s.n}] ${s.title} — ${s.section || ""} — p.${s.page}`).join("\n")}\n\n_${n.ts}_\n`).join("\n---\n\n");
+  if (desk()) { await desk().save_text("techrag-notes.md", md); return; }
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "notlar.md";
+  a.href = URL.createObjectURL(new Blob([md], { type: "text/markdown" }));
+  a.download = "techrag-notes.md";
   a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-// ---------------------------------------------------------------- upload
-async function upload(e) {
-  e.preventDefault();
-  const file = $("#upload-file").files[0];
-  if (!file) return;
-  const fd = new FormData();
-  fd.append("file", file);
-  fd.append("domain", $("#upload-domain").value);
-  const log = $("#job-log");
+// ------------------------------------------------------------------ jobs / adding documents
+async function pollJob(job, log) {
   log.hidden = false;
-  log.textContent = `${file.name} yükleniyor…\n`;
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 1200));
+    const j = await getJSON(`/api/jobs/${job}`);
+    log.textContent = j.messages.slice(-200).join("\n") + `\n[${j.status}]`;
+    log.scrollTop = log.scrollHeight;
+    if (j.status === "done" || j.status === "failed") break;
+  }
+  await loadInfo();
+  await loadDocs();
+}
+async function addFiles() {
+  const collection = $("#add-collection").value.trim() || "general";
+  const log = $("#job-log");
   try {
-    const { job } = await (await api("/api/upload", { method: "POST", body: fd })).json();
-    for (;;) {
-      await new Promise((r) => setTimeout(r, 1500));
-      const j = await getJSON(`/api/jobs/${job}`);
-      log.textContent = j.messages.join("\n") + `\n[${j.status}]`;
-      log.scrollTop = log.scrollHeight;
-      if (j.status === "done" || j.status === "failed") break;
+    if (desk()) {
+      const paths = await desk().pick_files();
+      if (!paths || !paths.length) return;
+      const r = await postJSON("/api/sources/add", { paths, collection });
+      await pollJob(r.job, log);
+    } else {
+      $("#add-file-input").click();
     }
-    await loadInfo();
-    await loadDocs();
-  } catch (err) {
-    log.textContent += `Hata: ${err.message}`;
+  } catch (e) { log.hidden = false; log.textContent = `${t("errorPrefix")}: ${e.message}`; }
+}
+async function uploadFiles(files) {
+  const collection = $("#add-collection").value.trim() || "general";
+  const log = $("#job-log");
+  for (const f of files) {
+    const fd = new FormData();
+    fd.append("file", f);
+    fd.append("domain", collection);
+    try { const r = await (await api("/api/upload", { method: "POST", body: fd })).json(); await pollJob(r.job, log); }
+    catch (e) { log.hidden = false; log.textContent += `\n${t("errorPrefix")}: ${e.message}`; }
   }
 }
-
-// ------------------------------------------------------------------ misc
-function openTab(name) {
-  $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
-  $("#tab-source").hidden = name !== "source";
-  $("#tab-notes").hidden = name !== "notes";
+async function reindex(rebuild) {
+  try { const r = await postJSON("/api/ingest", { rebuild: !!rebuild }); await pollJob(r.job, $("#job-log")); }
+  catch (e) { alert(e.message); }
 }
 
+// ------------------------------------------------------------------ settings dialog
+let SETTINGS = null;
+function svcCard(svc) {
+  const div = document.createElement("div");
+  div.className = "svc";
+  div.dataset.svc = svc;
+  const s = SETTINGS[svc];
+  const extra = svc === "vision" ? `<label><input type="checkbox" class="same"> ${t("sameAsChat")}</label>`
+    : svc === "reranker" ? `<label><input type="checkbox" class="enabled"> ${t("enabled")}</label>` : "";
+  div.innerHTML = `<h3>${t("svc_" + svc)}</h3>${extra}
+    <label>${t("baseUrl")}<input class="url" value="${esc(s.base_url)}" placeholder="http://server:8000/v1"></label>
+    <label>${t("apiKey")}<input class="key" type="password" value="${esc(s.api_key)}" autocomplete="off"></label>
+    <label>${t("model")}<div class="row"><select class="model"></select><button type="button" class="ghost load">${t("modelsLoad")}</button><button type="button" class="ghost test">${t("test")}</button></div></label>
+    <div class="result"></div>`;
+  const same = $(".same", div);
+  if (same) {
+    same.checked = !s.base_url && !s.model;
+    const sync = () => $$(".url,.key,.model,.load,.test", div).forEach((x) => { x.disabled = same.checked; });
+    same.addEventListener("change", sync);
+    sync();
+  }
+  const en = $(".enabled", div);
+  if (en) en.checked = !!s.enabled;
+  const sel = $(".model", div);
+  const setOptions = (models) => {
+    const cur = s.model;
+    const opts = [...new Set([...(models || []), ...(cur ? [cur] : [])])];
+    sel.innerHTML = `<option value=""></option>` + opts.map((m) =>
+      `<option value="${esc(m)}" ${m === cur ? "selected" : ""}>${esc(m)}${models && !models.includes(m) ? " " + t("notOnServer") : ""}</option>`).join("");
+  };
+  setOptions(null);
+  const load = async () => {
+    const res = $(".result", div);
+    res.className = "result";
+    res.textContent = "…";
+    try {
+      const r = await postJSON("/api/settings/models", { service: svc, base_url: $(".url", div).value, api_key: $(".key", div).value });
+      s.model = sel.value || s.model;
+      if (r.ok) { setOptions(r.models); res.textContent = `${r.models.length} model`; }
+      else { res.className = "result bad"; res.textContent = `${t("noModels")}: ${r.error}`; }
+    } catch (e) { res.className = "result bad"; res.textContent = e.message; }
+  };
+  $(".load", div).addEventListener("click", load);
+  $(".url", div).addEventListener("change", load);
+  $(".key", div).addEventListener("change", load);
+  $(".test", div).addEventListener("click", async () => {
+    const res = $(".result", div);
+    res.className = "result";
+    res.textContent = "…";
+    const r = await postJSON("/api/settings/test", { service: svc, base_url: $(".url", div).value, api_key: $(".key", div).value, model: sel.value });
+    res.className = "result " + (r.ok ? "ok" : "bad");
+    res.textContent = r.ok ? `✓ ${r.detail || ""}${r.latency_ms ? ` (${r.latency_ms} ms)` : ""}` : `✕ ${r.error || r.detail || ""}`;
+  });
+  if (s.base_url && !(same && same.checked)) load();
+  return div;
+}
+async function openSettings() {
+  SETTINGS = await getJSON("/api/settings");
+  const grid = $("#svc-grid");
+  grid.innerHTML = "";
+  for (const svc of SERVICES) grid.append(svcCard(svc));
+  $("#set-thinking").value = SETTINGS.llm.thinking;
+  $("#set-thinking-control").value = SETTINGS.llm.thinking_control;
+  $("#set-tools").value = SETTINGS.llm.tools;
+  $("#set-judge").checked = SETTINGS.answer.judge;
+  $("#set-regenerate").checked = SETTINGS.answer.regenerate;
+  $("#set-failed").value = SETTINGS.answer.failed_claims;
+  $("#set-vision-enabled").checked = SETTINGS.vision.enabled;
+  $("#settings-status").textContent = "";
+  $$("#dlg-settings [data-i18n]").forEach((x) => { x.textContent = t(x.dataset.i18n); });
+  $("#dlg-settings").showModal();
+}
+async function saveSettings(e) {
+  e.preventDefault();
+  const patch = { answer: { judge: $("#set-judge").checked, regenerate: $("#set-regenerate").checked, failed_claims: $("#set-failed").value } };
+  for (const card of $$(".svc")) {
+    const svc = card.dataset.svc;
+    const same = $(".same", card);
+    if (same && same.checked) { patch[svc] = { base_url: "", model: "", api_key: "" }; continue; }
+    patch[svc] = { base_url: $(".url", card).value.trim(), api_key: $(".key", card).value, model: $(".model", card).value };
+    const en = $(".enabled", card);
+    if (en) patch[svc].enabled = en.checked;
+  }
+  Object.assign(patch.llm, { thinking: $("#set-thinking").value, thinking_control: $("#set-thinking-control").value, tools: $("#set-tools").value });
+  patch.vision = Object.assign(patch.vision || {}, { enabled: $("#set-vision-enabled").checked });
+  try {
+    const r = await postJSON("/api/settings", patch, "PUT");
+    $("#settings-status").textContent = r.error ? `${t("errorPrefix")}: ${r.error}` : t("savedSettings");
+    await loadInfo();
+    await loadDocs();
+    if (!r.error) setTimeout(() => $("#dlg-settings").close(), 500);
+  } catch (err) { $("#settings-status").textContent = `${t("errorPrefix")}: ${err.message}`; }
+}
+
+// ------------------------------------------------------------------ library dialog
+async function pickFolder(input) {
+  if (desk()) { const p = await desk().pick_folder(); if (p) input.value = p; }
+  else { const p = prompt(t("pickFolderPrompt"), input.value); if (p) input.value = p; }
+}
+function openLibrary() {
+  const i = state.info;
+  $("#lib-path").textContent = i ? i.library : "";
+  $("#lib-ro").hidden = !(i && i.read_only);
+  $("#lib-new-path").value = i ? i.library : "";
+  $("#lib-readonly").checked = !!(i && i.read_only);
+  $("#lib-status").textContent = "";
+  $$("#dlg-library [data-i18n]").forEach((x) => { x.textContent = t(x.dataset.i18n); });
+  $("#dlg-library").showModal();
+}
+
+// ------------------------------------------------------------------ wiring
 function bind() {
-  $("#composer").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const q = $("#question").value.trim();
-    if (!q) return;
-    $("#question").value = "";
-    ask(q);
-  });
-  $("#question").addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("#composer").requestSubmit(); }
-  });
-  $$(".example").forEach((b) => b.addEventListener("click", () => ask(b.textContent)));
+  $("#composer").addEventListener("submit", (e) => { e.preventDefault(); const q = $("#question").value.trim(); if (q) { $("#question").value = ""; ask(q); } });
+  $("#question").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("#composer").requestSubmit(); } });
   $("#messages").addEventListener("click", (e) => {
     const c = e.target.closest("button.cite");
     if (!c) return;
     const msg = c.closest(".msg");
-    const p = (msg && msg._sources || []).find((s) => s.number === +c.dataset.n);
-    if (p) showSource(p);
+    const s = (msg && msg._sources || []).find((x) => x.n === +c.dataset.n);
+    if (s) showSource(s);
   });
-  $$(".tab").forEach((t) => t.addEventListener("click", () => openTab(t.dataset.tab)));
-  $("#btn-new-chat").addEventListener("click", () => {
-    state.history = [];
-    $("#messages").innerHTML = `<div class="empty"><p>Yeni sohbet başladı. Önceki sorular bağlam olarak kullanılmayacak.</p></div>`;
+  $$(".tab").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.tab)));
+  $("#btn-new-chat").addEventListener("click", () => { state.history = []; $("#messages").innerHTML = `<div class="empty"><p>${t("newChatStarted")}</p></div>`; });
+  $$(".lang").forEach((b) => b.addEventListener("click", () => {
+    LANG = b.dataset.lang;
+    safeSet("techrag.lang", LANG);
+    applyI18n();
+    renderNotes();
+    renderCollections();
+    postJSON("/api/settings", { ui: { language: LANG } }, "PUT").catch(() => {});
+  }));
+  $("#btn-settings").addEventListener("click", () => openSettings().catch((e) => alert(e.message)));
+  $("#btn-save-settings").addEventListener("click", saveSettings);
+  $("#btn-library").addEventListener("click", openLibrary);
+  $("#btn-pick-lib").addEventListener("click", () => pickFolder($("#lib-new-path")));
+  $("#btn-pick-publish").addEventListener("click", () => pickFolder($("#lib-publish-path")));
+  $("#btn-open-lib").addEventListener("click", async () => {
+    try {
+      const r = await postJSON("/api/library/open", { path: $("#lib-new-path").value, read_only: $("#lib-readonly").checked });
+      $("#lib-status").textContent = r.error ? `${t("errorPrefix")}: ${r.error}` : t("opened");
+      await loadInfo();
+      await loadDocs();
+      $("#lib-path").textContent = state.info.library;
+    } catch (e) { $("#lib-status").textContent = `${t("errorPrefix")}: ${e.message}`; }
   });
-  $("#btn-toggle-sources").addEventListener("click", () => $("#sources-panel").classList.toggle("open"));
+  $("#btn-publish").addEventListener("click", async () => {
+    try { const r = await postJSON("/api/library/publish", { dest: $("#lib-publish-path").value }); $("#lib-status").textContent = t("published", r.path); }
+    catch (e) { $("#lib-status").textContent = `${t("errorPrefix")}: ${e.message}`; }
+  });
+  $("#btn-reindex-all").addEventListener("click", () => { $("#dlg-library").close(); reindex($("#lib-rebuild").checked); });
+  $("#btn-add-files").addEventListener("click", addFiles);
+  $("#add-file-input").addEventListener("change", (e) => uploadFiles([...e.target.files]));
+  $("#btn-reindex").addEventListener("click", () => reindex(false));
   $("#btn-export-notes").addEventListener("click", exportNotes);
-  $("#btn-clear-notes").addEventListener("click", () => { if (confirm("Tüm notlar silinsin mi?")) { state.notes = []; saveNotes(); } });
-  $("#upload-form").addEventListener("submit", upload);
+  $("#btn-clear-notes").addEventListener("click", () => { if (confirm(t("confirmClear"))) { state.notes = []; saveNotes(); } });
 }
 
 (async function init() {
+  LANG = safeGet("techrag.lang") || LANG;
   bind();
+  applyI18n();
   renderNotes();
   try {
     await loadInfo();
+    applyI18n();
     await loadDocs();
   } catch (e) {
-    $("#collections").innerHTML = `<div class="verify warning">Sunucuya bağlanılamadı: ${esc(e.message)}</div>`;
+    const b = $("#banner");
+    b.hidden = false;
+    b.textContent = `${t("errorPrefix")}: ${e.message}`;
   }
 })();

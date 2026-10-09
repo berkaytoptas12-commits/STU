@@ -1,0 +1,71 @@
+name: Build Windows exe
+
+on:
+  push:
+    branches: [main, "claude/**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-desktop.txt -r requirements-dev.txt "pyinstaller>=6.10"
+      - name: Tests on Windows
+        run: python -m pytest -q
+      - name: Build (one folder)
+        run: pyinstaller packaging/techrag.spec --noconfirm
+      - name: Build (single portable exe)
+        env:
+          TECHRAG_ONEFILE: "1"
+        run: pyinstaller packaging/techrag.spec --noconfirm
+      - name: Self-test the frozen builds
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist/TechRAG/TechRAG.exe -ArgumentList "selftest","selftest-onedir.json" -Wait -PassThru
+          Get-Content selftest-onedir.json
+          if ($p.ExitCode -ne 0) { throw "onedir selftest failed" }
+          $p = Start-Process -FilePath dist/TechRAG-portable.exe -ArgumentList "selftest","selftest-onefile.json" -Wait -PassThru
+          Get-Content selftest-onefile.json
+          if ($p.ExitCode -ne 0) { throw "onefile selftest failed" }
+          $j = Get-Content selftest-onedir.json | ConvertFrom-Json
+          if ($j.pywebview -ne $true) { throw "pywebview not bundled: $($j.pywebview)" }
+      - name: Package
+        shell: pwsh
+        run: Compress-Archive -Path dist/TechRAG -DestinationPath TechRAG-win64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TechRAG-windows
+          path: |
+            TechRAG-win64.zip
+            dist/TechRAG-portable.exe
+          retention-days: 30
+      - name: Attach to release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            TechRAG-win64.zip
+            dist/TechRAG-portable.exe

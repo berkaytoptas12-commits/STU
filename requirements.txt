@@ -1,4 +1,4 @@
-# Core (always required)
+# Core runtime (all model access is over HTTP: vLLM / SGLang / any OpenAI-compatible server)
 numpy>=1.24
 pyyaml>=6.0
 httpx>=0.25
@@ -7,13 +7,5 @@ fastapi>=0.110
 uvicorn>=0.27
 python-multipart>=0.0.9
 
-# Local embedding + reranker (BAAI/bge-m3, BAAI/bge-reranker-v2-m3).
-# Pulls in torch. For CPU-only machines download torch from the CPU index
-# (see scripts/prepare_offline_bundle.sh).
-sentence-transformers>=3.0
-
 # Optional: .docx sources
 python-docx>=1.1
-
-# Tests
-pytest>=8

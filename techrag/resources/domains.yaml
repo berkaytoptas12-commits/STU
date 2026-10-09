@@ -1,8 +1,10 @@
 # Koleksiyon (domain) tanımları.
-#  folders  : data/sources altında bu koleksiyona ait sayılan klasör adları
+#  folders  : <kütüphane>/sources altında bu koleksiyona ait sayılan klasör adları
 #  patterns : soruda / dosya adında geçince bu koleksiyonu işaret eden regex'ler (büyük/küçük harf duyarsız)
+#  standards: koleksiyondaki standart/sürüm varlıkları (entity). Doküman bu kalıplarla etiketlenir; soruda
+#             açıkça geçen standart (ör. "DDR5", "PCIe Gen4") aramayı yalnızca o dokümanlara KESİN olarak daraltır.
 #  glossary : kısaltma -> açılım. Sorgu genişletmede ve LLM'e terminoloji ipucu olarak kullanılır.
-# Yeni bir standart ailesi eklemek için buraya bir blok ekleyip data/sources/<anahtar>/ klasörünü açmanız yeterli.
+# Yeni bir standart ailesi eklemek için buraya bir blok ekleyip <kütüphane>/sources/<anahtar>/ klasörünü açmanız yeterli.
 
 domains:
   arinc:
@@ -14,6 +16,13 @@ domains:
       - '\bafdx\b'
       - '\bavionics full[- ]duplex'
       - '\bapex\b'
+    standards:
+      - {id: "ARINC 429", patterns: ['\barinc[\s-]?429', '\ba429\b']}
+      - {id: "ARINC 664", patterns: ['\barinc[\s-]?664', '\ba664\b', '\bafdx\b', 'avionics full[- ]duplex']}
+      - {id: "ARINC 653", patterns: ['\barinc[\s-]?653', '\ba653\b']}
+      - {id: "ARINC 818", patterns: ['\barinc[\s-]?818', '\ba818\b']}
+      - {id: "ARINC 825", patterns: ['\barinc[\s-]?825', '\ba825\b']}
+      - {id: "ARINC 717", patterns: ['\barinc[\s-]?717', '\ba717\b']}
     glossary:
       AFDX: Avionics Full-Duplex Switched Ethernet
       SSM: Sign/Status Matrix
@@ -37,6 +46,12 @@ domains:
       - '\bs?dram\b'
       - '\b(dimm|rdimm|udimm|lrdimm|sodimm)\b'
       - '\bt(rfc|rcd|rp|ras|rc|faw|rrd|wr|wtr|ccd|refi|xs|dqss|dqsck)\b'
+    standards:
+      - {id: "DDR3", patterns: ['(?<![a-z])ddr3l?\b', 'jesd79[\s-]?3']}
+      - {id: "DDR4", patterns: ['(?<![a-z])ddr4\b', 'jesd79[\s-]?4']}
+      - {id: "DDR5", patterns: ['(?<![a-z])ddr5\b', 'jesd79[\s-]?5']}
+      - {id: "LPDDR4", patterns: ['\blpddr4x?\b', 'jesd209[\s-]?4']}
+      - {id: "LPDDR5", patterns: ['\blpddr5x?\b', 'jesd209[\s-]?5']}
     glossary:
       tRFC: Refresh Cycle Time
       tREFI: Average Refresh Interval
@@ -69,6 +84,13 @@ domains:
       - '\bltssm\b'
       - '\b(tlp|dllp)s?\b'
       - '\b(\d+(\.\d+)?)\s?gt/s\b'
+    standards:
+      - {id: "PCIe 3.x", patterns: ['\bpci[\s-]?e(?:xpress)?[\s-]*(?:gen[\s-]*)?3(?:\.\d)?\b', 'pci express base specification[^\n]{0,30}revision\s*3\.\d']}
+      - {id: "PCIe 4.0", patterns: ['\bpci[\s-]?e(?:xpress)?[\s-]*(?:gen[\s-]*)?4(?:\.0)?\b', 'pci express base specification[^\n]{0,30}revision\s*4\.0']}
+      - {id: "PCIe 5.0", patterns: ['\bpci[\s-]?e(?:xpress)?[\s-]*(?:gen[\s-]*)?5(?:\.0)?\b', 'pci express base specification[^\n]{0,30}revision\s*5\.0']}
+      - {id: "PCIe 6.x", patterns: ['\bpci[\s-]?e(?:xpress)?[\s-]*(?:gen[\s-]*)?6(?:\.\d)?\b', 'pci express base specification[^\n]{0,30}revision\s*6\.\d']}
+      - {id: "PCIe CEM", patterns: ['\bcem\b', 'card electromechanical']}
+      - {id: "M.2", patterns: ['\bm\.2\b', 'ngff']}
     glossary:
       LTSSM: Link Training and Status State Machine
       TLP: Transaction Layer Packet
@@ -102,6 +124,12 @@ domains:
       - '\bmdio\b'
       - '\bmac\s?(adres|address|layer|katman)'
       - '\btsn\b'
+    standards:
+      - {id: "IEEE 802.3", patterns: ['\b(?:ieee\s*)?802\.3\w*']}
+      - {id: "IEEE 802.1 TSN", patterns: ['\b(?:ieee\s*)?802\.1\w*', '\btsn\b', 'time[- ]sensitive network']}
+      - {id: "RGMII", patterns: ['\brgmii\b']}
+      - {id: "SGMII", patterns: ['\b(?:q|s)gmii\b']}
+      - {id: "USXGMII", patterns: ['\busxgmii\b']}
     glossary:
       MII: Media Independent Interface
       RGMII: Reduced Gigabit Media Independent Interface
@@ -134,6 +162,11 @@ domains:
       - '\baux\s?(ch|channel|kanal)'
       - '\bdpcd\b'
       - '\bmst\b'
+    standards:
+      - {id: "DisplayPort 1.2", patterns: ['\b(?:dp|displayport)\s*(?:v(?:ersion)?\s*)?1\.2a?\b']}
+      - {id: "DisplayPort 1.4", patterns: ['\b(?:dp|displayport)\s*(?:v(?:ersion)?\s*)?1\.4a?\b']}
+      - {id: "DisplayPort 2.x", patterns: ['\b(?:dp|displayport)\s*(?:v(?:ersion)?\s*)?2\.\d\b', '\buhbr\s?\d']}
+      - {id: "eDP", patterns: ['\bedp\b', 'embedded displayport']}
     glossary:
       DPCD: DisplayPort Configuration Data
       HBR: High Bit Rate
@@ -161,6 +194,12 @@ domains:
       - '\bsuperspeed\b'
       - '\bhigh[\s-]speed usb'
       - '\b(cc1|cc2|vconn)\b'
+    standards:
+      - {id: "USB 2.0", patterns: ['\busb\s*2(?:\.0)?\b', 'universal serial bus specification[^\n]{0,30}revision\s*2\.0']}
+      - {id: "USB 3.x", patterns: ['\busb\s*3(?:\.\d)?\b', '\bsuperspeed\b']}
+      - {id: "USB4", patterns: ['\busb\s*4\b']}
+      - {id: "USB Type-C", patterns: ['\btype[\s-]?c\b']}
+      - {id: "USB PD", patterns: ['\bpower delivery\b', '\busb[\s-]?pd\b']}
     glossary:
       PD: Power Delivery
       CC: Configuration Channel
@@ -186,6 +225,9 @@ domains:
       - '\brs[\s-]?4(22|23|85)\b'
       - '\b(tia|eia)[\s/-]*(eia[\s-]*)?4(22|23|85)'
       - '\bv\.11\b'
+    standards:
+      - {id: "TIA-422", patterns: ['\brs[\s-]?422\b', '\b(?:tia|eia)[\s/-]*(?:eia[\s-]*)?422', '\bv\.11\b']}
+      - {id: "TIA-485", patterns: ['\brs[\s-]?485\b', '\b(?:tia|eia)[\s/-]*(?:eia[\s-]*)?485']}
     glossary:
       RS-422: TIA/EIA-422 balanced (differential) voltage digital interface
       RS-485: TIA/EIA-485 multipoint differential interface
@@ -204,6 +246,10 @@ domains:
       - '\bsmbus\b'
       - '\bi3c\b'
       - '\b(sda|scl)\b'
+    standards:
+      - {id: "I2C", patterns: ['\bi\s?2\s?c\b', '\bi²c\b', '\bum10204\b']}
+      - {id: "SMBus", patterns: ['\bsmbus\b']}
+      - {id: "I3C", patterns: ['\bi3c\b']}
     glossary:
       SDA: Serial Data line
       SCL: Serial Clock line
@@ -227,6 +273,16 @@ domains:
       - '\biec[\s-]?\d{4,5}'
       - '\barp[\s-]?47\d{2}'
       - '\bdal\b'
+    standards:
+      - {id: "DO-254", patterns: ['\bdo[\s-]?254']}
+      - {id: "DO-160", patterns: ['\bdo[\s-]?160']}
+      - {id: "DO-178C", patterns: ['\bdo[\s-]?178']}
+      - {id: "MIL-STD-461", patterns: ['\bmil[\s-]?std[\s-]?461']}
+      - {id: "MIL-STD-704", patterns: ['\bmil[\s-]?std[\s-]?704']}
+      - {id: "MIL-STD-1553", patterns: ['\bmil[\s-]?std[\s-]?1553', '\b1553b?\b']}
+      - {id: "IPC-2221", patterns: ['\bipc[\s-]?2221']}
+      - {id: "IPC-2152", patterns: ['\bipc[\s-]?2152']}
+      - {id: "IPC-A-610", patterns: ['\bipc[\s-]?a[\s-]?610']}
     glossary:
       DAL: Design Assurance Level
       EMI: Electromagnetic Interference
