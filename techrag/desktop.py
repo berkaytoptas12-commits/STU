@@ -35,11 +35,22 @@ def _attach_console() -> None:
 
 
 def _log_file() -> Path:
-    from techrag.config import user_config_dir
+    """techrag.log next to settings.json (%APPDATA%\\TechRAG by default)."""
+    from techrag.settings import settings_path
 
-    d = user_config_dir()
+    d = settings_path().parent
     d.mkdir(parents=True, exist_ok=True)
     return d / "techrag.log"
+
+
+def _webview_version(webview) -> str:
+    version = getattr(webview, "__version__", None)
+    if version is None:
+        try:
+            from webview._version import __version__ as version
+        except Exception:
+            version = "?"
+    return str(version)
 
 
 def _message_box(title: str, text: str) -> None:
@@ -68,23 +79,29 @@ def _dialog(kind: str):
 
 
 class JsApi:
-    """Native dialogs exposed to the page as window.pywebview.api.*"""
+    """Native dialogs exposed to the page as window.pywebview.api.*
+
+    pywebview builds the JS bridge by walking every public attribute of this object recursively. The window
+    must therefore live in an underscore attribute: as a public attribute pywebview descends into
+    window.native (the WinForms form) and recurses through the .NET object graph forever, which froze the
+    app on start-up in v0.1.0. Keep this class to public *methods* only.
+    """
 
     def __init__(self):
-        self.window = None
+        self._window = None
 
     def pick_folder(self):
-        r = self.window.create_file_dialog(_dialog("FOLDER"))
+        r = self._window.create_file_dialog(_dialog("FOLDER"))
         return (r[0] if isinstance(r, (list, tuple)) else r) if r else None
 
     def pick_files(self):
-        r = self.window.create_file_dialog(
+        r = self._window.create_file_dialog(
             _dialog("OPEN"), allow_multiple=True,
             file_types=("Documents (*.pdf;*.docx;*.md;*.txt;*.html;*.htm)", "All files (*.*)"))
         return list(r) if r else []
 
     def save_text(self, filename: str, content: str) -> bool:
-        r = self.window.create_file_dialog(_dialog("SAVE"), save_filename=filename)
+        r = self._window.create_file_dialog(_dialog("SAVE"), save_filename=filename)
         path = r if isinstance(r, str) else (r[0] if r else None)
         if not path:
             return False
@@ -217,11 +234,11 @@ def run_gui() -> int:
     except ImportError:
         _message_box("TechRAG", "pywebview is missing from this build.")
         return 1
-    log.info("pywebview %s", getattr(webview, "__version__", "?"))
+    log.info("pywebview %s", _webview_version(webview))
     api = JsApi()
     window = webview.create_window("TechRAG", f"http://127.0.0.1:{port}/?token={token}", js_api=api,
                                    width=1480, height=940, min_size=(960, 620), text_select=True)
-    api.window = window
+    api._window = window
     try:
         window.events.loaded += lambda: log.info("page loaded")
         window.events.closed += lambda: log.info("window closed")

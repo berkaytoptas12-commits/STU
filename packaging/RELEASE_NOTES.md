@@ -1,5 +1,13 @@
 ## TechRAG — Windows masaüstü uygulaması
 
+### 0.1.1'deki düzeltme
+- **0.1.0 açılışta donuyordu** ("yanıt vermiyor" / "çalışmayı durdurdu"). pywebview, JavaScript köprüsünü
+  kurarken pencere nesnesinin içindeki .NET formuna inip nesne ağacında sonsuz özyinelemeye giriyordu.
+  Düzeltildi; derleme artık CI'da gerçek WebView2 penceresi açılarak (sayfa + JS köprüsü) test ediliyor.
+- Başlangıç günlüğü: `%APPDATA%\TechRAG\techrag.log` (her aşama, hatalar, çökme izi).
+- Tarayıcıyla indirilen zip'ten çıkarılan DLL'lerin "internetten indirildi" işareti açılışta kaldırılıyor
+  (.NET'in bu dosyaları yüklemeyi reddetmesini önler).
+
 Arayüz ve tasarım standartları (ARINC, DDR, PCIe, Ethernet, DisplayPort, USB, RS-422, I²C, genel) için
 kaynaklara bağlı, cevabı göstermeden önce doğrulayan asistan. Modeller kurum içi vLLM / SGLang
 (OpenAI uyumlu) sunucularından kullanılır; exe içinde model yoktur.
