@@ -57,6 +57,27 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "onefile selftest failed" }
           $j = Get-Content selftest-onedir.json | ConvertFrom-Json
           if ($j.pywebview -ne $true) { throw "pywebview not bundled: $($j.pywebview)" }
+      - name: GUI smoke test (real WebView2 window, both builds)
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:APPDATA "TechRAG/techrag.log"
+          foreach ($exe in @("dist/TechRAG/TechRAG.exe", "dist/TechRAG-portable.exe")) {
+            $name = [IO.Path]::GetFileNameWithoutExtension($exe)
+            $out = Join-Path $PWD "smoke-$name.json"
+            $env:TECHRAG_SMOKE = $out
+            Write-Host "=== $exe"
+            $p = Start-Process -FilePath $exe -PassThru
+            if (-not $p.WaitForExit(240000)) {
+              Stop-Process -Id $p.Id -Force
+              Get-Content $log -Tail 120 -ErrorAction SilentlyContinue
+              throw "$exe did not finish: the window hung (not responding)"
+            }
+            Get-Content $log -Tail 40 -ErrorAction SilentlyContinue
+            if (-not (Test-Path $out)) { throw "$exe exited (code $($p.ExitCode)) without a smoke result - crashed" }
+            Get-Content $out
+            $j = Get-Content $out | ConvertFrom-Json
+            if (-not $j.ok) { throw "$exe GUI smoke test failed" }
+          }
       - name: Package
         shell: pwsh
         run: Compress-Archive -Path dist/TechRAG -DestinationPath TechRAG-win64.zip
