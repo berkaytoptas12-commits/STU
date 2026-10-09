@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Standart Asistanı</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Standart Asistanı <span class="muted" id="model-info"></span></div>
+    <div class="top-actions">
+      <button class="ghost" id="btn-new-chat" title="Sohbet geçmişini temizle">Yeni sohbet</button>
+      <button class="ghost only-narrow" id="btn-toggle-sources">Kaynaklar</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- Sources -->
+    <aside class="panel sources" id="sources-panel">
+      <div class="panel-head">
+        <h2>Kaynaklar</h2>
+        <span class="muted small" id="index-stats"></span>
+      </div>
+      <p class="hint">Hiçbir şey seçmezseniz tüm kaynaklarda aranır; soruda geçen standart adı (PCIe, ARINC 429 ...) aramayı otomatik daraltır.</p>
+      <div id="collections"></div>
+
+      <details class="upload" id="upload-box">
+        <summary>Kaynak ekle</summary>
+        <form id="upload-form">
+          <label>Koleksiyon <select id="upload-domain"></select></label>
+          <input type="file" id="upload-file" accept=".pdf,.txt,.md,.html,.htm,.docx" required>
+          <button type="submit">Yükle ve indeksle</button>
+        </form>
+        <pre class="job-log" id="job-log" hidden></pre>
+      </details>
+    </aside>
+
+    <!-- Chat -->
+    <section class="panel chat">
+      <div class="messages" id="messages">
+        <div class="empty" id="empty-state">
+          <h1>Standartlara sorun</h1>
+          <p>Cevaplar yalnızca yüklenen standart dokümanlarından üretilir ve her bilgi [n] atfıyla kaynağına bağlanır.</p>
+          <div class="examples">
+            <button class="example">ARINC 429 veri kelimesinde SSM bitleri hangi bitlerdir ve ne anlama gelir?</button>
+            <button class="example">PCIe LTSSM Polling durumunun alt durumları nelerdir?</button>
+            <button class="example">I2C Fast-mode Plus için maksimum SCL frekansı ve yükselme süresi nedir?</button>
+            <button class="example">DDR4 ile DDR5 arasındaki VDD besleme gerilimi farkı nedir?</button>
+          </div>
+        </div>
+      </div>
+      <form class="composer" id="composer">
+        <textarea id="question" rows="2" placeholder="Sorunuzu yazın (Türkçe veya İngilizce)… Enter: gönder, Shift+Enter: yeni satır" required></textarea>
+        <button type="submit" id="btn-send">Sor</button>
+      </form>
+    </section>
+
+    <!-- Viewer / notes -->
+    <aside class="panel viewer">
+      <div class="tabs">
+        <button class="tab active" data-tab="source">Kaynak</button>
+        <button class="tab" data-tab="notes">Notlar <span id="notes-count" class="badge"></span></button>
+      </div>
+      <div class="tab-body" id="tab-source">
+        <p class="muted">Bir cevaptaki [n] atfına veya bir kaynağa tıklayın.</p>
+      </div>
+      <div class="tab-body" id="tab-notes" hidden>
+        <div class="notes-actions">
+          <button class="ghost" id="btn-export-notes">Markdown indir</button>
+          <button class="ghost" id="btn-clear-notes">Tümünü sil</button>
+        </div>
+        <div id="notes-list"></div>
+      </div>
+    </aside>
+  </main>
+
+  <template id="tpl-answer">
+    <div class="msg assistant">
+      <div class="plan small muted" hidden></div>
+      <div class="body markdown"><span class="typing">Kaynaklar aranıyor…</span></div>
+      <div class="verify" hidden></div>
+      <div class="cites"></div>
+      <div class="msg-actions" hidden>
+        <button class="ghost small btn-note">Not olarak kaydet</button>
+        <button class="ghost small btn-copy">Kopyala</button>
+        <span class="muted small timing"></span>
+      </div>
+    </div>
+  </template>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

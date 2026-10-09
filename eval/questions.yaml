@@ -1,0 +1,182 @@
+# Değerlendirme soru seti  —  çalıştırma:  techrag eval            (tam: arama + cevap)
+#                                           techrag eval --retrieval-only   (LLM çağırmadan arama kalitesi)
+#
+# Her madde:
+#   question      : kullanıcı sorusu
+#   expected      : cevapta (ve getirilen pasajlarda) bulunması gereken ifadeler. HEPSİ gerekir.
+#                   Bir madde liste ise alternatiflerdir: [["8.0 GT/s", "8 GT/s"]] -> ikisinden biri yeter.
+#   expected_doc  : (isteğe bağlı) kaynak doküman adında/yolunda geçmesi gereken parça, örn. "UM10204"
+#
+# Buradaki beklenen değerler yaygın olarak bilinen, standart metinlerinde geçen değerlerdir. Kendi
+# doküman revizyonlarınıza göre kontrol edin; mühendislerinizin gerçek sorularıyla seti büyütün.
+# Doğruluğu artırmanın en etkili yolu: bu seti 100+ gerçek soruya çıkarıp her ayar değişikliğinde koşmak.
+
+# ----------------------------------------------------------------- ARINC
+- id: arinc-01
+  domain: arinc
+  question: ARINC 429 bir veri kelimesi kaç bitten oluşur?
+  expected: ["32"]
+- id: arinc-02
+  domain: arinc
+  question: ARINC 429 kelimesinde etiket (label) hangi bitlerde yer alır?
+  expected: [["1-8", "1–8", "1 through 8", "1 to 8", "1 ile 8", "1'den 8", "1 - 8", "1 ila 8"]]
+- id: arinc-03
+  domain: arinc
+  question: ARINC 429 yüksek hızda (high speed) veri hızı nedir?
+  expected: ["100"]
+- id: arinc-04
+  domain: arinc
+  question: ARINC 429 düşük hız modunda bit hızı aralığı nedir?
+  expected: [["14.5", "14,5"]]
+- id: arinc-05
+  domain: arinc
+  question: ARINC 429 kelimesinde parite biti hangi bittir ve hangi parite kullanılır?
+  expected: ["32", ["odd", "tek"]]
+- id: arinc-06
+  domain: arinc
+  question: ARINC 664 Part 7 (AFDX) için izin verilen BAG değerleri nelerdir?
+  expected: ["128"]
+
+# ------------------------------------------------------------------- DDR
+- id: ddr-01
+  domain: ddr
+  question: DDR4 SDRAM'in VDD besleme gerilimi nedir?
+  expected: [["1.2", "1,2"]]
+- id: ddr-02
+  domain: ddr
+  question: DDR5 SDRAM'in VDD besleme gerilimi nedir?
+  expected: [["1.1", "1,1"]]
+- id: ddr-03
+  domain: ddr
+  question: DDR4'te prefetch mimarisi nedir?
+  expected: ["8n"]
+- id: ddr-04
+  domain: ddr
+  question: DDR5'te varsayılan burst length (BL) değeri nedir?
+  expected: ["16"]
+- id: ddr-05
+  domain: ddr
+  question: DDR4 için normal sıcaklık aralığında ortalama yenileme aralığı tREFI nedir?
+  expected: [["7.8", "7,8"]]
+
+# ------------------------------------------------------------------ PCIe
+- id: pcie-01
+  domain: pcie
+  question: PCIe 3.0 hangi hat kodlama şemasını kullanır?
+  expected: ["128b/130b"]
+- id: pcie-02
+  domain: pcie
+  question: PCIe 3.0 (Gen3) şerit başına veri hızı nedir?
+  expected: [["8.0 GT/s", "8 GT/s", "8,0 GT/s", "8.0GT/s", "8GT/s"]]
+- id: pcie-03
+  domain: pcie
+  question: PCIe 5.0 şerit başına veri hızı nedir?
+  expected: [["32.0 GT/s", "32 GT/s", "32,0 GT/s", "32GT/s", "32.0GT/s"]]
+- id: pcie-04
+  domain: pcie
+  question: PCIe 1.x ve 2.x hangi kodlamayı kullanır?
+  expected: ["8b/10b"]
+- id: pcie-05
+  domain: pcie
+  question: PCIe LTSSM'in ana durumları nelerdir?
+  expected: ["Detect", "Polling", "Configuration", "L0", "Recovery"]
+- id: pcie-06
+  domain: pcie
+  question: PCIe 6.0 hangi sinyal modülasyonunu kullanır?
+  expected: ["PAM4"]
+
+# -------------------------------------------------------------- Ethernet
+- id: eth-01
+  domain: ethernet
+  question: Ethernet minimum çerçeve boyutu kaç bayttır?
+  expected: ["64"]
+- id: eth-02
+  domain: ethernet
+  question: Ethernet'te minimum interpacket gap kaç bit süresidir?
+  expected: ["96"]
+- id: eth-03
+  domain: ethernet
+  question: 100BASE-TX hangi kodlamaları kullanır?
+  expected: [["4B/5B", "4B5B"], "MLT-3"]
+- id: eth-04
+  domain: ethernet
+  question: Ethernet preamble kaç oktettir?
+  expected: [["7 oktet", "7 octet", "7 bayt", "7 byte", "seven octets", "56 bit"]]
+
+# ---------------------------------------------------------- DisplayPort
+- id: dp-01
+  domain: displayport
+  question: DisplayPort HBR3 şerit başına bit hızı nedir?
+  expected: [["8.1", "8,1"]]
+- id: dp-02
+  domain: displayport
+  question: DisplayPort HBR2 şerit başına bit hızı nedir?
+  expected: [["5.4", "5,4"]]
+- id: dp-03
+  domain: displayport
+  question: DisplayPort 2.x UHBR hızları hangi kodlamayı kullanır?
+  expected: ["128b/132b"]
+- id: dp-04
+  domain: displayport
+  question: DisplayPort AUX kanalı hangi kodlamayı kullanır?
+  expected: ["Manchester"]
+
+# ------------------------------------------------------------------- USB
+- id: usb-01
+  domain: usb
+  question: USB 2.0 High-Speed veri hızı nedir?
+  expected: ["480"]
+- id: usb-02
+  domain: usb
+  question: USB 2.0 Full-Speed ve Low-Speed veri hızları nedir?
+  expected: ["12", [ "1.5", "1,5"]]
+- id: usb-03
+  domain: usb
+  question: USB 3.2 Gen 2 hangi kodlamayı kullanır?
+  expected: ["128b/132b"]
+- id: usb-04
+  domain: usb
+  question: USB Power Delivery EPR modunda izin verilen en yüksek sabit gerilim nedir?
+  expected: ["48"]
+
+# ---------------------------------------------------------------- RS-422
+- id: rs422-01
+  domain: rs422
+  question: RS-422'de bir sürücüye en fazla kaç alıcı bağlanabilir?
+  expected: ["10"]
+- id: rs422-02
+  domain: rs422
+  question: RS-422 alıcısının diferansiyel giriş hassasiyeti (eşik) nedir?
+  expected: [["200 mV", "200mV", "0.2 V", "0,2 V"]]
+- id: rs422-03
+  domain: rs422
+  question: RS-422 için maksimum kablo uzunluğu nedir?
+  expected: [["1200", "1 200", "4000", "1.2 km", "1,2 km"]]
+
+# ------------------------------------------------------------------- I2C
+- id: i2c-01
+  domain: i2c
+  question: I2C Standard-mode, Fast-mode ve Fast-mode Plus için maksimum bit hızları nedir?
+  expected: ["100", "400", ["1 Mbit", "1 Mb", "1Mbit", "1 MHz", "1000 k"]]
+- id: i2c-02
+  domain: i2c
+  question: I2C High-speed mode maksimum bit hızı nedir?
+  expected: [["3.4", "3,4"]]
+- id: i2c-03
+  domain: i2c
+  question: Standard-mode ve Fast-mode için izin verilen maksimum bus kapasitansı nedir?
+  expected: ["400"]
+- id: i2c-04
+  domain: i2c
+  question: I2C'de START koşulu nasıl tanımlanır?
+  expected: ["SDA", "SCL"]
+
+# --------------------------------------------------------------- General
+- id: gen-01
+  domain: general
+  question: DO-254'te tasarım güvence seviyeleri (DAL) nelerdir?
+  expected: [["A, B, C", "A–E", "A-E", "A'dan E", "A through E", "A ile E", "A-D", "A–D", "Level A"]]
+- id: gen-02
+  domain: general
+  question: MIL-STD-461'de CE102 testi neyi kapsar?
+  expected: [["conducted emission", "iletilen emisyon", "iletim yoluyla", "power lead", "güç hat"]]

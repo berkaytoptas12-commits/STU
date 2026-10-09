@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+build/
+dist/
+
+# Index, reports and model weights (large / regenerated)
+data/index/
+data/eval_reports/
+models/
+ollama/
+offline_bundle/
+*.tgz
+
+# Standard documents are licensed material: keep them out of git.
+data/sources/**
+!data/sources/*/
+!data/sources/*/.gitkeep

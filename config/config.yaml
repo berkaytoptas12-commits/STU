@@ -1,0 +1,72 @@
+# techrag - kapalı ağ (air-gapped) RAG konfigürasyonu
+# Göreli yollar, komutun çalıştırıldığı dizine (proje kökü) göredir.
+# Her değer ortam değişkeniyle ezilebilir: TECHRAG_<BÖLÜM>__<ANAHTAR>, örn. TECHRAG_LLM__MODEL=qwen3:32b
+
+offline: true            # HF_HUB_OFFLINE / TRANSFORMERS_OFFLINE zorlanır, hiçbir model internetten indirilmeye çalışılmaz
+
+paths:
+  sources_dir: data/sources        # Standart dokümanları: data/sources/<koleksiyon>/*.pdf
+  index_dir: data/index            # SQLite indeks (FTS5 + vektörler) burada tutulur
+  domains_file: config/domains.yaml
+
+llm:
+  provider: ollama                 # ollama | openai (vLLM, llama.cpp server, LM Studio, TGI ...)
+  base_url: http://localhost:11434 # openai sağlayıcısında /v1 ile bitmeli, örn. http://localhost:8001/v1
+  model: qwen3:14b                 # donanıma göre README'deki tabloya bakın
+  api_key: ""
+  temperature: 0.1                 # standart sorularında düşük sıcaklık = daha az uydurma
+  max_tokens: 2048
+  num_ctx: 16384                   # Ollama varsayılanı küçüktür; kaynaklar kesilmesin diye büyütülür
+  timeout: 600
+  think: false                     # qwen3 / deepseek-r1 gibi "düşünen" modellerde düşünmeyi kapatır (null = gönderme)
+
+embedding:
+  backend: sentence_transformers   # sentence_transformers | ollama | openai | hash(sadece test)
+  model: models/bge-m3             # yerel klasör (scripts/download_models.py ile indirilir)
+  # backend: ollama ise:  model: bge-m3   base_url: http://localhost:11434
+  base_url: http://localhost:11434
+  device: cpu                      # cpu | cuda
+  batch_size: 16
+  max_seq_length: 1024
+  query_prefix: ""                 # e5 modelleri için "query: "
+  passage_prefix: ""               # e5 modelleri için "passage: "
+
+reranker:
+  enabled: true
+  backend: sentence_transformers
+  model: models/bge-reranker-v2-m3 # çok dilli cross-encoder: Türkçe soru <-> İngilizce standart
+  device: cpu
+  batch_size: 16
+  max_length: 1024
+  candidates: 40                   # yeniden sıralanacak aday sayısı (CPU'da yavaşsa 20'ye indirin)
+
+chunking:
+  target_tokens: 380
+  max_tokens: 650
+  overlap_tokens: 60
+  min_tokens: 40
+  extract_tables: true             # PDF tablolarını Markdown tablo olarak ayrı parçalar halinde saklar
+  strip_headers_footers: true      # her sayfada tekrar eden üst/alt bilgileri siler
+  skip_toc_pages: true             # içindekiler / şekil listesi sayfalarını indekslemez
+
+retrieval:
+  bm25_top_k: 40
+  dense_top_k: 40
+  rrf_k: 60
+  final_top_k: 8                   # LLM'e verilen kaynak pasaj sayısı
+  neighbor_window: 1               # bulunan parçanın aynı bölümdeki komşularını da bağlama ekler
+  max_context_tokens: 7000
+  domain_routing: true             # soruda "PCIe", "ARINC 429" vb. geçiyorsa aramayı o koleksiyona daraltır
+  min_results_for_filter: 1        # daraltılmış arama bundan az sonuç verirse tüm koleksiyonlarda aranır
+  query_rewrite: true              # LLM ile: Türkçe -> İngilizce terminoloji, takip sorusu çözümleme, anahtar kelime
+
+answer:
+  verify: true                     # atıf + sayısal değer doğrulaması
+  self_correct: false              # doğrulanamayan değer bulunursa LLM'e cevabı düzelttir (ekstra çağrı)
+  history_turns: 3
+
+server:
+  host: 127.0.0.1                  # yerel ağdan erişim için 0.0.0.0
+  port: 8000
+  allow_upload: true
+  api_token: ""                    # doluysa API "Authorization: Bearer <token>" ister

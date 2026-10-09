@@ -1,0 +1,368 @@
+# Koleksiyon (domain) tanımları.
+#  folders  : data/sources altında bu koleksiyona ait sayılan klasör adları
+#  patterns : soruda / dosya adında geçince bu koleksiyonu işaret eden regex'ler (büyük/küçük harf duyarsız)
+#  glossary : kısaltma -> açılım. Sorgu genişletmede ve LLM'e terminoloji ipucu olarak kullanılır.
+# Yeni bir standart ailesi eklemek için buraya bir blok ekleyip data/sources/<anahtar>/ klasörünü açmanız yeterli.
+
+domains:
+  arinc:
+    name: "ARINC (429 / 664-AFDX / 653 / 818 / 825 ...)"
+    folders: [arinc, arinc429, arinc664, arinc653, afdx]
+    patterns:
+      - '\barinc[\s-]?\d*'
+      - '\ba(429|453|575|615|629|653|664|708|717|739|818|825)\b'
+      - '\bafdx\b'
+      - '\bavionics full[- ]duplex'
+      - '\bapex\b'
+    glossary:
+      AFDX: Avionics Full-Duplex Switched Ethernet
+      SSM: Sign/Status Matrix
+      SDI: Source/Destination Identifier
+      BNR: Binary Numeric Representation
+      BCD: Binary Coded Decimal
+      BAG: Bandwidth Allocation Gap
+      VL: Virtual Link
+      APEX: APplication EXecutive
+      IMA: Integrated Modular Avionics
+      LRU: Line Replaceable Unit
+      ES: End System
+
+  ddr:
+    name: "JEDEC DDR / LPDDR (DDR3, DDR4, DDR5, LPDDR4/5)"
+    folders: [ddr, ddr3, ddr4, ddr5, lpddr, jedec, dram, memory]
+    patterns:
+      - '\b(lp)?ddr\s?\d?x?\b'
+      - '\bjesd\s?\d+'
+      - '\bjedec\b'
+      - '\bs?dram\b'
+      - '\b(dimm|rdimm|udimm|lrdimm|sodimm)\b'
+      - '\bt(rfc|rcd|rp|ras|rc|faw|rrd|wr|wtr|ccd|refi|xs|dqss|dqsck)\b'
+    glossary:
+      tRFC: Refresh Cycle Time
+      tREFI: Average Refresh Interval
+      tRCD: ACTIVATE to READ/WRITE delay
+      tRP: PRECHARGE command period
+      tRAS: ACTIVATE to PRECHARGE command period
+      tFAW: Four Activate Window
+      CL: CAS Latency
+      CWL: CAS Write Latency
+      ODT: On-Die Termination
+      ZQ: ZQ calibration
+      MRS: Mode Register Set
+      MR: Mode Register
+      DQS: Data Strobe
+      DM: Data Mask
+      DBI: Data Bus Inversion
+      ECC: Error Correction Code
+      PMIC: Power Management IC
+      SPD: Serial Presence Detect
+      BL: Burst Length
+      DFE: Decision Feedback Equalization
+
+  pcie:
+    name: "PCI Express (Base / CEM / M.2)"
+    folders: [pcie, pci_express, pci-express, pci]
+    patterns:
+      - '\bpci[\s-]?e\b'
+      - '\bpcie\b'
+      - '\bpci\s?express\b'
+      - '\bltssm\b'
+      - '\b(tlp|dllp)s?\b'
+      - '\b(\d+(\.\d+)?)\s?gt/s\b'
+    glossary:
+      LTSSM: Link Training and Status State Machine
+      TLP: Transaction Layer Packet
+      DLLP: Data Link Layer Packet
+      ASPM: Active State Power Management
+      AER: Advanced Error Reporting
+      BAR: Base Address Register
+      MSI: Message Signaled Interrupt
+      LCRC: Link CRC
+      ECRC: End-to-end CRC
+      FLIT: Flow Control Unit
+      PAM4: 4-level Pulse Amplitude Modulation
+      CEM: Card Electromechanical
+      REFCLK: Reference Clock
+      SRIS: Separate Refclk Independent SSC
+      SSC: Spread Spectrum Clocking
+      EQ: Equalization
+      RC: Root Complex
+      EP: Endpoint
+
+  ethernet:
+    name: "Ethernet (IEEE 802.3, MII/RGMII/SGMII, TSN)"
+    folders: [ethernet, eth, ieee802.3, 802.3, ieee8023]
+    patterns:
+      - '\bethernet\b'
+      - '\b802\.3\w*'
+      - '\b802\.1\w*'
+      - '\b(10|100|1000|2\.5g|5g|10g|25g|40g|100g)base[-\s]?\w+'
+      - '\b(r|s|x|q|us|xg)?gmii\b'
+      - '\bmii\b'
+      - '\bmdio\b'
+      - '\bmac\s?(adres|address|layer|katman)'
+      - '\btsn\b'
+    glossary:
+      MII: Media Independent Interface
+      RGMII: Reduced Gigabit Media Independent Interface
+      SGMII: Serial Gigabit Media Independent Interface
+      MDIO: Management Data Input/Output
+      PCS: Physical Coding Sublayer
+      PMA: Physical Medium Attachment
+      PMD: Physical Medium Dependent
+      FCS: Frame Check Sequence
+      SFD: Start Frame Delimiter
+      IFG: Inter-Frame Gap
+      IPG: Inter-Packet Gap
+      MTU: Maximum Transmission Unit
+      PHY: Physical Layer device
+      TSN: Time-Sensitive Networking
+      PTP: Precision Time Protocol
+      VLAN: Virtual LAN
+      EEE: Energy Efficient Ethernet
+
+  displayport:
+    name: "VESA DisplayPort / eDP"
+    folders: [displayport, dp, edp, vesa]
+    patterns:
+      - '\bdisplay\s?port\b'
+      - '\be?dp\s?\d(\.\d+)?\b'
+      - '\bedp\b'
+      - '\bvesa\b'
+      - '\buhbr\s?\d*'
+      - '\bhbr\d?\b'
+      - '\baux\s?(ch|channel|kanal)'
+      - '\bdpcd\b'
+      - '\bmst\b'
+    glossary:
+      DPCD: DisplayPort Configuration Data
+      HBR: High Bit Rate
+      UHBR: Ultra High Bit Rate
+      MST: Multi-Stream Transport
+      SST: Single-Stream Transport
+      HPD: Hot Plug Detect
+      AUX: Auxiliary Channel
+      DSC: Display Stream Compression
+      FEC: Forward Error Correction
+      eDP: embedded DisplayPort
+      LTTPR: Link-Training Tunable PHY Repeater
+      SDP: Secondary Data Packet
+      MSA: Main Stream Attribute
+
+  usb:
+    name: "USB (2.0 / 3.x / USB4 / Type-C / Power Delivery)"
+    folders: [usb, usb2, usb3, usb4, typec, type-c, usbpd]
+    patterns:
+      - '\busb\s?\d?(\.\d)?'
+      - '\btype[\s-]?c\b'
+      - '\bvbus\b'
+      - '\bpower delivery\b'
+      - '\busb[\s-]?pd\b'
+      - '\bsuperspeed\b'
+      - '\bhigh[\s-]speed usb'
+      - '\b(cc1|cc2|vconn)\b'
+    glossary:
+      PD: Power Delivery
+      CC: Configuration Channel
+      VBUS: USB bus power
+      VCONN: Type-C connector power for cables
+      PDO: Power Data Object
+      EPR: Extended Power Range
+      SPR: Standard Power Range
+      LFPS: Low Frequency Periodic Signaling
+      SOF: Start of Frame
+      OTG: On-The-Go
+      DRD: Dual-Role Data
+      DRP: Dual-Role Power
+      xHCI: eXtensible Host Controller Interface
+      HS: High-Speed (480 Mb/s)
+      FS: Full-Speed (12 Mb/s)
+      LS: Low-Speed (1.5 Mb/s)
+
+  rs422:
+    name: "RS-422 / RS-485 (TIA/EIA-422, TIA/EIA-485)"
+    folders: [rs422, rs-422, rs485, rs-485, tia422, eia422, serial]
+    patterns:
+      - '\brs[\s-]?4(22|23|85)\b'
+      - '\b(tia|eia)[\s/-]*(eia[\s-]*)?4(22|23|85)'
+      - '\bv\.11\b'
+    glossary:
+      RS-422: TIA/EIA-422 balanced (differential) voltage digital interface
+      RS-485: TIA/EIA-485 multipoint differential interface
+      UL: Unit Load
+      VOD: Differential Output Voltage
+      VCM: Common-Mode Voltage
+      Rt: Termination resistor
+
+  i2c:
+    name: "I2C / SMBus / I3C"
+    folders: [i2c, iic, smbus, i3c]
+    patterns:
+      - '\bi\s?2\s?c\b'
+      - '\bi²c\b'
+      - '\biic\b'
+      - '\bsmbus\b'
+      - '\bi3c\b'
+      - '\b(sda|scl)\b'
+    glossary:
+      SDA: Serial Data line
+      SCL: Serial Clock line
+      ACK: Acknowledge
+      NACK: Not Acknowledge
+      Fm: Fast-mode (400 kbit/s)
+      Fm+: Fast-mode Plus (1 Mbit/s)
+      Hs: High-speed mode (3.4 Mbit/s)
+      UFm: Ultra Fast-mode (5 Mbit/s)
+      Sr: Repeated START
+      Cb: bus capacitance
+
+  general:
+    name: "Genel tasarım standartları (DO-254, DO-160, DO-178C, MIL-STD, IPC, IEC ...)"
+    folders: [general, genel, design, tasarim, misc]
+    patterns:
+      - '\bdo[\s-]?(160|178|254|297)\w*'
+      - '\bmil[\s-]?std[\s-]?\d+'
+      - '\bmil[\s-]?hdbk[\s-]?\d+'
+      - '\bipc[\s-]?\d{3,4}\w*'
+      - '\biec[\s-]?\d{4,5}'
+      - '\barp[\s-]?47\d{2}'
+      - '\bdal\b'
+    glossary:
+      DAL: Design Assurance Level
+      EMI: Electromagnetic Interference
+      EMC: Electromagnetic Compatibility
+      ESD: Electrostatic Discharge
+      MTBF: Mean Time Between Failures
+      FMEA: Failure Modes and Effects Analysis
+      SI: Signal Integrity
+      PI: Power Integrity
+      PDN: Power Distribution Network
+
+# Türkçe -> İngilizce terim eşlemesi (anahtar kelime aramasını Türkçe sorularda güçlendirir).
+# Anahtarlar kök halinde yazılır; ek almış halleri ("gerilimi", "zamanlamaları") de eşleşir.
+# Türkçe karakter yazılmadan yazılan sorular ("hiz", "gerilim") için eşleşme ASCII'ye katlanarak yapılır.
+term_map:
+  zamanlama: timing
+  gecikme: latency delay
+  gerilim: voltage
+  voltaj: voltage
+  akım: current
+  güç: power
+  frekans: frequency
+  saat: clock
+  hız: speed rate
+  veri hızı: data rate
+  bant genişliği: bandwidth
+  empedans: impedance
+  sonlandırma: termination
+  direnç: resistor resistance
+  kapasitans: capacitance
+  kapasite: capacitance
+  kablo: cable
+  uzunluk: length
+  mesafe: distance length
+  konnektör: connector
+  bağlayıcı: connector
+  pin: pin
+  bacak: pin
+  sinyal: signal
+  diferansiyel: differential
+  ortak mod: common-mode
+  gürültü: noise
+  yükselme süresi: rise time
+  düşme süresi: fall time
+  kurulum süresi: setup time
+  tutma süresi: hold time
+  çerçeve: frame
+  paket: packet
+  kelime: word
+  etiket: label
+  adres: address
+  kayıt: register
+  yazmaç: register
+  bit: bit
+  bayt: byte
+  eşlik: parity
+  hata: error
+  hata düzeltme: error correction
+  kodlama: encoding
+  kod çözme: decoding
+  şerit: lane
+  bağlantı: link
+  eğitim: training
+  eşitleme: equalization
+  durum makinesi: state machine
+  durum: state status
+  yenileme: refresh
+  başlatma: initialization
+  sıfırlama: reset
+  güç yönetimi: power management
+  uyku: sleep suspend
+  bekleme: idle standby
+  besleme: supply
+  topraklama: ground grounding
+  ekranlama: shielding
+  yalıtım: isolation
+  sıcaklık: temperature
+  titreşim: vibration
+  sertifikasyon: certification
+  doğrulama: verification validation
+  gereksinim: requirement
+  maksimum: maximum
+  minimum: minimum
+  en fazla: maximum
+  en az: minimum
+  değer: value
+  aralık: range interval
+  süre: duration time period
+  periyot: period
+  tolerans: tolerance
+  kenar: edge
+  yükselen: rising
+  düşen: falling
+  alıcı: receiver
+  verici: transmitter driver
+  sürücü: driver
+  ana cihaz: master controller host
+  köle: slave target
+  hedef: target
+  denetleyici: controller
+  yol: bus path
+  veri yolu: bus
+  kanal: channel
+  bölüm: partition section
+  bölümleme: partitioning
+  zaman dilimi: time window slot
+  sanal bağlantı: virtual link
+  yedekli: redundant
+  yedeklilik: redundancy
+  bellek: memory
+  modül: module
+  sayfa: page
+  satır: row
+  sütun: column
+  okuma: read
+  yazma: write
+  komut: command
+  gecikme süresi: latency
+  çözünürlük: resolution
+  renk derinliği: color depth bpp
+  sıkıştırma: compression
+  sıcak takma: hot plug
+  şarj: charging
+  akım sınırı: current limit
+  yük: load
+  birim yük: unit load
+  çekme direnci: pull-up resistor
+  yukarı çekme: pull-up
+  ön ek: preamble
+  önsöz: preamble
+  kontrol toplamı: checksum CRC
+  boyut: size length
+  seviye: level
+  katman: layer
+  oran: rate ratio
+  mod: mode
+  çalışma: operation
+  sayı: number count
+  genişlik: width

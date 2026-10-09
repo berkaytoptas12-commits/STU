@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "techrag"
+version = "0.1.0"
+description = "Offline (air-gapped), NotebookLM-style, source-grounded RAG for hardware and avionics interface standards"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "numpy>=1.24",
+  "pyyaml>=6.0",
+  "httpx>=0.25",
+  "pymupdf>=1.24",
+  "fastapi>=0.110",
+  "uvicorn>=0.27",
+  "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+# Local embedding + reranker models (pulls in torch). Not needed when embeddings come from Ollama.
+local-models = ["sentence-transformers>=3.0"]
+docx = ["python-docx>=1.1"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+techrag = "techrag.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["techrag*"]
+
+[tool.setuptools.package-data]
+techrag = ["web/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
