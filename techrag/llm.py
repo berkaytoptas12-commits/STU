@@ -9,14 +9,16 @@ from typing import Iterator, Optional, Sequence
 
 import httpx
 
-from techrag.api import APIClient, APIError
+from techrag.api import APIClient, APIError, connect_error
 from techrag.config import LLMConfig, ServiceConfig
 
 Message = dict
 
 
 class LLMError(RuntimeError):
-    pass
+    def __init__(self, message: str, code: str = ""):
+        super().__init__(message)
+        self.code = code
 
 
 class ToolsUnsupported(LLMError):
@@ -142,7 +144,7 @@ class LLMClient:
                 if tools and exc.status in (400, 422) and "tool" in body:
                     self.tools_supported = False
                     raise ToolsUnsupported(str(exc)) from exc
-                raise LLMError(str(exc)) from exc
+                raise LLMError(str(exc), getattr(exc, "code", "")) from exc
 
     def _stream_once(self, payload: dict) -> Iterator[tuple[str, object]]:
         result = ChatResult()
@@ -190,7 +192,8 @@ class LLMClient:
                         if choice.get("finish_reason"):
                             result.finish_reason = choice["finish_reason"]
         except httpx.ConnectError as exc:
-            raise LLMError(f"LLM server unreachable at {self.api.base} ({exc})") from exc
+            err = connect_error(exc, self.api.base)
+            raise LLMError(f"LLM server unreachable: {err}", err.code) from exc
         c, rs = filt.flush()
         if c:
             result.content += c

@@ -15,7 +15,7 @@ from typing import Any
 from techrag.config import Config, apply_dict, user_config_dir
 
 SECRET_KEYS = ("api_key",)
-SECTIONS = ("llm", "vision", "embedding", "reranker", "paths", "ui", "answer", "retrieval")
+SECTIONS = ("llm", "vision", "embedding", "reranker", "paths", "ui", "answer", "retrieval", "tls")
 MASK = "••••••••"
 
 

@@ -61,6 +61,13 @@ answer:
   regenerate: true                   # one correction pass for failing claims
   failed_claims: strip               # strip | flag
 
+tls:                                 # HTTPS model endpoints (SSL: CERTIFICATE_VERIFY_FAILED -> see README)
+  system_store: true                 # trust the Windows certificate store (company CAs deployed by IT)
+  ca_bundle: ""                      # extra CA / server certificate files (PEM or DER), ';'-separated
+  use_system_proxy: false            # model servers are on the LAN; keep the corporate proxy out of the way
+
+# Per endpoint, as a last resort for test servers:  llm: { verify_ssl: false }
+
 server:
   host: 127.0.0.1
   port: 8765

@@ -21,12 +21,12 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from techrag import __version__
-from techrag.api import APIClient, check_service
+from techrag import __version__, tls
+from techrag.api import APIClient, check_service, configure_tls, current_tls, normalize_base_url
 from techrag.config import Config, ServiceConfig, resource_path
 from techrag.engine import RAGEngine
 from techrag.ingest.loaders import SUPPORTED_SUFFIXES
-from techrag.settings import MASK, public_settings, update_settings
+from techrag.settings import MASK, public_settings, settings_path, update_settings
 
 WEB_DIR = resource_path("web")
 SERVICES = ("llm", "vision", "embedding", "reranker")
@@ -58,6 +58,12 @@ class ServiceProbe(BaseModel):
     base_url: Optional[str] = None
     api_key: Optional[str] = None
     model: Optional[str] = None
+    verify_ssl: Optional[bool] = None
+
+
+class CertRequest(BaseModel):
+    base_url: str
+    sha256: Optional[str] = None
 
 
 class LibraryOpen(BaseModel):
@@ -189,6 +195,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 raise HTTPException(400, str(exc))
             new_cfg.server = state["cfg"].server
             state["cfg"] = new_cfg
+            configure_tls(new_cfg.tls)
             if set(patch) - {"ui"} or state["engine"] is None:
                 build_engine(new_cfg)
             else:
@@ -203,7 +210,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         key = saved.api_key if (p.api_key in (None, MASK)) else p.api_key
         return ServiceConfig(base_url=p.base_url if p.base_url is not None else saved.base_url,
                              api_key=key or "", model=p.model if p.model is not None else saved.model,
-                             timeout=30.0)
+                             timeout=30.0, verify_ssl=saved.verify_ssl if p.verify_ssl is None else p.verify_ssl)
 
     @app.post("/api/settings/models", dependencies=guard)
     def list_models(p: ServiceProbe):
@@ -211,7 +218,43 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         try:
             return {"ok": True, "models": APIClient(svc).list_models()}
         except Exception as exc:
-            return {"ok": False, "models": [], "error": str(exc)}
+            return {"ok": False, "models": [], "error": str(exc), "code": getattr(exc, "code", "") or "error"}
+
+    def _https_target(base_url: str) -> tuple[str, int]:
+        host, port, scheme = tls.host_port(normalize_base_url(base_url))
+        if scheme != "https" or not host:
+            raise HTTPException(400, "only https:// endpoints have a certificate")
+        return host, port
+
+    @app.post("/api/settings/certificate", dependencies=guard)
+    def certificate(req: CertRequest):
+        """Certificates the server presents (not verified) + whether the current trust settings accept them."""
+        host, port = _https_target(req.base_url)
+        try:
+            chain = tls.fetch_chain(host, port)
+        except Exception as exc:
+            return {"ok": False, "error": str(exc), "code": tls.classify(exc)}
+        t = current_tls()
+        ok, code, msg = tls.check_handshake(host, port, tls.build_context(t.system_store, t.ca_bundle))
+        return {"ok": True, "host": host, "port": port, "chain": [tls.describe(c).to_dict() for c in chain],
+                "verify": {"ok": ok, "code": code, "error": msg}}
+
+    @app.post("/api/settings/trust", dependencies=guard)
+    def trust(req: CertRequest):
+        """Save the server's certificate chain and add it to the trusted files - only if it is still the
+        certificate whose fingerprint the user confirmed."""
+        host, port = _https_target(req.base_url)
+        if not req.sha256:
+            raise HTTPException(400, "sha256 fingerprint of the confirmed certificate is required")
+        chain = tls.fetch_chain(host, port)
+        if not chain or tls.describe(chain[0]).sha256 != req.sha256.strip().upper():
+            raise HTTPException(409, "the server certificate changed since it was shown; check again")
+        path = tls.save_chain(chain, settings_path().parent / "certs", host, port)
+        files = [f.strip() for f in re.split(r"[;\n]", state["cfg"].tls.ca_bundle or "") if f.strip()]
+        if str(path) not in files:
+            files.append(str(path))
+        res = put_settings({"tls": {"ca_bundle": ";".join(files)}})
+        return {"ok": True, "path": str(path), **res}
 
     @app.post("/api/settings/test", dependencies=guard)
     def test_service(p: ServiceProbe):
@@ -219,6 +262,8 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         result = check_service(svc)
         if not result["ok"] or not svc.model:
             return result
+        override = {"base_url": svc.base_url, "api_key": svc.api_key, "model": svc.model,
+                    "verify_ssl": svc.verify_ssl}
         t = time.time()
         try:
             c: Config = state["cfg"]
@@ -232,21 +277,19 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             elif p.service == "embedding":
                 from techrag.embeddings import APIEmbedder
 
-                ec = c.embedding.__class__(**{**c.embedding.__dict__, "base_url": svc.base_url,
-                                              "api_key": svc.api_key, "model": svc.model})
+                ec = c.embedding.__class__(**{**c.embedding.__dict__, **override})
                 result["detail"] = f"dimension {APIEmbedder(ec).dim}"
             else:
                 from techrag.reranker import APIReranker
 
-                rc = c.reranker.__class__(**{**c.reranker.__dict__, "base_url": svc.base_url,
-                                             "api_key": svc.api_key, "model": svc.model})
+                rc = c.reranker.__class__(**{**c.reranker.__dict__, **override})
                 s = APIReranker(rc).score("PCIe link training", ["The LTSSM controls link training.",
                                                                   "A recipe for banana bread."])
                 result["ok"] = s[0] > s[1]
                 result["detail"] = f"scores {s[0]:.3f} vs {s[1]:.3f}"
             result["latency_ms"] = int((time.time() - t) * 1000)
         except Exception as exc:
-            result.update(ok=False, error=f"{exc.__class__.__name__}: {exc}")
+            result.update(ok=False, error=f"{exc.__class__.__name__}: {exc}", code=getattr(exc, "code", "") or "error")
         return result
 
     # --------------------------------------------------------------- library

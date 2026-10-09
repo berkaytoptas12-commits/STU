@@ -192,6 +192,26 @@ kökü neredeyse her zaman ayrıştırma veya varlık (standart/sürüm) etiketl
 | Cevapta `<think>` / düşünme metni | vLLM'de `--reasoning-parser` kullanın veya Ayarlar → Düşünme `off` |
 | Tablolar boş / "failed value verification" | Görsel model tanımlı mı, metin katmanı var mı (OCR)? `inspect --table-pages` |
 | Soru yanlış standarda gidiyor | `TechRAG.exe docs` ile doküman etiketlerini kontrol edin; dosya adına standart/sürüm yazın veya `domains.yaml` desenlerini genişletin |
+| `SSL: CERTIFICATE_VERIFY_FAILED` | Aşağıdaki "HTTPS sertifika hataları" bölümü |
+
+### HTTPS sertifika hataları (`SSL: CERTIFICATE_VERIFY_FAILED`)
+
+Kapalı ağdaki model sunucuları genelde kendinden imzalı ya da şirket içi CA'dan alınmış sertifika kullanır.
+Uygulama sırasıyla şunlara güvenir: **Windows sertifika deposu** (BT'nin dağıttığı şirket CA'ları),
+genel CA listesi ve **Ayarlar → Bağlantı güvenliği** bölümüne eklenen dosyalar. Ayarlar penceresi hatanın
+türünü ayrıca söyler:
+
+| Ayarlar'daki açıklama | Ne yapılmalı |
+|---|---|
+| Sertifikaya güvenilmiyor | En iyisi: BT şirket kök CA'sını Windows'a yüklesin. Ya da CA dosyasını (.pem/.crt/.cer) TLS bölümüne ekleyin. Kendinden imzalı sunucuda **"Bu sunucuya güven…"**: sertifikanın konusu ve SHA-256 parmak izi gösterilir; sunucu yöneticisinden doğruladıktan sonra **Güven** deyin. |
+| Sertifika başka bir ad/IP için verilmiş | API adresinde sertifikadaki adı kullanın (IP yerine `https://vllm.sirket.local:8000/v1`) ya da sunucu sertifikasına IP'yi SAN olarak ekletin. |
+| Süresi dolmuş / henüz geçerli değil | Sunucu sertifikasını yenileyin; bilgisayarın saatini kontrol edin. |
+| TLS el sıkışması başarısız | Sunucu düz HTTP konuşuyor: adresi `http://` ile yazın. |
+
+Komut satırından aynı teşhis: `TechRAG.exe cert https://vllm.sirket.local:8000/v1` (zinciri, parmak izini
+ve mevcut ayarlarla doğrulama sonucunu gösterir); `--trust` ile onaylayıp güvenilenlere ekler.
+Son çare (yalnızca test): servis kartındaki **"SSL doğrulamasını kapat"**. Şirket proxy'si TLS'i araya
+girerek açıyorsa model sunucuları için **"Sistem proxy ayarlarını kullan"** kapalı kalmalı (varsayılan).
 
 ---
 

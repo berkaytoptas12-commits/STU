@@ -1,5 +1,15 @@
 ## TechRAG — Windows masaüstü uygulaması
 
+### 0.1.2 — kapalı ağda HTTPS sertifika hatası (`SSL: CERTIFICATE_VERIFY_FAILED`)
+- Uygulama artık **Windows sertifika deposuna** güveniyor: BT'nin dağıttığı şirket CA'sıyla imzalı model
+  sunucuları ek ayar gerektirmeden çalışır (önceden yalnızca Python'un kendi genel CA listesi kullanılıyordu).
+- **Ayarlar → Bağlantı güvenliği**: ek CA / sunucu sertifika dosyaları (.pem, .crt, .cer), sistem proxy anahtarı.
+- Kendinden imzalı sunucular için **"Bu sunucuya güven…"**: sertifika konusu, geçerliliği ve SHA-256 parmak izi
+  gösterilir, onaydan sonra kaydedilir.
+- Hata türü Türkçe açıklanır: güvenilmeyen sertifika, ad/IP uyuşmazlığı, süresi dolmuş sertifika, http/https karışıklığı.
+- `TechRAG.exe cert <url>`: komut satırından sertifika teşhisi ve güvenme. Servis başına "SSL doğrulamasını kapat" (yalnızca test).
+- Model sunucularına istekler varsayılan olarak sistem/şirket proxy'sini kullanmıyor (Ayarlar'dan açılabilir).
+
 ### 0.1.1'deki düzeltme
 - **0.1.0 açılışta donuyordu** ("yanıt vermiyor" / "çalışmayı durdurdu"). pywebview, JavaScript köprüsünü
   kurarken pencere nesnesinin içindeki .NET formuna inip nesne ağacında sonsuz özyinelemeye giriyordu.

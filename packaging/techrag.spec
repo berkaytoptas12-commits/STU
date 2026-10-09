@@ -18,10 +18,11 @@ hiddenimports = (
     + collect_submodules("uvicorn")
     + ["multipart", "python_multipart", "anyio._backends._asyncio"]
 )
-try:
-    hiddenimports += collect_submodules("webview")
-except Exception:
-    pass
+for pkg in ("webview", "truststore"):
+    try:
+        hiddenimports += collect_submodules(pkg)
+    except Exception:
+        pass
 
 a = Analysis(
     [os.path.join(ROOT, "packaging", "entry.py")],

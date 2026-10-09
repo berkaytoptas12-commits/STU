@@ -38,6 +38,23 @@ const I18N = {
     enabled: "etkin", notOnServer: "(sunucuda yok)", savedSettings: "Ayarlar kaydedildi.", noModels: "Model listesi alınamadı",
     errorPrefix: "Hata", needToken: "Bu sunucu bir API anahtarı istiyor:", confirmClear: "Tüm notlar silinsin mi?",
     noNotes: "Henüz not yok.", newChatStarted: "Yeni sohbet başladı.", calc: "hesap", parameter: "parametre", table: "tablo", pageKind: "sayfa", unverified: "doğrulanmamış çıkarım",
+    tlsTitle: "Bağlantı güvenliği (HTTPS sertifikaları)",
+    tlsSystem: "Windows sertifika deposuna güven (BT'nin dağıttığı şirket CA sertifikaları)",
+    tlsProxy: "Sistem proxy ayarlarını kullan (model sunucuları yerel ağdaysa kapalı bırakın)",
+    tlsCa: "Ek CA / sunucu sertifika dosyaları (.pem, .crt, .cer — birden fazlaysa ; ile ayırın)",
+    tlsHint: "Bu bölümdeki değişiklikler hemen uygulanır. 'Bu sunucuya güven' ile kaydedilen sertifikalar da bu listeye eklenir.",
+    tlsApplied: "TLS ayarları uygulandı.", insecure: "SSL doğrulamasını kapat (güvensiz — yalnızca test için)",
+    trustServer: "Bu sunucuya güven…", trust: "Güven", certTitle: "Sunucunun sunduğu sertifika",
+    certSubject: "Konu", certIssuer: "Veren", certValid: "Geçerlilik", certFp: "SHA-256 parmak izi", certNames: "Adlar",
+    certSelf: "kendinden imzalı", certCheck: "Bu parmak izini sunucu yöneticisinden doğrulayın; aynıysa güvenin.",
+    certAlreadyOk: "Mevcut ayarlarla bu sertifika zaten doğrulanıyor.", trusted: "Sertifika kaydedildi ve güvenilenlere eklendi: {0}",
+    details: "Ayrıntı",
+    err_tls_untrusted: "Sunucu sertifikasına güvenilmiyor (kendinden imzalı ya da bu bilgisayarın tanımadığı bir şirket CA'sı). Şirket kök CA'sını Windows'a yükletin, CA dosyasını aşağıdaki TLS bölümüne ekleyin ya da parmak izini kontrol edip 'Bu sunucuya güven'i kullanın.",
+    err_tls_hostname: "Sertifika başka bir ad/IP için verilmiş. API adresinde sertifikadaki adı kullanın (ör. IP yerine https://vllm.sirket.local:8000/v1).",
+    err_tls_expired: "Sunucu sertifikasının süresi dolmuş ya da henüz geçerli değil (bu bilgisayarın saatini de kontrol edin).",
+    err_tls_protocol: "TLS el sıkışması başarısız: sunucu büyük olasılıkla düz HTTP konuşuyor. https:// yerine http:// deneyin.",
+    err_tls_other: "TLS bağlantısı kurulamadı.", err_connect: "Bağlanılamadı: adresi/portu, sunucunun çalıştığını ve güvenlik duvarını kontrol edin.",
+    err_model: "Seçilen model bu sunucuda yok.",
     published: "Yayımlandı: {0}", opened: "Kütüphane açıldı.", pickFolderPrompt: "Klasör yolu:",
     ex: ["DDR4 ile DDR5 arasında VDD ve burst length farkları nelerdir?", "PCIe 5.0 LTSSM Polling alt durumları ve geçiş koşulları nelerdir?",
          "ARINC 429 kelimesinde SSM bitleri hangi bitlerdir ve BNR verisi için anlamları nedir?", "I2C Fast-mode Plus için maksimum yükselme süresi ve bus kapasitansı nedir?"],
@@ -71,6 +88,23 @@ const I18N = {
     enabled: "enabled", notOnServer: "(not on server)", savedSettings: "Settings saved.", noModels: "Could not load models",
     errorPrefix: "Error", needToken: "This server requires an API token:", confirmClear: "Delete all notes?",
     noNotes: "No notes yet.", newChatStarted: "New chat started.", calc: "calculation", parameter: "parameter", table: "table", pageKind: "page", unverified: "unverified extraction",
+    tlsTitle: "Connection security (HTTPS certificates)",
+    tlsSystem: "Trust the Windows certificate store (company CA certificates deployed by IT)",
+    tlsProxy: "Use system proxy settings (leave off when the model servers are on the LAN)",
+    tlsCa: "Extra CA / server certificate files (.pem, .crt, .cer — separate several with ;)",
+    tlsHint: "Changes in this section apply immediately. Certificates saved with 'Trust this server' are added to this list.",
+    tlsApplied: "TLS settings applied.", insecure: "Disable SSL verification (insecure — testing only)",
+    trustServer: "Trust this server…", trust: "Trust", certTitle: "Certificate presented by the server",
+    certSubject: "Subject", certIssuer: "Issuer", certValid: "Valid", certFp: "SHA-256 fingerprint", certNames: "Names",
+    certSelf: "self-signed", certCheck: "Confirm this fingerprint with the server administrator; trust it only if it matches.",
+    certAlreadyOk: "This certificate already verifies with the current settings.", trusted: "Certificate saved and trusted: {0}",
+    details: "Details",
+    err_tls_untrusted: "The server certificate is not trusted (self-signed, or issued by a company CA this PC does not know). Have IT install the company root CA, add the CA file in the TLS section below, or check the fingerprint and use 'Trust this server'.",
+    err_tls_hostname: "The certificate was issued for a different name/IP. Use the name in the certificate in the base URL (e.g. https://vllm.company.local:8000/v1 instead of the IP).",
+    err_tls_expired: "The server certificate has expired or is not yet valid (also check this PC's clock).",
+    err_tls_protocol: "TLS handshake failed: the server probably speaks plain HTTP. Try http:// instead of https://.",
+    err_tls_other: "TLS connection failed.", err_connect: "Cannot connect: check the address/port, that the server is running and the firewall.",
+    err_model: "The selected model is not served here.",
     published: "Published: {0}", opened: "Library opened.", pickFolderPrompt: "Folder path:",
     ex: ["What are the VDD and burst length differences between DDR4 and DDR5?", "What are the PCIe 5.0 LTSSM Polling substates and their exit conditions?",
          "Which bits are the SSM in an ARINC 429 word and what do they mean for BNR data?", "What is the maximum rise time and bus capacitance for I2C Fast-mode Plus?"],
@@ -580,11 +614,13 @@ function svcCard(svc) {
     <label>${t("baseUrl")}<input class="url" value="${esc(s.base_url)}" placeholder="http://server:8000/v1"></label>
     <label>${t("apiKey")}<input class="key" type="password" value="${esc(s.api_key)}" autocomplete="off"></label>
     <label>${t("model")}<div class="row"><select class="model"></select><button type="button" class="ghost load">${t("modelsLoad")}</button><button type="button" class="ghost test">${t("test")}</button></div></label>
+    <label class="insecure-row"><input type="checkbox" class="insecure"> ${t("insecure")}</label>
     <div class="result"></div>`;
+  $(".insecure", div).checked = s.verify_ssl === false;
   const same = $(".same", div);
   if (same) {
     same.checked = !s.base_url && !s.model;
-    const sync = () => $$(".url,.key,.model,.load,.test", div).forEach((x) => { x.disabled = same.checked; });
+    const sync = () => $$(".url,.key,.model,.load,.test,.insecure", div).forEach((x) => { x.disabled = same.checked; });
     same.addEventListener("change", sync);
     sync();
   }
@@ -603,22 +639,66 @@ function svcCard(svc) {
     res.className = "result";
     res.textContent = "…";
     try {
-      const r = await postJSON("/api/settings/models", { service: svc, base_url: $(".url", div).value, api_key: $(".key", div).value });
+      const r = await postJSON("/api/settings/models", probe());
       s.model = sel.value || s.model;
       if (r.ok) { setOptions(r.models); res.textContent = `${r.models.length} model`; }
-      else { res.className = "result bad"; res.textContent = `${t("noModels")}: ${r.error}`; }
+      else showError(res, r, t("noModels"));
     } catch (e) { res.className = "result bad"; res.textContent = e.message; }
   };
+  const probe = (extra) => Object.assign({ service: svc, base_url: $(".url", div).value, api_key: $(".key", div).value,
+    verify_ssl: !$(".insecure", div).checked }, extra || {});
+  const showError = (res, r, prefix) => {
+    res.className = "result bad";
+    const hint = I18N[LANG]["err_" + r.code] || I18N.en["err_" + r.code];
+    res.innerHTML = `<div class="hint-text">✕ ${esc(hint || prefix || "")}</div>` +
+      (r.error ? `<details><summary>${t("details")}</summary>${esc(r.error)}</details>` : "");
+    if (r.code === "tls_untrusted" && /^https:/i.test($(".url", div).value.trim())) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "ghost small";
+      b.textContent = t("trustServer");
+      b.addEventListener("click", () => trustFlow(res));
+      res.append(b);
+    }
+  };
+  const trustFlow = async (res) => {
+    const base = $(".url", div).value.trim();
+    const info = await postJSON("/api/settings/certificate", { base_url: base });
+    if (!info.ok) { showError(res, info); return; }
+    const leaf = info.chain[0];
+    const panel = document.createElement("div");
+    panel.className = "cert-panel";
+    const rows = [[t("certSubject"), leaf.subject + (leaf.self_signed ? ` (${t("certSelf")})` : "")], [t("certIssuer"), leaf.issuer],
+      [t("certNames"), (leaf.names || []).join(", ")], [t("certValid"), `${leaf.not_before} → ${leaf.not_after}`]];
+    panel.innerHTML = `<b>${t("certTitle")}</b> — ${esc(info.host)}:${info.port}
+      <dl>${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v || "—")}</dd>`).join("")}
+      <dt>${t("certFp")}</dt><dd><code>${esc(leaf.sha256)}</code></dd></dl>
+      <div>${info.verify.ok ? t("certAlreadyOk") : t("certCheck")}</div>
+      <div class="row" style="margin-top:6px"><button type="button" class="do-trust">${t("trust")}</button><button type="button" class="ghost no-trust">${t("cancel")}</button></div>`;
+    $(".no-trust", panel).addEventListener("click", () => panel.remove());
+    $(".do-trust", panel).addEventListener("click", async () => {
+      try {
+        const r = await postJSON("/api/settings/trust", { base_url: base, sha256: leaf.sha256 });
+        SETTINGS.tls = r.settings.tls;
+        $("#set-tls-ca").value = SETTINGS.tls.ca_bundle;
+        panel.remove();
+        $("#settings-status").textContent = t("trusted", r.path);
+        await load();
+      } catch (e) { panel.innerHTML = `<span class="hint-text">${esc(e.message)}</span>`; }
+    });
+    res.append(panel);
+  };
   $(".load", div).addEventListener("click", load);
+  $(".insecure", div).addEventListener("change", load);
   $(".url", div).addEventListener("change", load);
   $(".key", div).addEventListener("change", load);
   $(".test", div).addEventListener("click", async () => {
     const res = $(".result", div);
     res.className = "result";
     res.textContent = "…";
-    const r = await postJSON("/api/settings/test", { service: svc, base_url: $(".url", div).value, api_key: $(".key", div).value, model: sel.value });
-    res.className = "result " + (r.ok ? "ok" : "bad");
-    res.textContent = r.ok ? `✓ ${r.detail || ""}${r.latency_ms ? ` (${r.latency_ms} ms)` : ""}` : `✕ ${r.error || r.detail || ""}`;
+    const r = await postJSON("/api/settings/test", probe({ model: sel.value }));
+    if (r.ok) { res.className = "result ok"; res.textContent = `✓ ${r.detail || ""}${r.latency_ms ? ` (${r.latency_ms} ms)` : ""}`; }
+    else showError(res, r, r.error || r.detail);
   });
   if (s.base_url && !(same && same.checked)) load();
   return div;
@@ -635,6 +715,9 @@ async function openSettings() {
   $("#set-regenerate").checked = SETTINGS.answer.regenerate;
   $("#set-failed").value = SETTINGS.answer.failed_claims;
   $("#set-vision-enabled").checked = SETTINGS.vision.enabled;
+  $("#set-tls-system").checked = SETTINGS.tls.system_store;
+  $("#set-tls-proxy").checked = SETTINGS.tls.use_system_proxy;
+  $("#set-tls-ca").value = SETTINGS.tls.ca_bundle || "";
   $("#settings-status").textContent = "";
   $$("#dlg-settings [data-i18n]").forEach((x) => { x.textContent = t(x.dataset.i18n); });
   $("#dlg-settings").showModal();
@@ -646,12 +729,14 @@ async function saveSettings(e) {
     const svc = card.dataset.svc;
     const same = $(".same", card);
     if (same && same.checked) { patch[svc] = { base_url: "", model: "", api_key: "" }; continue; }
-    patch[svc] = { base_url: $(".url", card).value.trim(), api_key: $(".key", card).value, model: $(".model", card).value };
+    patch[svc] = { base_url: $(".url", card).value.trim(), api_key: $(".key", card).value, model: $(".model", card).value,
+      verify_ssl: !$(".insecure", card).checked };
     const en = $(".enabled", card);
     if (en) patch[svc].enabled = en.checked;
   }
   Object.assign(patch.llm, { thinking: $("#set-thinking").value, thinking_control: $("#set-thinking-control").value, tools: $("#set-tools").value });
   patch.vision = Object.assign(patch.vision || {}, { enabled: $("#set-vision-enabled").checked });
+  patch.tls = tlsPatch();
   try {
     const r = await postJSON("/api/settings", patch, "PUT");
     $("#settings-status").textContent = r.error ? `${t("errorPrefix")}: ${r.error}` : t("savedSettings");
@@ -659,6 +744,27 @@ async function saveSettings(e) {
     await loadDocs();
     if (!r.error) setTimeout(() => $("#dlg-settings").close(), 500);
   } catch (err) { $("#settings-status").textContent = `${t("errorPrefix")}: ${err.message}`; }
+}
+
+function tlsPatch() {
+  return { system_store: $("#set-tls-system").checked, use_system_proxy: $("#set-tls-proxy").checked,
+    ca_bundle: $("#set-tls-ca").value.trim() };
+}
+async function applyTls() {
+  try {
+    const r = await postJSON("/api/settings", { tls: tlsPatch() }, "PUT");
+    SETTINGS.tls = r.settings.tls;
+    $("#settings-status").textContent = r.error ? `${t("errorPrefix")}: ${r.error}` : t("tlsApplied");
+  } catch (e) { $("#settings-status").textContent = `${t("errorPrefix")}: ${e.message}`; }
+}
+async function pickCaFiles() {
+  let paths = [];
+  if (desk()) paths = (await desk().pick_files()) || [];
+  else { const p = prompt(t("tlsCa"), ""); if (p) paths = [p]; }
+  if (!paths.length) return;
+  const cur = $("#set-tls-ca").value.split(/[;\n]/).map((x) => x.trim()).filter(Boolean);
+  $("#set-tls-ca").value = [...new Set([...cur, ...paths])].join(";");
+  await applyTls();
 }
 
 // ------------------------------------------------------------------ library dialog
@@ -700,6 +806,8 @@ function bind() {
   }));
   $("#btn-settings").addEventListener("click", () => openSettings().catch((e) => alert(e.message)));
   $("#btn-save-settings").addEventListener("click", saveSettings);
+  ["#set-tls-system", "#set-tls-proxy", "#set-tls-ca"].forEach((id) => $(id).addEventListener("change", applyTls));
+  $("#btn-pick-ca").addEventListener("click", pickCaFiles);
   $("#btn-library").addEventListener("click", openLibrary);
   $("#btn-pick-lib").addEventListener("click", () => pickFolder($("#lib-new-path")));
   $("#btn-pick-publish").addEventListener("click", () => pickFolder($("#lib-publish-path")));

@@ -93,6 +93,14 @@
           <select id="set-failed"><option value="strip" data-i18n="strip"></option><option value="flag" data-i18n="flag"></option></select></label>
         <label><input type="checkbox" id="set-vision-enabled"> <span data-i18n="visionEnabled"></span></label>
       </fieldset>
+      <fieldset id="tls-box">
+        <legend data-i18n="tlsTitle"></legend>
+        <label class="wide"><input type="checkbox" id="set-tls-system"> <span data-i18n="tlsSystem"></span></label>
+        <label class="wide"><input type="checkbox" id="set-tls-proxy"> <span data-i18n="tlsProxy"></span></label>
+        <label class="wide"><span data-i18n="tlsCa"></span>
+          <div class="row"><input id="set-tls-ca" placeholder="C:\certs\company-root.cer"><button type="button" class="ghost" id="btn-pick-ca">…</button></div></label>
+        <p class="hint wide" data-i18n="tlsHint"></p>
+      </fieldset>
       <div class="dlg-actions">
         <span class="muted small" id="settings-status"></span>
         <button value="cancel" class="ghost" data-i18n="cancel"></button>

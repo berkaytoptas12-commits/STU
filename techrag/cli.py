@@ -203,6 +203,64 @@ def cmd_models(cfg: Config, args) -> int:
     return 0
 
 
+def cmd_cert(cfg: Config, args) -> int:
+    """Show the certificate an HTTPS endpoint presents, whether the current trust settings accept it, and
+    optionally trust it (saved under the settings folder and added to tls.ca_bundle)."""
+    from techrag import tls
+    from techrag.api import normalize_base_url
+    from techrag.settings import settings_path, update_settings
+
+    url = normalize_base_url(args.url)
+    host, port, scheme = tls.host_port(url)
+    if scheme != "https":
+        _print(f"{url} is not https:// - no certificate involved.")
+        return 0
+    try:
+        chain = tls.fetch_chain(host, port)
+    except Exception as exc:
+        code = tls.classify(exc)
+        _print(f"cannot read the certificate of {host}:{port}: {exc}\n{tls.HINTS[code]}")
+        return 1
+    for i, der in enumerate(chain):
+        info = tls.describe(der)
+        _print(f"[{i}] subject : {info.subject}{'  (self-signed)' if info.self_signed else ''}")
+        _print(f"    issuer  : {info.issuer}")
+        _print(f"    names   : {', '.join(info.names) or '-'}")
+        _print(f"    valid   : {info.not_before} -> {info.not_after}")
+        _print(f"    sha256  : {info.sha256}")
+    ok, code, msg = tls.check_handshake(host, port, tls.build_context(cfg.tls.system_store, cfg.tls.ca_bundle))
+    _print(f"\nverification with current settings: {'OK' if ok else 'FAILED - ' + msg}")
+    if not ok:
+        _print(tls.HINTS[code])
+    if args.save:
+        _print(f"saved: {_save_to(chain, args.save)}")
+    if args.trust and not ok:
+        if code != tls.TLS_UNTRUSTED:
+            _print("not trusting: the problem is not an unknown issuer (see the hint above).")
+            return 1
+        expected = tls.describe(chain[0]).sha256
+        if not args.yes:
+            answer = input(f"Trust {host}:{port} with fingerprint {expected}? [y/N] ").strip().lower()
+            if answer not in ("y", "yes", "e", "evet"):
+                return 1
+        path = tls.save_chain(chain, settings_path().parent / "certs", host, port)
+        files = [f for f in cfg.tls.ca_bundle.split(";") if f.strip()]
+        if str(path) not in files:
+            files.append(str(path))
+        new_cfg = update_settings(cfg, {"tls": {"ca_bundle": ";".join(files)}})
+        _print(f"trusted: {path} (added to settings tls.ca_bundle)")
+        ok, _, msg = tls.check_handshake(host, port, tls.build_context(new_cfg.tls.system_store, new_cfg.tls.ca_bundle))
+        _print(f"verification with the new settings: {'OK' if ok else 'FAILED - ' + msg}")
+    return 0 if ok else 1
+
+
+def _save_to(chain, target: str) -> str:
+    import ssl
+
+    Path(target).write_text("".join(ssl.DER_cert_to_PEM_cert(c) for c in chain), encoding="ascii")
+    return target
+
+
 def cmd_doctor(cfg: Config, args) -> int:
     from techrag.api import check_service
     from techrag.settings import settings_path
@@ -215,6 +273,10 @@ def cmd_doctor(cfg: Config, args) -> int:
         _print(f"[{'OK ' if good else 'XX '}] {name}{': ' + detail if detail else ''}")
 
     _print(f"settings file: {settings_path()}")
+    from techrag.tls import ca_files
+
+    _print(f"tls: windows/system store={'on' if cfg.tls.system_store else 'off'}, "
+           f"extra CA files={len(ca_files(cfg.tls.ca_bundle))}, system proxy={'on' if cfg.tls.use_system_proxy else 'off'}")
     check("library", cfg.library_dir.exists(), f"{cfg.library_dir.resolve()} (read_only={cfg.read_only})")
     if cfg.db_path.exists():
         from techrag.store import Store
@@ -320,6 +382,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("docs", help="list documents").set_defaults(func=cmd_docs)
     sub.add_parser("models", help="list models served by each configured endpoint").set_defaults(func=cmd_models)
     sub.add_parser("doctor", help="check endpoints, models and index").set_defaults(func=cmd_doctor)
+
+    s = sub.add_parser("cert", help="inspect / trust the HTTPS certificate of a model endpoint")
+    s.add_argument("url", help="e.g. https://vllm.company.local:8000/v1")
+    s.add_argument("--save", help="write the presented chain to this .pem file")
+    s.add_argument("--trust", action="store_true", help="trust it (asks for confirmation)")
+    s.add_argument("-y", "--yes", action="store_true", help="do not ask for confirmation")
+    s.set_defaults(func=cmd_cert)
 
     s = sub.add_parser("eval", help="run a gold question set")
     s.add_argument("file", nargs="?", default="eval/questions.yaml")

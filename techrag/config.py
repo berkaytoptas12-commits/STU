@@ -54,6 +54,8 @@ class ServiceConfig:
     api_key: str = ""
     model: str = ""
     timeout: float = 300.0
+    # Last resort for test setups: skip HTTPS certificate verification for this endpoint.
+    verify_ssl: bool = True
 
 
 @dataclass
@@ -173,6 +175,14 @@ class ServerConfig:
 
 
 @dataclass
+class TLSConfig:
+    """HTTPS trust for the model endpoints (see techrag/tls.py)."""
+    system_store: bool = True       # trust certificates in the Windows store (company CAs deployed by IT)
+    ca_bundle: str = ""             # extra CA / server certificate files (PEM or DER), ';'-separated
+    use_system_proxy: bool = False  # model servers are on the LAN; a system/corporate proxy is usually wrong
+
+
+@dataclass
 class UIConfig:
     language: str = "tr"            # tr | en
 
@@ -190,6 +200,7 @@ class Config:
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
     answer: AnswerConfig = field(default_factory=AnswerConfig)
     server: ServerConfig = field(default_factory=ServerConfig)
+    tls: TLSConfig = field(default_factory=TLSConfig)
     ui: UIConfig = field(default_factory=UIConfig)
 
     # ------------------------------------------------------------------ derived paths
@@ -221,8 +232,10 @@ class Config:
     def vision_service(self) -> ServiceConfig:
         """Effective vision endpoint (falls back to the chat LLM)."""
         v = self.vision
+        same = not v.base_url
         return ServiceConfig(base_url=v.base_url or self.llm.base_url, api_key=v.api_key or self.llm.api_key,
-                             model=v.model or self.llm.model, timeout=v.timeout)
+                             model=v.model or self.llm.model, timeout=v.timeout,
+                             verify_ssl=self.llm.verify_ssl if same else v.verify_ssl)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -303,6 +316,9 @@ def load_config(path: Optional[str | Path] = None, user_settings: Optional[bool]
     _apply_env(cfg)
     if cfg.offline:
         enforce_offline()
+    from techrag.api import configure_tls
+
+    configure_tls(cfg.tls)
     return cfg
 
 
