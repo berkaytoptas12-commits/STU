@@ -6,7 +6,7 @@ import pytest
 
 from fakeserver import sources_in
 from techrag.tools import SourceRegistry, safe_eval
-from techrag.verify import Claim, apply_failures, deterministic_check, split_claims
+from techrag.verify import apply_failures, deterministic_check, split_claims
 
 
 def final(engine, question, **kw):
@@ -208,3 +208,15 @@ def test_read_only_uri_forms():
 
     assert uri_for_resolved(r"\\fileserver\share\lib\index.sqlite").startswith("file:////fileserver/share/lib/")
     assert uri_for_resolved(r"C:\TechRAG\lib\index.sqlite").startswith("file:///C:/TechRAG/lib/")
+
+
+def test_separate_vlm_transcribes_figures_for_text_only_chat(engine, fake, cfg):
+    cfg.vision.model = "vlm-other"          # chat model is text-only, a separate VLM exists
+    assert engine.chat_sees_images is False
+    events, fin = final(engine, "DDR4 refresh timing diagram figure")
+    answer_call = next(c for c in fake.calls if "ANSWER CONTRACT" in json.dumps(c["body"].get("messages", [{}])[:1]))
+    content = answer_call["body"]["messages"][-1]["content"]
+    assert isinstance(content, str), "no image parts are sent to a text-only chat model"
+    assert "VLM transcription of the page image" in content
+    vlm_calls = [c for c in fake.calls if "Transcribe this page" in json.dumps(c["body"].get("messages", []))]
+    assert vlm_calls and any(p.get("type") == "image_url" for p in vlm_calls[0]["body"]["messages"][0]["content"])

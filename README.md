@@ -95,7 +95,8 @@ Sunucu araç çağrısını desteklemiyorsa uygulama bunu fark eder ve araçsız
 **Model** girilir. Model listesi sunucunun `/v1/models` ucundan **otomatik çekilir** ve açılır listede gösterilir;
 **Test et** düğmesi bağlantıyı ve modeli dener (embedding boyutu, rerank skoru, LLM cevabı).
 
-* Görsel model: "Sohbet modeliyle aynı" (çok kipli Qwen) veya ayrı bir VLM.
+* Görsel model: "Sohbet modeliyle aynı" (çok kipli Qwen: şekil sayfaları cevap modeline görüntü olarak gider)
+  veya ayrı bir VLM (sohbet modeli yalnızca metin alıyorsa sayfa görüntüleri VLM tarafından metne dökülür).
 * Düşünme modu: `auto` (karşılaştırma / çok parçalı sorularda açık), `on`, `off`; kontrol yöntemi
   `chat_template` (Qwen `enable_thinking`) veya `reasoning_effort`.
 * Doğrulanamayan iddialar: **Kaldır** (varsayılan) veya **İşaretle**.
@@ -213,7 +214,7 @@ techrag/
   web/             çevrimdışı arayüz (TR/EN);  resources/domains.yaml
 packaging/         PyInstaller spec + giriş;  .github/workflows/windows-build.yml
 deploy/            vLLM örnek komutları
-tests/             78 test (sahte OpenAI uyumlu sunucu ile uçtan uca)
+tests/             79 test (sahte OpenAI uyumlu sunucu ile uçtan uca)
 ```
 
 > Standart dokümanları lisanslı içeriktir; kütüphane klasörü git'e eklenmez.

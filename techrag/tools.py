@@ -210,7 +210,9 @@ class ToolExecutor:
                  render_page: Callable[[int, int], Optional[bytes]], vision_input: bool = True,
                  base_doc_ids: Optional[list[int]] = None,
                  expand: Callable[[str], list[str]] = lambda q: [],
-                 default_doc_ids: Optional[list[int]] = None):
+                 default_doc_ids: Optional[list[int]] = None,
+                 describe_page: Optional[Callable[[int, int], Optional[str]]] = None):
+        self.describe_page = describe_page
         self.expand = expand
         self.default_doc_ids = default_doc_ids  # the question's own (entity) scope
         self.store = store
@@ -317,10 +319,14 @@ class ToolExecutor:
         if not doc or not (1 <= int(page) <= max(doc.n_pages, 1)):
             return ToolOutput("No such document/page.", summary="no such page")
         text = "\n".join(c.text for c in self.store.page_chunks(doc.id, int(page)))[:4000]
-        src, is_new = self.registry.add_page(doc.id, int(page), doc.title, text, self._doc_meta(doc.id))
         png = self.render_page(doc.id, int(page)) if self.vision_input else None
+        if not png and self.describe_page:
+            desc = self.describe_page(doc.id, int(page))
+            if desc:
+                text = f"{desc}\n\nPage text:\n{text}"
+        src, is_new = self.registry.add_page(doc.id, int(page), doc.title, text, self._doc_meta(doc.id))
         note = (f"Page image of '{doc.title}' p. {page} is attached in the next message; cite it as [{src.n}]."
-                if png else f"Text of '{doc.title}' p. {page} (image input unavailable), cite as [{src.n}]:\n{text}")
+                if png else f"Page {page} of '{doc.title}' (no image input for this model), cite as [{src.n}]:\n{text}")
         return ToolOutput(note, [src] if is_new else [], png, summary=f"page {page} of {doc.title}")
 
     def tool_calculate(self, expression: str, label: str = "") -> ToolOutput:

@@ -7,7 +7,7 @@ import pymupdf
 import pytest
 
 from fakeserver import FakeOpenAI
-from techrag.config import Config, EmbeddingConfig, LLMConfig, RerankerConfig, resource_path
+from techrag.config import Config, resource_path
 from techrag.domains import DomainRegistry
 from techrag.embeddings import APIEmbedder
 from techrag.llm import LLMClient

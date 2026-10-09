@@ -31,6 +31,11 @@ from techrag.tools import TOOL_SCHEMAS, SourceRegistry, ToolExecutor
 from techrag.verify import Claim, Verification, apply_failures, deterministic_check, is_not_found, split_claims
 
 _UNSET = object()
+PAGE_DESCRIBE_PROMPT = ("Transcribe this page of a technical standard for an engineer. For figures, timing diagrams, "
+                        "waveforms, pinouts and state diagrams: give the figure title, every label, signal/pin name, "
+                        "timing parameter and value exactly as printed, and how the elements relate (which edge "
+                        "a parameter is measured between, state transitions, pin numbering). Do not infer anything "
+                        "that is not visible.")
 MAX_FIGURES = 2
 JUDGE_SOURCE_CHARS = 6000
 
@@ -108,6 +113,39 @@ class RAGEngine:
             pass
         return png
 
+    @property
+    def chat_sees_images(self) -> bool:
+        """True when the chat model itself is the vision model (multimodal Qwen): images go to it directly.
+        With a separate VLM, page images are transcribed by the VLM and the chat model gets text."""
+        v = self.cfg.vision
+        return v.enabled and (not v.base_url or v.base_url == self.cfg.llm.base_url) and \
+            (not v.model or v.model == self.cfg.llm.model)
+
+    def describe_page(self, doc_id: int, page: int) -> Optional[str]:
+        """VLM transcription of a page (figures, timing diagrams, pinouts), cached next to the page renders."""
+        doc = self.store.document(doc_id)
+        if not doc or self.vision is None:
+            return None
+        cache = self.cfg.page_cache_dir / f"{doc.sha256[:20]}_p{page}_desc.txt"
+        if cache.exists():
+            return cache.read_text(encoding="utf-8")
+        png = self.render_page(doc_id, page)
+        if not png:
+            return None
+        try:
+            text = self.vision.chat([{"role": "user", "content": [
+                {"type": "text", "text": PAGE_DESCRIBE_PROMPT}, image_part(png)]}],
+                max_tokens=1500, temperature=0.0, thinking=False).content.strip()
+        except Exception:
+            return None
+        if text:
+            try:
+                cache.parent.mkdir(parents=True, exist_ok=True)
+                cache.write_text(text, encoding="utf-8")
+            except OSError:
+                pass
+        return "(VLM transcription of the page image)\n" + text if text else None
+
     # --------------------------------------------------------------- retrieval
     def retrieve(self, question: str, history: Optional[Sequence[dict]] = None,
                  domains: Optional[Sequence[str]] = None, doc_ids: Optional[Sequence[int]] = None,
@@ -181,12 +219,20 @@ class RAGEngine:
         images = []
         if self.cfg.vision.enabled:
             for p in res.passages:
-                if p.figure_page and len(images) < MAX_FIGURES:
+                if not p.figure_page or len(images) >= MAX_FIGURES:
+                    continue
+                if self.chat_sees_images:
                     png = self.render_page(p.doc_id, p.figure_page)
                     if png:
                         src, _ = registry.add_page(p.doc_id, p.figure_page, p.doc_title,
                                                    "(page image attached)", {"entities": p.entities})
                         images.append((src.n, png))
+                else:
+                    desc = self.describe_page(p.doc_id, p.figure_page)
+                    if desc:
+                        registry.add_page(p.doc_id, p.figure_page, p.doc_title, desc, {"entities": p.entities})
+                        images.append((0, None))
+        images = [(n, png) for n, png in images if png]
 
         system = answer_system_prompt(lang)
         hints = self.domains.glossary_hints(plan.domains, f"{plan.question} {plan.standalone}")
@@ -202,7 +248,7 @@ class RAGEngine:
                     {"role": "user", "content": user_content}]
 
         executor = ToolExecutor(self.store, self.retriever, registry, plan, self.render_page,
-                                vision_input=self.cfg.vision.enabled,
+                                vision_input=self.chat_sees_images, describe_page=self.describe_page,
                                 base_doc_ids=list(doc_ids) if doc_ids else None, expand=self.domains.expand_terms,
                                 default_doc_ids=res.scope.doc_ids if res.scope.reason == "entity" else None)
         tools = TOOL_SCHEMAS if (self.cfg.llm.tools != "off" and self.llm.tools_supported is not False) else None
