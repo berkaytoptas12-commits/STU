@@ -56,6 +56,9 @@ class ServiceConfig:
     timeout: float = 300.0
     # Last resort for test setups: skip HTTPS certificate verification for this endpoint.
     verify_ssl: bool = True
+    # Rate limiting (HTTP 429/503): wait as the server asks (Retry-After, capped) and give up after a few tries.
+    max_retries: int = 3
+    max_retry_wait: float = 60.0
 
 
 @dataclass

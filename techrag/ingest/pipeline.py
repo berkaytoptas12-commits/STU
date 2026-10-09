@@ -1,13 +1,21 @@
-"""Folder -> library index ingestion (incremental by SHA-256).
+"""Folder -> library index ingestion (incremental).
 
-Per document: PyMuPDF parse -> cleanup -> metadata (standard entities, revision, type) -> eager VLM table
-extraction on table-like pages -> section assignment -> chunking -> API embeddings -> one atomic write.
-After a run, supersedence between revisions of the same standard is recomputed.
+Sources: the library's own sources folder (files added one by one are copied there) and any number of
+document folders the user picked ("roots"), read in place. Each sync scans a folder, plans what changed
+(techrag.ingest.sources.plan_changes) and only then spends API calls:
+  new / changed content / changed parsing settings -> full processing
+  moved or duplicated identical content             -> index rows reused (no API calls)
+  touched (same content), restored                  -> bookkeeping only
+  missing file                                      -> kept but excluded from answers, reported
+  unreachable folder (network share offline)        -> left untouched, reported
+Per document: PyMuPDF parse -> cleanup -> metadata -> eager VLM table extraction on table-like pages ->
+section assignment -> chunking -> API embeddings -> one atomic write. Supersedence is recomputed after a sync.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import time
 from collections import defaultdict
@@ -25,8 +33,9 @@ from techrag.ingest.chunker import Chunk, chunk_blocks
 from techrag.ingest.cleaning import clean_blocks
 from techrag.ingest.loaders import SUPPORTED_SUFFIXES, TABLE_KIND, Block, LoadedDocument, load_document
 from techrag.ingest.metadata import build_metadata, compute_supersedence, llm_metadata
+from techrag.ingest.sources import PlanItem, plan_changes, scan_root
 from techrag.ingest.structure import SECTION_SEP, assign_sections, section_label
-from techrag.ingest.vlm import ExtractedTable, TableExtractor, is_figure_page, select_pages
+from techrag.ingest.vlm import PROMPT_VERSION, ExtractedTable, TableExtractor, is_figure_page, select_pages
 from techrag.llm import LLMClient
 from techrag.store import Store
 
@@ -36,7 +45,10 @@ Progress = Callable[[str], None]
 class IngestReport:
     added: list[str] = field(default_factory=list)
     updated: list[str] = field(default_factory=list)
-    skipped: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)        # unchanged, nothing sent to any API
+    reused: list[str] = field(default_factory=list)         # moved/duplicated content, index rows reused
+    missing: list[str] = field(default_factory=list)        # source file gone: excluded from answers
+    unreachable: list[str] = field(default_factory=list)    # folder could not be read: left untouched
     removed: list[str] = field(default_factory=list)
     failed: dict[str, str] = field(default_factory=dict)
     warnings: dict[str, list[str]] = field(default_factory=dict)
@@ -46,9 +58,38 @@ class IngestReport:
     seconds: float = 0.0
 
     def summary(self) -> str:
-        return (f"added={len(self.added)} updated={len(self.updated)} skipped={len(self.skipped)} "
-                f"removed={len(self.removed)} failed={len(self.failed)} chunks={self.chunks} "
-                f"vlm_tables={self.tables} parameters={self.parameters} time={self.seconds:.1f}s")
+        return (f"added={len(self.added)} updated={len(self.updated)} unchanged={len(self.skipped)} "
+                f"reused={len(self.reused)} missing={len(self.missing)} unreachable={len(self.unreachable)} "
+                f"failed={len(self.failed)} chunks={self.chunks} vlm_tables={self.tables} "
+                f"parameters={self.parameters} time={self.seconds:.1f}s")
+
+    def merge(self, other: "IngestReport") -> None:
+        for name in ("added", "updated", "skipped", "reused", "missing", "unreachable", "removed"):
+            getattr(self, name).extend(getattr(other, name))
+        self.failed.update(other.failed)
+        self.warnings.update(other.warnings)
+        self.chunks += other.chunks
+        self.tables += other.tables
+        self.parameters += other.parameters
+
+    def to_dict(self) -> dict:
+        return {"summary": self.summary(), "added": self.added, "updated": self.updated, "reused": self.reused,
+                "unchanged": len(self.skipped), "missing": self.missing, "unreachable": self.unreachable,
+                "failed": self.failed, "warnings": self.warnings}
+
+
+def ingest_fingerprint(cfg: Config, vision_model: Optional[str]) -> str:
+    """Settings that change what indexing produces. A document indexed with other settings is re-processed
+    on the next sync (the embedding model is checked separately: changing it needs a full rebuild)."""
+    from dataclasses import asdict
+
+    from techrag.store import INDEX_FORMAT
+
+    v = cfg.vision
+    parts = {"format": INDEX_FORMAT, "chunking": asdict(cfg.chunking),
+             "vision": {"model": vision_model, "dpi": v.dpi, "min_page_score": v.min_page_score,
+                        "max_pages": v.max_pages_per_doc, "prompt": PROMPT_VERSION} if vision_model else None}
+    return hashlib.sha1(json.dumps(parts, sort_keys=True).encode()).hexdigest()[:16]
 
 
 def sha256_file(path: Path) -> str:
@@ -165,17 +206,19 @@ def merge_vlm_tables(blocks: list[Block], tables: dict[int, list[ExtractedTable]
 class Ingestor:
     def __init__(self, cfg: Config, store: Store, embedder: Embedder, domains: DomainRegistry,
                  progress: Optional[Progress] = None, llm: Optional[LLMClient] = None,
-                 vision: Optional[LLMClient] = None):
+                 vision: Optional[LLMClient] = None, status: Optional[Callable[[dict], None]] = None):
         self.cfg = cfg
         self.store = store
         self.embedder = embedder
         self.domains = domains
         self.progress = progress or (lambda msg: None)
+        self.status = status or (lambda st: None)
         self.llm = llm
         self.extractor = None
         if vision is not None and cfg.vision.enabled:
             self.extractor = TableExtractor(vision, cfg.vlm_cache_dir, cfg.vision.dpi, cfg.vision.max_tokens,
                                             cfg.vision.concurrency)
+        self.fingerprint = ingest_fingerprint(cfg, self.extractor.client.model if self.extractor else None)
 
     def _rel(self, path: Path) -> str:
         try:
@@ -183,65 +226,173 @@ class Ingestor:
         except ValueError:
             return str(path.resolve())
 
-    def run(self, target: Optional[Path] = None, rebuild: bool = False, prune: bool = True) -> IngestReport:
-        start = time.time()
-        report = IngestReport()
-        root = self.cfg.sources_dir
-        root.mkdir(parents=True, exist_ok=True)
-        target = Path(target) if target else root
-        if not target.exists():
-            raise FileNotFoundError(f"Source path not found: {target}")
-
+    def _check_embedding(self, rebuild: bool) -> None:
         name, dim = self.embedder.name, self.embedder.dim
         if rebuild and self.store.get_meta("embedding_model") not in (None, name):
             self.progress(f"embedding model changed -> clearing the index and re-embedding with {name}")
             self.store.reset(name, dim)
         self.store.check_embedding_model(name, dim)
-        files = discover(target)
-        self.progress(f"{len(files)} file(s) found under {target}")
 
-        seen: set[str] = set()
-        for n, path in enumerate(files, 1):
-            rel = self._rel(path)
-            seen.add(rel)
+    # ------------------------------------------------------------------ syncs
+    def run(self, target: Optional[Path] = None, rebuild: bool = False, prune: bool = True) -> IngestReport:
+        """The library's own sources folder (or one file/folder inside it, or a single outside file)."""
+        start = time.time()
+        root = self.cfg.sources_dir
+        root.mkdir(parents=True, exist_ok=True)
+        target = Path(target) if target else root
+        if not target.exists():
+            raise FileNotFoundError(f"Source path not found: {target}")
+        self._check_embedding(rebuild)
+        report = IngestReport()
+        rel_target = self._rel(target)
+        if Path(rel_target).is_absolute():  # a single file outside the library, indexed by its absolute path
+            if target.is_dir():
+                raise ValueError("folders outside the library are added as document folders (add-folder)")
+            self._outside_file(target, rel_target, rebuild, report)
+        else:
+            scan = scan_root(root)
+            docs = [d for d in self.store.root_documents(None) if not Path(d.path).is_absolute()]
+            if target.resolve() != root.resolve():
+                prefix = "" if rel_target == "." else rel_target
+                scan.files = [f for f in scan.files if f.rel == prefix or f.rel.startswith(prefix + "/")]
+                docs = [d for d in docs if d.rel_path == prefix or d.rel_path.startswith(prefix + "/")]
+            items = plan_changes(scan, docs, self.fingerprint, None, sha256_file, rebuild)
+            if not prune:
+                items = [it for it in items if it.action not in ("missing", "unreachable")]
+            self.progress(f"{len(scan.files)} file(s) found under {target}")
+            self._apply(items, None, lambda it: it.rel, report, "")
+        self._finish(report)
+        report.seconds = time.time() - start
+        return report
+
+    def sync_root(self, root_id: int, rebuild: bool = False, report: Optional[IngestReport] = None,
+                  finish: bool = True) -> IngestReport:
+        """A document folder the user picked: read in place, buckets from its top-level folders."""
+        start = time.time()
+        r = self.store.root(root_id)
+        if r is None:
+            raise ValueError(f"unknown document folder #{root_id}")
+        self._check_embedding(rebuild)
+        report = report if report is not None else IngestReport()
+        self.status({"phase": "scan", "root": r["path"]})
+        scan = scan_root(r["path"], exclude=(self.cfg.library_dir,))
+        if not scan.reachable:
+            self.progress(f"folder not reachable, nothing changed: {r['path']} ({scan.error})")
+            self.store.set_root_status(root_id, f"unreachable: {scan.error}")
+        else:
+            self.progress(f"{len(scan.files)} document(s) in {len(scan.buckets())} bucket(s) under {r['path']}")
+            for u in scan.unreadable[:10]:
+                self.progress(f"    cannot read: {u}")
+        items = plan_changes(scan, self.store.root_documents(root_id), self.fingerprint, root_id, sha256_file,
+                             rebuild)
+        self._apply(items, root_id, lambda it: f"@{root_id}/{it.rel}", report, r["path"])
+        if scan.reachable:
+            self.store.set_root_status(root_id, "ok" if not scan.unreadable else
+                                       f"partly unreadable: {len(scan.unreadable)} item(s)")
+        if finish:
+            self._finish(report)
+        report.seconds = time.time() - start
+        return report
+
+    def sync_all(self, rebuild: bool = False) -> IngestReport:
+        """Rescan: the library's sources folder and every document folder."""
+        start = time.time()
+        report = self.run(rebuild=rebuild)
+        for r in self.store.roots():
             try:
-                digest = sha256_file(path)
-                existing = self.store.document_by_path(rel)
-                if existing and existing.sha256 == digest and not rebuild:
-                    report.skipped.append(rel)
-                    continue
-                self.progress(f"[{n}/{len(files)}] {rel}")
-                stats, warnings = self.ingest_file(path, rel, digest)
-                report.chunks += stats["chunks"]
-                report.tables += stats["tables"]
-                report.parameters += stats["parameters"]
-                (report.updated if existing else report.added).append(rel)
-                if warnings:
-                    report.warnings[rel] = warnings
-                    for w in warnings[:5]:
-                        self.progress(f"    warning: {w}")
-            except Exception as exc:  # one bad PDF must not stop a batch
-                report.failed[rel] = f"{exc.__class__.__name__}: {exc}"
-                self.progress(f"    FAILED: {exc}")
+                self.sync_root(r["id"], rebuild, report, finish=False)
+            except Exception as exc:
+                report.failed[r["path"]] = f"{exc.__class__.__name__}: {exc}"
+        self._finish(report)
+        report.seconds = time.time() - start
+        return report
 
-        if prune and target.resolve() == root.resolve():
-            for doc in self.store.documents():
-                if doc.path not in seen and not Path(doc.path).is_absolute():
-                    self.store.delete_document(doc.id)
-                    report.removed.append(doc.path)
-                    self.progress(f"removed from index (file deleted): {doc.path}")
-
-        pairs = compute_supersedence(self.store.documents())
+    def _finish(self, report: IngestReport) -> None:
+        pairs = compute_supersedence([d for d in self.store.documents() if not d.missing])
         self.store.set_superseded(pairs)
         for doc_id, newer in pairs:
             if newer:
                 d, nd = self.store.document(doc_id), self.store.document(newer)
                 self.progress(f"superseded: '{d.title}' -> newer revision '{nd.title}'")
-        report.seconds = time.time() - start
-        return report
+        self.status({"phase": "done", "file": "", "errors": len(report.failed)})
+
+    def _outside_file(self, path: Path, key: str, rebuild: bool, report: IngestReport) -> None:
+        try:
+            digest = sha256_file(path)
+            existing = self.store.document_by_path(key)
+            st = path.stat()
+            if existing and existing.sha256 == digest and not rebuild and \
+                    (not existing.ingest_fp or existing.ingest_fp == self.fingerprint):
+                report.skipped.append(key)
+                return
+            stats, warnings = self.ingest_file(path, key, digest, {"rel_path": key, "bucket": "", "subpath": "",
+                                                                    "file_size": st.st_size,
+                                                                    "file_mtime": st.st_mtime_ns})
+            self._count(report, existing is not None, key, stats, warnings)
+        except Exception as exc:
+            report.failed[key] = f"{exc.__class__.__name__}: {exc}"
+
+    def _count(self, report: IngestReport, existed: bool, key: str, stats: dict, warnings: list) -> None:
+        report.chunks += stats["chunks"]
+        report.tables += stats["tables"]
+        report.parameters += stats["parameters"]
+        (report.updated if existed else report.added).append(key)
+        if warnings:
+            report.warnings[key] = warnings
+            for w in warnings[:5]:
+                self.progress(f"    warning: {w}")
+
+    def _apply(self, items: list[PlanItem], root_id: Optional[int], key_of, report: IngestReport,
+               root_path: str) -> None:
+        """Carry out a plan; one failing file never stops the others."""
+        work = [it for it in items if it.action != "unchanged"]
+        report.skipped += [key_of(it) for it in items if it.action == "unchanged"]
+        total = len(work)
+        for n, it in enumerate(work, 1):
+            key = key_of(it)
+            self.status({"phase": "index", "bucket": it.bucket, "file": it.rel, "action": it.action,
+                         "done": n - 1, "total": total, "errors": len(report.failed)})
+            try:
+                if it.action == "missing":
+                    self.store.set_missing([it.doc_id], True)
+                    report.missing.append(key)
+                    self.progress(f"source file not found (kept, excluded from answers): {it.rel}")
+                    continue
+                if it.action == "unreachable":
+                    report.unreachable.append(key)
+                    continue
+                f = it.file
+                source = {"root_id": root_id, "rel_path": it.rel, "bucket": it.bucket, "bucket_id": it.bucket_id,
+                          "subpath": f.subpath, "file_size": f.size, "file_mtime": f.mtime_ns}
+                if it.action in ("touched", "restored"):
+                    self.store.update_source(it.doc_id, **source)
+                    report.skipped.append(key)
+                    continue
+                if it.action == "moved":
+                    self.store.update_source(it.from_doc, path=key, **source)
+                    report.reused.append(key)
+                    self.progress(f"[{n}/{total}] {it.rel}: moved, index reused")
+                    continue
+                if it.action == "duplicate":
+                    src_doc = self.store.document(it.from_doc)
+                    self.store.clone_document(it.from_doc, key, dict(source, ingest_fp=src_doc.ingest_fp))
+                    report.reused.append(key)
+                    self.progress(f"[{n}/{total}] {it.rel}: same content as '{src_doc.path}', index reused")
+                    continue
+                self.progress(f"[{n}/{total}] {it.bucket + ' / ' if it.bucket else ''}{it.rel}"
+                              + (f" ({it.reason})" if it.reason else ""))
+                digest = it.sha256 or sha256_file(f.path)
+                existed = it.doc_id is not None
+                stats, warnings = self.ingest_file(Path(f.path), key, digest, source, rel_for_domain=it.rel)
+                self._count(report, existed, key, stats, warnings)
+            except Exception as exc:  # one bad or unreadable file must not stop a batch
+                report.failed[key] = f"{exc.__class__.__name__}: {exc}"
+                self.progress(f"    FAILED {it.rel}: {exc}")
+        self.status({"phase": "index", "done": total, "total": total, "errors": len(report.failed)})
 
     # ---------------------------------------------------------------- one file
-    def ingest_file(self, path: Path, rel: str, digest: str) -> tuple[dict, list[str]]:
+    def ingest_file(self, path: Path, rel: str, digest: str, source: Optional[dict] = None,
+                    rel_for_domain: Optional[str] = None) -> tuple[dict, list[str]]:
         t0 = time.time()
         cfg = self.cfg
         doc: LoadedDocument = load_document(path, extract_tables=cfg.chunking.extract_tables)
@@ -250,7 +401,9 @@ class Ingestor:
         warnings = list(doc.warnings)
         texts = page_texts(blocks)
         front = "\n".join(texts.get(p, "") for p in sorted(texts)[:3])
-        domain = self.domains.classify_document(Path(rel), f"{doc.title}\n{front}")
+        # Routing collection from the folder (or content for loose files); the bucket is stored separately and
+        # neither is used as evidence of the document's standard/revision.
+        domain = self.domains.classify_document(Path(rel_for_domain or rel), f"{doc.title}\n{front}")
 
         llm_meta = {}
         if self.llm is not None:
@@ -320,6 +473,7 @@ class Ingestor:
             toc=[list(t) for t in doc.toc], metadata=metadata, warnings=warnings, chunks=rows, embeddings=matrix,
             entities=meta.entities, doc_type=meta.doc_type, revision=meta.revision, doc_date=meta.doc_date,
             tables=table_rows, pages=[(p, g.label, *g.encode()) for p, g in sorted(doc.pages.items())],
+            source=dict(source or {"rel_path": rel}, ingest_fp=self.fingerprint),
         )
         n_params = sum(1 for t in table_rows for p in t["parameters"] if p.get("verified"))
         self.progress(f"    -> {len(chunks)} chunks, {len(table_rows)} VLM tables, {n_params} verified parameters, "
@@ -351,8 +505,7 @@ def migrate_index(cfg: Config, store: Store, progress: Progress = lambda m: None
     rep = {"documents": 0, "pages": 0, "tables_grounded": 0, "tables_not_grounded": 0, "parameters_verified": 0,
            "parameters_unverified": 0, "skipped": [], "needs_reindex": []}
     for doc in store.legacy_documents():
-        path = Path(doc.path)
-        path = path if path.is_absolute() else cfg.sources_dir / path
+        path = store.source_path(doc, cfg.sources_dir)
         meta = dict(doc.metadata, index_format=INDEX_FORMAT)
         stem = Path(doc.path).stem
         meta.setdefault("doc_key", series_key(stem, doc.title))

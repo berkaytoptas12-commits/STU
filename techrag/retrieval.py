@@ -65,6 +65,7 @@ class Scope:
     notes: list[str] = field(default_factory=list)      # disclosed decisions (old revision, widening, ...)
     widened: bool = False
     explicit_revisions: list[int] = field(default_factory=list)
+    buckets: list[str] = field(default_factory=list)    # bucket ids the user restricted the search to
 
     @property
     def empty(self) -> bool:
@@ -162,7 +163,7 @@ class DocCatalog:
     def resolve_scope(self, plan: Optional[QueryPlan], domains: Optional[Sequence[str]] = None,
                       doc_ids: Optional[Sequence[int]] = None, entity_filter: bool = True,
                       domain_routing: bool = True, standard: str = "",
-                      entities: Optional[Sequence[str]] = None) -> Scope:
+                      entities: Optional[Sequence[str]] = None, buckets: Optional[Sequence[str]] = None) -> Scope:
         docs = self.docs()
         wanted = list(entities) if entities else ([standard] if standard else (plan.entities if plan else []))
         text = f"{plan.question} {plan.standalone}" if plan else standard
@@ -171,6 +172,8 @@ class DocCatalog:
         notes: list[str] = []
 
         def usable(d: DocumentRow) -> bool:
+            if d.missing:
+                return False  # its source file is gone: stale content never enters an answer
             if d.id in explicit:
                 return True
             if d.doc_type == "base" and doc_series(d) in pinned:
@@ -186,6 +189,28 @@ class DocCatalog:
         def tagged(ds: Sequence[DocumentRow], e: str) -> list[int]:
             return [d.id for d in ds if e.lower() in {x.lower() for x in d.entities}]
 
+        gone = [i for i in (doc_ids or []) if i in docs and docs[i].missing]
+        if gone:
+            notes.append(f"{len(gone)} selected document(s) skipped: their source file is missing")
+            doc_ids = [i for i in doc_ids if i not in set(gone)]
+            if not doc_ids and not buckets:
+                return Scope(doc_ids=[], reason="user", notes=notes)
+        if buckets:
+            # A bucket narrows the pool; standard/version filtering and revision rules still apply inside it.
+            bset = set(buckets)
+            chosen = [docs[i] for i in (doc_ids or []) if i in docs]
+            pool = [d for d in pool if d.bucket_id in bset]
+            notes.append("restricted to the selected bucket(s)" + (" and documents" if chosen else ""))
+            if entity_filter and wanted:
+                cand = pool + [d for d in chosen if d not in pool]
+                per = {e: tagged(cand, e) for e in wanted}
+                found = {e: ids for e, ids in per.items() if ids}
+                return Scope(doc_ids=sorted({i for v in found.values() for i in v}),
+                             reason="entity" if found else "entity_missing", entities=list(found),
+                             missing=[e for e in wanted if not per[e]], per_entity=found, notes=notes,
+                             explicit_revisions=explicit, buckets=list(buckets))
+            ids = sorted({d.id for d in pool} | {d.id for d in chosen})
+            return Scope(doc_ids=ids, reason="user", notes=notes, explicit_revisions=explicit, buckets=list(buckets))
         if doc_ids:
             sel = [docs[i] for i in doc_ids if i in docs]
             sc = Scope(doc_ids=list(doc_ids), reason="user", notes=notes, explicit_revisions=explicit)
@@ -267,11 +292,12 @@ class Retriever:
     def search(self, plan: QueryPlan, domains: Optional[Sequence[str]] = None,
                doc_ids: Optional[Sequence[int]] = None, top_k: Optional[int] = None, standard: str = "",
                budget_tokens: Optional[int] = None, with_parameters: bool = True,
-               scope: Optional[Scope] = None) -> RetrievalResult:
+               scope: Optional[Scope] = None, buckets: Optional[Sequence[str]] = None) -> RetrievalResult:
         rc = self.cfg.retrieval
         timings: dict = {}
         if scope is None:
-            scope = self.catalog.resolve_scope(plan, domains, doc_ids, rc.entity_filter, rc.domain_routing, standard)
+            scope = self.catalog.resolve_scope(plan, domains, doc_ids, rc.entity_filter, rc.domain_routing, standard,
+                                               buckets=buckets)
         if scope.empty:
             return RetrievalResult(plan, [], scope, [], None, 0, timings)
         k = top_k or rc.final_top_k

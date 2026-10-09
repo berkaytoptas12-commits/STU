@@ -87,6 +87,9 @@ MESSAGES = {
         "missing": "İstenen standart/sürüm ({missing}) yüklü dokümanlarda yok; başka bir standart veya sürümün "
                    "kaynaklarıyla cevap verilmedi.",
         "missing_loaded": "Kütüphanedeki ilgili dokümanlar: {loaded}.",
+        "missing_scope": "İstenen standart/sürüm ({missing}) seçili kapsamda (bucket / belge seçimi) yok; seçimin "
+                         "dışındaki belgelerle cevap verilmedi.",
+        "outside_scope": "Seçimin dışında bulunanlar: {docs}. Kapsamı genişletip yeniden sorabilirsiniz.",
         "partial_missing": "Not: {missing} için yüklü doküman yok; cevap yalnızca {found} kaynaklarına dayanıyor.",
         "clarify": "Soru birden fazla standart/sürümle eşleşiyor ve değerler sürüme göre farklı olabilir: {options}. "
                    "Hangisini kastettiğinizi belirtir misiniz?",
@@ -101,6 +104,9 @@ MESSAGES = {
         "missing": "The requested standard/version ({missing}) is not in the loaded documents; no answer was "
                    "built from another standard's or version's sources.",
         "missing_loaded": "Related documents in the library: {loaded}.",
+        "missing_scope": "The requested standard/version ({missing}) is not in the selected scope (bucket / document "
+                         "selection); documents outside the selection were not used.",
+        "outside_scope": "Outside the selection: {docs}. Widen the scope and ask again.",
         "partial_missing": "Note: no document is loaded for {missing}; the answer relies only on {found} sources.",
         "clarify": "The question matches several standards/versions whose values may differ: {options}. "
                    "Which one do you mean?",

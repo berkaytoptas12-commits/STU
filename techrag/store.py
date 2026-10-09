@@ -21,7 +21,7 @@ from typing import Iterable, Iterator, Optional, Sequence
 
 import numpy as np
 
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 # Documents ingested with this format carry metadata["index_format"]; older ones lack page geometry and
 # cell-level table grounding (see Store.legacy_documents / `techrag migrate`).
 INDEX_FORMAT = 3
@@ -44,7 +44,24 @@ CREATE TABLE IF NOT EXISTS documents (
     toc TEXT,
     metadata TEXT,
     warnings TEXT,
-    ingested_at TEXT
+    ingested_at TEXT,
+    root_id INTEGER,
+    rel_path TEXT DEFAULT '',
+    bucket TEXT DEFAULT '',
+    bucket_id TEXT DEFAULT '',
+    subpath TEXT DEFAULT '',
+    file_size INTEGER DEFAULT 0,
+    file_mtime INTEGER DEFAULT 0,
+    missing INTEGER DEFAULT 0,
+    ingest_fp TEXT DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS roots (
+    id INTEGER PRIMARY KEY,
+    path TEXT UNIQUE NOT NULL,
+    label TEXT DEFAULT '',
+    added_at TEXT,
+    last_scan TEXT DEFAULT '',
+    last_status TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS chunks (
     id INTEGER PRIMARY KEY,
@@ -159,6 +176,15 @@ class DocumentRow:
     metadata: dict
     warnings: list
     ingested_at: str
+    root_id: Optional[int] = None     # None: a file inside the library's own sources folder
+    rel_path: str = ""                # path relative to its root (posix)
+    bucket: str = ""                  # display name of the top-level folder ("" = general bucket)
+    bucket_id: str = ""
+    subpath: str = ""                 # folder path inside the bucket
+    file_size: int = 0
+    file_mtime: int = 0
+    missing: bool = False             # source file not found at the last scan (excluded from answers)
+    ingest_fp: str = ""               # parsing/extraction settings fingerprint used to index it
 
     def to_dict(self, with_toc: bool = False) -> dict:
         d = asdict(self)
@@ -319,7 +345,7 @@ class Store:
                     con.execute("INSERT INTO meta VALUES('schema_version', ?)", (SCHEMA_VERSION,))
         with self.connect() as con:
             self.columns = {t: {r[1] for r in con.execute(f"PRAGMA table_info({t})")}
-                            for t in ("chunks", "tables", "parameters", "pages")}
+                            for t in ("chunks", "tables", "parameters", "pages", "documents", "roots")}
 
     @staticmethod
     def _migrate(con: sqlite3.Connection) -> None:
@@ -343,6 +369,21 @@ class Store:
         for col in ("status", "evidence", "value_kind"):
             if col not in cols["parameters"]:
                 con.execute(f"ALTER TABLE parameters ADD COLUMN {col} TEXT DEFAULT ''")
+        dcols = {r[1] for r in con.execute("PRAGMA table_info(documents)")}
+        for col, decl in (("root_id", "INTEGER"), ("rel_path", "TEXT DEFAULT ''"), ("bucket", "TEXT DEFAULT ''"),
+                          ("bucket_id", "TEXT DEFAULT ''"), ("subpath", "TEXT DEFAULT ''"),
+                          ("file_size", "INTEGER DEFAULT 0"), ("file_mtime", "INTEGER DEFAULT 0"),
+                          ("missing", "INTEGER DEFAULT 0"), ("ingest_fp", "TEXT DEFAULT ''")):
+            if col not in dcols:
+                con.execute(f"ALTER TABLE documents ADD COLUMN {col} {decl}")
+        # Buckets of documents in the library's own sources folder: their top-level folder (as before).
+        from techrag.ingest.sources import bucket_id_for, split_rel
+
+        for doc_id, path in con.execute("SELECT id, path FROM documents WHERE bucket_id = '' OR bucket_id IS NULL"
+                                        ).fetchall():
+            bucket, sub = split_rel(path)
+            con.execute("UPDATE documents SET rel_path=?, bucket=?, bucket_id=?, subpath=? WHERE id=?",
+                        (path, bucket, bucket_id_for(bucket), sub, doc_id))
         legacy_tables = con.execute("SELECT id, doc_id, page, markdown FROM tables WHERE status = ''").fetchall()
         for t in legacy_tables:
             lines = [ln for ln in (t[3] or "").split("\n") if ln.startswith("|")]
@@ -422,11 +463,25 @@ class Store:
             superseded_by=r["superseded_by"], toc=json.loads(r["toc"] or "[]"),
             metadata=json.loads(r["metadata"] or "{}"), warnings=json.loads(r["warnings"] or "[]"),
             ingested_at=r["ingested_at"] or "",
+            **Store._doc_extra(r),
         )
+
+    @staticmethod
+    def _doc_extra(r: sqlite3.Row) -> dict:
+        keys = r.keys()
+        if "bucket_id" not in keys:  # read-only index from an older version
+            from techrag.ingest.sources import bucket_id_for, split_rel
+
+            bucket, sub = split_rel(r["path"])
+            return {"rel_path": r["path"], "bucket": bucket, "bucket_id": bucket_id_for(bucket), "subpath": sub}
+        return {"root_id": r["root_id"], "rel_path": r["rel_path"] or r["path"], "bucket": r["bucket"] or "",
+                "bucket_id": r["bucket_id"] or "", "subpath": r["subpath"] or "", "file_size": r["file_size"] or 0,
+                "file_mtime": r["file_mtime"] or 0, "missing": bool(r["missing"]), "ingest_fp": r["ingest_fp"] or ""}
 
     def documents(self) -> list[DocumentRow]:
         with self.connect() as con:
-            rows = con.execute("SELECT * FROM documents ORDER BY domain, title").fetchall()
+            order = "bucket, rel_path" if "bucket" in self.columns.get("documents", ()) else "domain, title"
+            rows = con.execute(f"SELECT * FROM documents ORDER BY {order}").fetchall()
         return [self._doc(r) for r in rows]
 
     def document(self, doc_id: int) -> Optional[DocumentRow]:
@@ -463,7 +518,7 @@ class Store:
                          toc: list, metadata: dict, warnings: list, chunks: Sequence[dict],
                          embeddings: np.ndarray, entities: Sequence[str] = (), doc_type: str = "base",
                          revision: str = "", doc_date: str = "", tables: Sequence[dict] = (),
-                         pages: Sequence[tuple] = ()) -> int:
+                         pages: Sequence[tuple] = (), source: Optional[dict] = None) -> int:
         """Atomically (re)write a document with chunks, FTS rows, embeddings, tables, parameters and page
         geometry.
 
@@ -473,6 +528,7 @@ class Store:
                   "notes", "min_si", "typ_si", "max_si", "base_unit", "verified", "status", "evidence",
                   "value_kind"}]}]
         pages:  [(page, label, geom_json, words_blob)]
+        source: {"root_id", "rel_path", "bucket", "bucket_id", "subpath", "file_size", "file_mtime", "ingest_fp"}
         """
         self._writable()
         if len(chunks) != len(embeddings):
@@ -490,6 +546,7 @@ class Store:
                  json.dumps(warnings, ensure_ascii=False), datetime.now(timezone.utc).isoformat(timespec="seconds")),
             )
             doc_id = cur.lastrowid
+            self._set_source(con, doc_id, path, source)
             emb16 = np.asarray(embeddings, dtype=np.float16)
             for c, vec in zip(chunks, emb16):
                 cur = con.execute(
@@ -533,6 +590,142 @@ class Store:
             self._bump_version(con)
         self._geom_cache.clear()
         return doc_id
+
+    _SOURCE_FIELDS = ("root_id", "rel_path", "bucket", "bucket_id", "subpath", "file_size", "file_mtime",
+                      "ingest_fp")
+
+    def _set_source(self, con: sqlite3.Connection, doc_id: int, path: str, source: Optional[dict]) -> None:
+        from techrag.ingest.sources import bucket_id_for, split_rel
+
+        src = dict(source or {})
+        if "bucket" not in src:
+            src["bucket"], src["subpath"] = split_rel(src.get("rel_path") or path)
+        src.setdefault("rel_path", path)
+        src.setdefault("bucket_id", bucket_id_for(src["bucket"]))
+        cols = [f for f in self._SOURCE_FIELDS if f in src]
+        con.execute(f"UPDATE documents SET {', '.join(f'{c}=?' for c in cols)}, missing=0 WHERE id=?",
+                    [src[c] for c in cols] + [doc_id])
+
+    # ----------------------------------------------------------- source folders
+    def roots(self) -> list[dict]:
+        if not self.columns.get("roots"):
+            return []
+        with self.connect() as con:
+            rows = con.execute("SELECT r.*, (SELECT COUNT(*) FROM documents d WHERE d.root_id = r.id) AS documents,"
+                               " (SELECT COUNT(*) FROM documents d WHERE d.root_id = r.id AND d.missing = 1)"
+                               " AS missing FROM roots r ORDER BY r.id").fetchall()
+        return [dict(r) for r in rows]
+
+    def root(self, root_id: int) -> Optional[dict]:
+        return next((r for r in self.roots() if r["id"] == root_id), None)
+
+    def add_root(self, path: str, label: str = "") -> int:
+        self._writable()
+        with self.connect() as con:
+            row = con.execute("SELECT id FROM roots WHERE path=?", (path,)).fetchone()
+            if row:
+                return row["id"]
+            cur = con.execute("INSERT INTO roots(path, label, added_at) VALUES(?,?,?)",
+                              (path, label or Path(path).name, datetime.now(timezone.utc).isoformat(timespec="seconds")))
+            return cur.lastrowid
+
+    def set_root_status(self, root_id: int, status: str) -> None:
+        self._writable()
+        with self.connect() as con:
+            con.execute("UPDATE roots SET last_scan=?, last_status=? WHERE id=?",
+                        (datetime.now(timezone.utc).isoformat(timespec="seconds"), status, root_id))
+
+    def root_documents(self, root_id: Optional[int]) -> list[DocumentRow]:
+        return [d for d in self.documents() if d.root_id == root_id]
+
+    def source_path(self, doc: DocumentRow, sources_dir: Path) -> Path:
+        """Where the document's file is read from (its picked folder, or the library's sources folder)."""
+        if doc.root_id is not None:
+            r = self.root(doc.root_id)
+            if r:
+                return Path(r["path"]) / Path(doc.rel_path)
+        p = Path(doc.path)
+        return p if p.is_absolute() else sources_dir / p
+
+    def set_missing(self, doc_ids: Iterable[int], missing: bool = True) -> None:
+        self._writable()
+        ids = list(doc_ids)
+        if not ids:
+            return
+        with self.connect() as con:
+            con.executemany("UPDATE documents SET missing=? WHERE id=?", [(1 if missing else 0, i) for i in ids])
+            self._bump_version(con)
+
+    def update_source(self, doc_id: int, **fields) -> None:
+        """Record a new location/stat for unchanged content (touched or moved file) - no re-processing."""
+        self._writable()
+        path = fields.pop("path", None)
+        with self.connect() as con:
+            if path is not None:
+                con.execute("UPDATE documents SET path=? WHERE id=?", (path, doc_id))
+            self._set_source(con, doc_id, path or "", fields)
+            self._bump_version(con)
+
+    def clone_document(self, src_id: int, path: str, source: dict) -> int:
+        """A second copy of an already indexed file (same content elsewhere): copy everything, no API calls."""
+        self._writable()
+        with self.connect() as con:
+            old = con.execute("SELECT id FROM documents WHERE path=?", (path,)).fetchone()
+            if old:
+                self.delete_document(old["id"], con)
+            cols = [r[1] for r in con.execute("PRAGMA table_info(documents)") if r[1] not in ("id", "path")]
+            cur = con.execute(f"INSERT INTO documents(path, {', '.join(cols)}) SELECT ?, {', '.join(cols)} "
+                              "FROM documents WHERE id=?", (path, src_id))
+            new = cur.lastrowid
+            con.execute("UPDATE documents SET superseded_by=NULL WHERE id=?", (new,))
+            self._set_source(con, new, path, source)
+            ccols = [r[1] for r in con.execute("PRAGMA table_info(chunks)") if r[1] not in ("id", "doc_id")]
+            for c in con.execute("SELECT * FROM chunks WHERE doc_id=? ORDER BY ordinal", (src_id,)).fetchall():
+                cur = con.execute(f"INSERT INTO chunks(doc_id, {', '.join(ccols)}) VALUES(?{', ?' * len(ccols)})",
+                                  [new] + [c[k] for k in ccols])
+                f = con.execute("SELECT text, section, title FROM chunks_fts WHERE rowid=?", (c["id"],)).fetchone()
+                if f:
+                    con.execute("INSERT INTO chunks_fts(rowid, text, section, title) VALUES(?,?,?,?)",
+                                (cur.lastrowid, f["text"], f["section"], f["title"]))
+            tcols = [r[1] for r in con.execute("PRAGMA table_info(tables)") if r[1] not in ("id", "doc_id")]
+            pcols = [r[1] for r in con.execute("PRAGMA table_info(parameters)")
+                     if r[1] not in ("id", "doc_id", "table_id")]
+            for t in con.execute("SELECT * FROM tables WHERE doc_id=?", (src_id,)).fetchall():
+                cur = con.execute(f"INSERT INTO tables(doc_id, {', '.join(tcols)}) VALUES(?{', ?' * len(tcols)})",
+                                  [new] + [t[k] for k in tcols])
+                tid = cur.lastrowid
+                for p in con.execute("SELECT * FROM parameters WHERE table_id=?", (t["id"],)).fetchall():
+                    cur = con.execute(f"INSERT INTO parameters(doc_id, table_id, {', '.join(pcols)}) "
+                                      f"VALUES(?, ?{', ?' * len(pcols)})", [new, tid] + [p[k] for k in pcols])
+                    f = con.execute("SELECT * FROM params_fts WHERE rowid=?", (p["id"],)).fetchone()
+                    if f:
+                        con.execute("INSERT INTO params_fts(rowid, parameter, symbol, conditions, notes, caption,"
+                                    " section, title) VALUES(?,?,?,?,?,?,?,?)",
+                                    (cur.lastrowid, f["parameter"], f["symbol"], f["conditions"], f["notes"],
+                                     f["caption"], f["section"], f["title"]))
+            con.execute("INSERT INTO pages(doc_id, page, label, geom, words) SELECT ?, page, label, geom, words "
+                        "FROM pages WHERE doc_id=?", (new, src_id))
+            self._bump_version(con)
+        self._geom_cache.clear()
+        return new
+
+    def purge_missing(self) -> list[str]:
+        """Remove documents whose source file is gone (only on explicit request)."""
+        self._writable()
+        gone = [d for d in self.documents() if d.missing]
+        with self.connect() as con:
+            for d in gone:
+                self.delete_document(d.id, con)
+        return [d.path for d in gone]
+
+    def buckets(self) -> list[dict]:
+        out: dict[str, dict] = {}
+        for d in self.documents():
+            b = out.setdefault(d.bucket_id, {"id": d.bucket_id, "name": d.bucket, "documents": 0, "missing": 0,
+                                             "general": not d.bucket})
+            b["documents"] += 1
+            b["missing"] += int(d.missing)
+        return sorted(out.values(), key=lambda b: (b["general"], b["name"].lower()))
 
     def set_pages(self, doc_id: int, pages: Sequence[tuple], metadata: Optional[dict] = None) -> None:
         """Store page geometry for an already indexed document (migration of a legacy index)."""
@@ -813,7 +1006,11 @@ class Store:
 
     # --------------------------------------------------------------- publish
     def publish(self, dest_dir: str | Path, sources_dir: Path, vlm_cache_dir: Optional[Path] = None) -> Path:
-        """Write a self-contained copy of the library: clean index (VACUUM INTO) + sources + VLM cache."""
+        """Write a self-contained copy of the library: clean index (VACUUM INTO) + sources + VLM cache.
+
+        Documents read from picked folders are copied into the package (sources/<their path below the folder>)
+        and the copied index points at those copies, so the package works on any machine. The original files
+        are only read. A summary is left in self.last_publish."""
         dest = Path(dest_dir)
         dest.mkdir(parents=True, exist_ok=True)
         target = dest / "index.sqlite"
@@ -821,14 +1018,42 @@ class Store:
             target.unlink()
         with self.connect() as con:
             con.execute("VACUUM INTO ?", (str(target),))
+        if sources_dir.exists():
+            shutil.copytree(sources_dir, dest / "sources", dirs_exist_ok=True)
+        report = {"copied": 0, "missing": []}
         con = sqlite3.connect(str(target))  # `with` would only commit; Windows needs the handle closed
         try:
             con.execute("PRAGMA journal_mode=DELETE")
+            has_roots = bool(con.execute("SELECT name FROM sqlite_master WHERE name='roots'").fetchone())
+            roots = dict(con.execute("SELECT id, path FROM roots").fetchall()) if has_roots else {}
+            used = {r[0] for r in con.execute("SELECT path FROM documents WHERE root_id IS NULL"
+                                              if has_roots else "SELECT path FROM documents")}
+            rows = con.execute("SELECT id, root_id, rel_path FROM documents WHERE root_id IS NOT NULL").fetchall() \
+                if has_roots else []
+            for doc_id, root_id, rel in rows:
+                src = Path(roots.get(root_id, "")) / rel
+                new = rel
+                n = 2
+                while new in used:
+                    stem = Path(rel)
+                    new = str(stem.with_name(f"{stem.stem} ({n}){stem.suffix}").as_posix())
+                    n += 1
+                used.add(new)
+                if not src.is_file():
+                    report["missing"].append(rel)
+                    con.execute("UPDATE documents SET missing=1 WHERE id=?", (doc_id,))
+                    continue
+                out = dest / "sources" / Path(new)
+                out.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, out)
+                con.execute("UPDATE documents SET path=?, rel_path=?, root_id=NULL WHERE id=?", (new, new, doc_id))
+                report["copied"] += 1
+            if has_roots:
+                con.execute("DELETE FROM roots")
             con.commit()
         finally:
             con.close()
-        if sources_dir.exists():
-            shutil.copytree(sources_dir, dest / "sources", dirs_exist_ok=True)
         if vlm_cache_dir and vlm_cache_dir.exists():
             shutil.copytree(vlm_cache_dir, dest / "cache" / "vlm", dirs_exist_ok=True)
+        self.last_publish = report
         return target

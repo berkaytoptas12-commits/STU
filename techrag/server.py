@@ -41,6 +41,7 @@ class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     history: list[ChatTurn] = Field(default_factory=list)
     domains: Optional[list[str]] = None
+    buckets: Optional[list[str]] = None
     doc_ids: Optional[list[int]] = None
     top_k: Optional[int] = Field(default=None, ge=1, le=30)
     stream: bool = True
@@ -49,6 +50,7 @@ class AskRequest(BaseModel):
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=4000)
     domains: Optional[list[str]] = None
+    buckets: Optional[list[str]] = None
     doc_ids: Optional[list[int]] = None
     top_k: Optional[int] = Field(default=None, ge=1, le=50)
 
@@ -84,6 +86,10 @@ class IngestRequest(BaseModel):
     rebuild: bool = False
 
 
+class FolderRequest(BaseModel):
+    path: str = Field(min_length=1, max_length=4000)
+
+
 class Jobs:
     def __init__(self):
         self.items: dict[str, dict] = {}
@@ -91,7 +97,7 @@ class Jobs:
 
     def create(self, kind: str) -> dict:
         job = {"id": uuid.uuid4().hex[:12], "kind": kind, "status": "queued", "messages": [], "report": None,
-               "created": time.time()}
+               "progress": {}, "created": time.time()}
         self.items[job["id"]] = job
         return job
 
@@ -178,6 +184,8 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         return {"version": __version__, "desktop": desktop, "library": str(c.library_dir.resolve()),
                 "read_only": c.read_only, "language": c.ui.language,
                 "legacy_documents": stats.get("legacy_documents", 0),
+                "buckets": e.store.buckets() if e else [], "roots": e.store.roots() if e else [],
+                "missing_documents": sum(b["missing"] for b in e.store.buckets()) if e else 0,
                 "models": {s: getattr(c, s).model for s in SERVICES},
                 "stats": stats, "domains": domains, "error": state["error"],
                 "allow_upload": c.server.allow_upload and not c.read_only}
@@ -307,8 +315,9 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         dest = Path(req.dest).expanduser()
         if dest.resolve() == c.library_dir.resolve():
             raise HTTPException(400, "destination is the current library")
-        target = eng().store.publish(dest, c.sources_dir, c.vlm_cache_dir)
-        return {"ok": True, "path": str(target.parent)}
+        store = eng().store
+        target = store.publish(dest, c.sources_dir, c.vlm_cache_dir)
+        return {"ok": True, "path": str(target.parent), "report": getattr(store, "last_publish", {})}
 
     # ------------------------------------------------------------- documents
     @app.get("/api/documents", dependencies=guard)
@@ -370,7 +379,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
     # ---------------------------------------------------------------- search
     @app.post("/api/search", dependencies=guard)
     def search(req: SearchRequest):
-        res = eng().retrieve(req.query, domains=req.domains, doc_ids=req.doc_ids, top_k=req.top_k)
+        res = eng().retrieve(req.query, domains=req.domains, doc_ids=req.doc_ids, top_k=req.top_k, buckets=req.buckets)
         return {"plan": res.plan.to_dict(), "scope": res.scope.to_dict(), "confidence": res.confidence,
                 "timings": res.timings, "sources": [p.to_dict() for p in res.passages],
                 "parameters": [p.__dict__ for p in res.parameters]}
@@ -380,11 +389,11 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         e = eng()
         history = [t.model_dump() for t in req.history]
         if not req.stream:
-            return e.ask(req.question, history, req.domains, req.doc_ids, req.top_k)
+            return e.ask(req.question, history, req.domains, req.doc_ids, req.top_k, req.buckets)
 
         def events():
             try:
-                for ev in e.ask_stream(req.question, history, req.domains, req.doc_ids, req.top_k):
+                for ev in e.ask_stream(req.question, history, req.domains, req.doc_ids, req.top_k, req.buckets):
                     yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
             except Exception as exc:
                 err = {"type": "error", "message": f"{exc.__class__.__name__}: {exc}"}
@@ -394,7 +403,9 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     # ------------------------------------------------------------- ingestion
-    def start_job(kind: str, target: Optional[Path], rebuild: bool = False) -> dict:
+    def start_job(kind: str, target: Optional[Path] = None, rebuild: bool = False, root_id: Optional[int] = None,
+                  everything: bool = False) -> dict:
+        """Indexing runs in a background thread (the window stays responsive); progress is polled."""
         from techrag.ingest.pipeline import Ingestor
 
         c: Config = state["cfg"]
@@ -403,16 +414,23 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         e = eng()
         job = jobs.create(kind)
 
+        def status(st: dict) -> None:
+            job["progress"] = dict(job["progress"], **st)
+
         def run():
             with jobs.lock:
                 job["status"] = "running"
                 try:
                     ing = Ingestor(c, e.store, e.embedder, e.domains, progress=lambda m: job["messages"].append(m),
-                                   llm=e.llm if c.llm.model else None, vision=e.vision)
-                    report = ing.run(target, rebuild=rebuild, prune=target is None)
-                    job["report"] = {"summary": report.summary(), "failed": report.failed,
-                                     "warnings": report.warnings}
-                    job["status"] = "failed" if report.failed else "done"
+                                   llm=e.llm if c.llm.model else None, vision=e.vision, status=status)
+                    if root_id is not None:
+                        report = ing.sync_root(root_id, rebuild)
+                    elif everything:
+                        report = ing.sync_all(rebuild)
+                    else:
+                        report = ing.run(target, rebuild=rebuild, prune=target is None)
+                    job["report"] = report.to_dict()
+                    job["status"] = "failed" if report.failed and not (report.added or report.updated) else "done"
                 except Exception as exc:
                     job["messages"].append(f"ERROR: {exc}")
                     job["status"] = "failed"
@@ -420,11 +438,96 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         threading.Thread(target=run, daemon=True).start()
         return job
 
+    def _plan(root_path: str, root_id: Optional[int]) -> dict:
+        from techrag.ingest.pipeline import ingest_fingerprint
+        from techrag.ingest.sources import plan_changes, plan_summary, scan_root
+
+        e = eng()
+        lib = state["cfg"].library_dir
+        scan = scan_root(root_path, exclude=(lib,) if Path(root_path) != state["cfg"].sources_dir else ())
+        fp = ingest_fingerprint(state["cfg"], e.vision.model if e.vision else None)
+        docs = e.store.root_documents(root_id) if root_id is not None or Path(root_path) == state["cfg"].sources_dir \
+            else []
+        if root_id is None:
+            docs = [d for d in docs if not Path(d.path).is_absolute()]
+        return {"scan": scan.summary(), "plan": plan_summary(plan_changes(scan, docs, fp, root_id))}
+
+    @app.post("/api/folders/preview", dependencies=guard)
+    def folder_preview(req: FolderRequest):
+        """What a document folder contains (buckets, documents, unsupported files) and what indexing would do.
+        Only reads the folder."""
+        path = Path(req.path).expanduser()
+        e = eng()
+        known = next((r for r in e.store.roots() if Path(r["path"]) == path), None)
+        out = _plan(str(path), known["id"] if known else None)
+        out["known"] = bool(known)
+        return out
+
+    @app.post("/api/folders", dependencies=guard)
+    def folder_add(req: FolderRequest):
+        """Register a document folder (read in place, nothing copied or written there) and index it."""
+        c: Config = state["cfg"]
+        if c.read_only:
+            raise HTTPException(403, "the library is opened read-only")
+        path = Path(req.path).expanduser()
+        if not path.is_dir():
+            raise HTTPException(400, "folder not found")
+        try:
+            if path.resolve() == c.library_dir.resolve() or c.library_dir.resolve() in path.resolve().parents:
+                raise HTTPException(400, "pick a folder outside the library folder")
+        except OSError:
+            pass
+        root_id = eng().store.add_root(str(path))
+        return {"root_id": root_id, "job": start_job("folder", root_id=root_id)["id"]}
+
+    @app.get("/api/folders", dependencies=guard)
+    def folders():
+        return eng().store.roots()
+
+    @app.post("/api/rescan/preview", dependencies=guard)
+    def rescan_preview():
+        c: Config = state["cfg"]
+        e = eng()
+        parts = [dict(_plan(str(c.sources_dir), None), root=str(c.sources_dir), library=True)]
+        for r in e.store.roots():
+            parts.append(dict(_plan(r["path"], r["id"]), root=r["path"], library=False))
+        total: dict = {}
+        for p in parts:
+            for k, v in p["plan"]["counts"].items():
+                total[k] = total.get(k, 0) + v
+        return {"roots": parts, "counts": total}
+
+    @app.post("/api/rescan", dependencies=guard)
+    def rescan(req: IngestRequest = IngestRequest()):
+        return {"job": start_job("rescan", rebuild=req.rebuild, everything=True)["id"]}
+
+    @app.post("/api/documents/purge-missing", dependencies=guard)
+    def purge_missing():
+        """Remove documents whose source file is gone from the index (explicit user action)."""
+        if state["cfg"].read_only:
+            raise HTTPException(403, "the library is opened read-only")
+        return {"removed": eng().store.purge_missing()}
+
     def collection_dir(collection: str) -> Path:
-        key = re.sub(r"[^\w\-]+", "_", collection.strip().lower()).strip("_") or "general"
-        d = state["cfg"].sources_dir / key
+        """Folder of a collection inside the library's sources: the name as typed (Turkish letters and spaces
+        kept), only characters Windows forbids in file names are replaced."""
+        name = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", collection.strip()).strip(" .") or "general"
+        d = state["cfg"].sources_dir / name
         d.mkdir(parents=True, exist_ok=True)
         return d
+
+    def unique_dest(dest_dir: Path, name: str, src: Optional[Path] = None) -> Path:
+        """Never overwrite a different file with the same name: 'Spec.pdf' -> 'Spec (2).pdf'."""
+        from techrag.ingest.pipeline import sha256_file
+
+        dest = dest_dir / name
+        n = 2
+        while dest.exists():
+            if src is not None and src.is_file() and sha256_file(dest) == sha256_file(src):
+                return dest  # the same file again
+            dest = dest_dir / f"{Path(name).stem} ({n}){Path(name).suffix}"
+            n += 1
+        return dest
 
     @app.post("/api/sources/add", dependencies=guard)
     def sources_add(req: PathsRequest):
@@ -434,8 +537,9 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             src = Path(p)
             if not src.is_file() or src.suffix.lower() not in SUPPORTED_SUFFIXES:
                 continue
-            dest = dest_dir / _safe_filename(src.name)
-            shutil.copy2(src, dest)
+            dest = unique_dest(dest_dir, _safe_filename(src.name), src)
+            if not dest.exists():
+                shutil.copy2(src, dest)
             copied.append(str(dest))
         if not copied:
             raise HTTPException(400, f"no supported files ({', '.join(sorted(SUPPORTED_SUFFIXES))})")
@@ -446,7 +550,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         name = _safe_filename(file.filename or "upload")
         if Path(name).suffix.lower() not in SUPPORTED_SUFFIXES:
             raise HTTPException(400, f"unsupported file type; allowed: {', '.join(sorted(SUPPORTED_SUFFIXES))}")
-        dest = collection_dir(domain) / name
+        dest = unique_dest(collection_dir(domain), name)
         with open(dest, "wb") as fh:
             while chunk := await file.read(1 << 20):
                 fh.write(chunk)

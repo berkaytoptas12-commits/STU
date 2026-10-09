@@ -48,6 +48,8 @@ class FakeOpenAI:
         self.judge: Optional[Callable[[list], object]] = None
         self.vlm: Optional[Callable[[str], dict]] = None  # override VLM table extraction (page text -> JSON)
         self.reasoning = ""
+        self.rate_limited = 0      # answer this many embedding requests with HTTP 429 first
+        self.retry_after = "2"
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self.handle)
@@ -59,6 +61,9 @@ class FakeOpenAI:
             return httpx.Response(200, json={"data": [{"id": m} for m in self.chat_models + ["emb-test", "rr-test"]]})
         body = json.loads(request.content or b"{}")
         self.calls.append({"path": path, "body": body})
+        if path.endswith("/embeddings") and self.rate_limited > 0:
+            self.rate_limited -= 1
+            return httpx.Response(429, headers={"Retry-After": self.retry_after}, json={"error": "rate limited"})
         if path.endswith("/embeddings"):
             vecs = _EMB.embed_documents(body["input"])
             return httpx.Response(200, json={"data": [{"index": i, "embedding": v.tolist()} for i, v in enumerate(vecs)]})

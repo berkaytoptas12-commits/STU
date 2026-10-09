@@ -100,8 +100,7 @@ class RAGEngine:
         doc = self.store.document(doc_id)
         if not doc:
             return None
-        p = Path(doc.path)
-        return p if p.is_absolute() else self.cfg.sources_dir / p
+        return self.store.source_path(doc, self.cfg.sources_dir)
 
     def render_page(self, doc_id: int, page: int, dpi: Optional[int] = None) -> Optional[bytes]:
         doc = self.store.document(doc_id)
@@ -156,12 +155,12 @@ class RAGEngine:
     # --------------------------------------------------------------- retrieval
     def retrieve(self, question: str, history: Optional[Sequence[dict]] = None,
                  domains: Optional[Sequence[str]] = None, doc_ids: Optional[Sequence[int]] = None,
-                 top_k: Optional[int] = None) -> RetrievalResult:
+                 top_k: Optional[int] = None, buckets: Optional[Sequence[str]] = None) -> RetrievalResult:
         t = time.time()
         plan = self.planner.plan(question, history)
         plan_time = time.time() - t
         self.check_index_compatibility()
-        res = self.retriever.search(plan, domains=domains, doc_ids=doc_ids, top_k=top_k)
+        res = self.retriever.search(plan, domains=domains, doc_ids=doc_ids, top_k=top_k, buckets=buckets)
         res.timings["plan"] = round(plan_time, 3)
         return res
 
@@ -284,11 +283,11 @@ class RAGEngine:
 
     def ask_stream(self, question: str, history: Optional[Sequence[dict]] = None,
                    domains: Optional[Sequence[str]] = None, doc_ids: Optional[Sequence[int]] = None,
-                   top_k: Optional[int] = None) -> Iterator[dict]:
+                   top_k: Optional[int] = None, buckets: Optional[Sequence[str]] = None) -> Iterator[dict]:
         t0 = time.time()
         history = list(history or [])
         yield {"type": "status", "stage": "planning"}
-        res = self.retrieve(question, history, domains, doc_ids, top_k)
+        res = self.retrieve(question, history, domains, doc_ids, top_k, buckets)
         plan = res.plan
         lang = plan.language
         scope = res.scope
@@ -301,13 +300,23 @@ class RAGEngine:
             yield self._final_short(f"{NOT_FOUND[lang]} {message(lang, 'empty_library')}", "not_found", timings, scope)
             return
         if scope.reason == "entity_missing":
+            missing = ", ".join(scope.missing)
+            if scope.buckets or doc_ids:
+                # Loaded, but not in what the user selected: say so instead of "not loaded".
+                outside = [f"{d.title}" for d in self.catalog.docs().values() if not d.missing and
+                           {e.lower() for e in d.entities} & {m.lower() for m in scope.missing}][:6]
+                text = f"{NOT_FOUND[lang]}\n\n{message(lang, 'missing_scope', missing=missing)}"
+                if outside:
+                    text += " " + message(lang, "outside_scope", docs="; ".join(outside))
+                yield self._final_short(text, "not_found", timings, scope)
+                return
             related = self._related_docs(scope)
-            text = f"{NOT_FOUND[lang]}\n\n{message(lang, 'missing', missing=', '.join(scope.missing))}"
+            text = f"{NOT_FOUND[lang]}\n\n{message(lang, 'missing', missing=missing)}"
             if related:
                 text += " " + message(lang, "missing_loaded", loaded="; ".join(related))
             yield self._final_short(text, "not_found", timings, scope)
             return
-        clar = self._clarification(plan, res, bool(doc_ids or domains))
+        clar = self._clarification(plan, res, bool(doc_ids or domains or buckets))
         if clar:
             yield {"type": "clarify", **clar}
             yield self._final_short(clar["text"], "clarify", timings, scope, clarify=clar)
@@ -599,9 +608,9 @@ class RAGEngine:
 
     def ask(self, question: str, history: Optional[Sequence[dict]] = None,
             domains: Optional[Sequence[str]] = None, doc_ids: Optional[Sequence[int]] = None,
-            top_k: Optional[int] = None) -> dict:
+            top_k: Optional[int] = None, buckets: Optional[Sequence[str]] = None) -> dict:
         out: dict = {"question": question, "tools": [], "draft": ""}
-        for ev in self.ask_stream(question, history, domains, doc_ids, top_k):
+        for ev in self.ask_stream(question, history, domains, doc_ids, top_k, buckets):
             if ev["type"] == "plan":
                 out["plan"], out["scope"], out["thinking"] = ev["plan"], ev["scope"], ev["thinking"]
             elif ev["type"] == "tool":

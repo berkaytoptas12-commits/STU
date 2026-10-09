@@ -54,6 +54,63 @@ def cmd_ingest(cfg: Config, args) -> int:
     return 1 if report.failed else 0
 
 
+def _ingestor(cfg: Config, args):
+    from techrag.ingest.pipeline import Ingestor
+
+    e = _engine(cfg)
+    vision = None if getattr(args, "no_vlm", False) else e.vision
+    llm = e.llm if (cfg.llm.model and not getattr(args, "no_llm_meta", False)) else None
+    return e, Ingestor(cfg, e.store, e.embedder, e.domains, progress=_print, llm=llm, vision=vision)
+
+
+def _print_report(report) -> int:
+    _print("\n" + report.summary())
+    for path in report.missing:
+        _print(f"  MISSING (kept, excluded from answers; 'techrag purge-missing' removes it): {path}")
+    for path in report.unreachable[:20]:
+        _print(f"  UNREACHABLE (folder could not be read, left unchanged): {path}")
+    for path, err in report.failed.items():
+        _print(f"  FAILED {path}: {err}")
+    return 1 if report.failed else 0
+
+
+def cmd_add_folder(cfg: Config, args) -> int:
+    from techrag.ingest.sources import scan_root
+
+    if cfg.read_only:
+        _print("The library is configured read-only.")
+        return 2
+    folder = Path(args.folder).expanduser()
+    scan = scan_root(folder)
+    if not scan.reachable:
+        _print(f"Folder not reachable: {folder} ({scan.error})")
+        return 2
+    _print(f"{folder}: {len(scan.files)} document(s), {scan.unsupported_count} unsupported file(s)")
+    for b in scan.buckets():
+        _print(f"  bucket {b['name'] or '(general: files directly in the folder)'}: {b['documents']}")
+    if args.preview:
+        return 0
+    e, ing = _ingestor(cfg, args)
+    root_id = e.store.add_root(str(folder))
+    return _print_report(ing.sync_root(root_id, rebuild=args.rebuild))
+
+
+def cmd_rescan(cfg: Config, args) -> int:
+    if cfg.read_only:
+        _print("The library is configured read-only.")
+        return 2
+    _, ing = _ingestor(cfg, args)
+    return _print_report(ing.sync_all(rebuild=args.rebuild))
+
+
+def cmd_purge_missing(cfg: Config, args) -> int:
+    from techrag.store import Store
+
+    for p in Store(cfg.db_path).purge_missing():
+        _print(f"removed from index: {p}")
+    return 0
+
+
 def cmd_inspect(cfg: Config, args) -> int:
     from techrag.ingest.pipeline import build_chunks, page_texts
     from techrag.ingest.structure import SECTION_SEP
@@ -189,7 +246,9 @@ def cmd_docs(cfg: Config, args) -> int:
             flags.append(f"{len(d.warnings)} warning(s)")
         if d.legacy:
             flags.append("legacy index (run: techrag migrate)")
-        _print(f"{d.id:>4} [{d.domain:<11}] {', '.join(d.entities) or '-':<16} {d.title} "
+        if d.missing:
+            flags.append("SOURCE MISSING")
+        _print(f"{d.id:>4} [{(d.bucket or 'Genel')[:14]:<14}] {', '.join(d.entities) or '-':<16} {d.title} "
                f"(rev {d.revision or '-'}, {d.n_pages} p., {d.n_chunks} chunks) {' | '.join(flags)}")
     return 0
 
@@ -405,6 +464,24 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--host")
     s.add_argument("--port", type=int)
     s.set_defaults(func=cmd_serve)
+
+    s = sub.add_parser("add-folder", help="add a document folder (read in place; top-level folders = buckets) "
+                                          "and index it")
+    s.add_argument("folder")
+    s.add_argument("--preview", action="store_true", help="only show buckets and counts")
+    s.add_argument("--rebuild", action="store_true")
+    s.add_argument("--no-vlm", action="store_true")
+    s.add_argument("--no-llm-meta", action="store_true")
+    s.set_defaults(func=cmd_add_folder)
+
+    s = sub.add_parser("rescan", help="re-scan the library and all document folders (new/changed/missing files)")
+    s.add_argument("--rebuild", action="store_true", help="re-process everything (VLM results come from the cache)")
+    s.add_argument("--no-vlm", action="store_true")
+    s.add_argument("--no-llm-meta", action="store_true")
+    s.set_defaults(func=cmd_rescan)
+
+    sub.add_parser("purge-missing", help="remove documents whose source file is gone from the index"
+                   ).set_defaults(func=cmd_purge_missing)
 
     sub.add_parser("migrate", help="update an index from an older version in place (page geometry for highlights, "
                                    "cell-level table grounding; no re-embedding, no VLM calls)").set_defaults(func=cmd_migrate)

@@ -26,7 +26,7 @@ const I18N = {
     placeholder: "Sorunuzu yazın (Türkçe veya İngilizce)… Enter: gönder, Shift+Enter: yeni satır",
     stPlanning: "Soru çözümleniyor ve kaynaklar aranıyor…", stAnswering: "Cevap yazılıyor…", stVerifying: "İfadeler kaynaklara karşı doğrulanıyor…",
     stRegenerating: "{0} ifade doğrulanamadı, düzeltiliyor…", stNoTools: "Sunucu araç çağrısını desteklemiyor; araçsız devam ediliyor.",
-    scopeEntity: "kapsam: {0} (soruda geçen standart)", scopeUser: "kapsam: seçili dokümanlar", scopeDomain: "koleksiyon: {0}", scopeAll: "kapsam: tüm kütüphane",
+    scopeEntity: "kapsam: {0} (soruda geçen standart)", scopeUser: "kapsam: seçili bucket / dokümanlar", scopeDomain: "koleksiyon: {0}", scopeAll: "kapsam: tüm kütüphane",
     thinkingOn: "düşünme açık", searchAs: "arama",
     vSupported: "✓ Cevaptaki {0} ifadenin tamamı kaynaklarla doğrulandı (sayı/atıf kontrolü ve bağımsız denetçi).",
     vCorrected: "✓ Kalan {0} ifade doğrulandı; doğrulanamayan {1} ifade cevaptan çıkarıldı.",
@@ -54,6 +54,25 @@ const I18N = {
     legacyNotice: "{0} doküman eski indeks biçiminde: PDF vurgulama ve hücre düzeyi tablo doğrulaması için geçiş gerekir.",
     migrate: "Konum verisini oluştur (hızlı geçiş)", legacyTag: "eski indeks", userKind: "kullanıcı girdisi",
     scopeMissing: "yüklü değil: {0}",
+    toggleLeft: "Kaynak panelini aç/kapat", collapseLeft: "Paneli daralt", toggleRight: "Kaynak paneli", hideRight: "Kaynak panelini gizle",
+    splitter: "Sürükleyerek veya ← → tuşlarıyla kaynak panelinin genişliğini ayarlayın",
+    addFolder: "Belge klasörü ekle", rescan: "Yeniden tara", filterPh: "Belge veya bucket ara…",
+    scopeLine: "Kapsam: {0}", scopeLibrary: "tüm kütüphane", scopeDocsN: "{0} belge", clearScope: "Temizle",
+    generalBucket: "Genel (ana klasör)", docsShort: "belge", missingNotice: "{0} belgenin kaynak dosyası bulunamadı; cevaplarda kullanılmıyor.",
+    showMissing: "Listele", purgeMissing: "İndeksten kaldır", confirmPurge: "Kaynağı bulunamayan {0} belge indeksten kaldırılsın mı? (Dosyalarınıza dokunulmaz.)",
+    missingTag: "kaynak yok", jobLog: "Ayrıntılı günlük", indexNow: "İndeksle", reindexAll: "Tümünü yeniden tara",
+    folderPrompt: "Belge klasörünün yolu:", folderTitle: "Belge klasörü: {0}", rescanTitle: "Yeniden tara",
+    folderIntro: "Belgeler bulundukları yerden okunur; klasöre hiçbir şey yazılmaz, dosyalar taşınmaz veya yeniden adlandırılmaz.",
+    colBucket: "Bucket", colDocs: "Belge", colFolders: "Alt klasörler", totalDocs: "Toplam {0} desteklenen belge",
+    unsupportedN: "{0} desteklenmeyen dosya atlanacak", emptyDirsN: "{0} boş klasör", linksN: "{0} bağlantı/junction izlenmeyecek",
+    unreadableN: "{0} okunamayan öğe", notReachable: "Klasöre erişilemiyor: {0}", nothingFound: "Desteklenen belge bulunamadı.",
+    planTitle: "Yapılacaklar", act_new: "yeni", act_changed: "değişmiş", act_settings: "ayar değişikliği nedeniyle yeniden", act_moved: "taşınmış (yeniden kullanılır)",
+    act_duplicate: "kopya (yeniden kullanılır)", act_touched: "aynı içerik", act_restored: "geri gelen", act_unchanged: "değişmemiş",
+    act_missing: "kaynağı silinmiş", act_unreachable: "erişilemeyen (dokunulmaz)", apiNote: "Yalnızca yeni/değişmiş belgeler model API'lerine gönderilir.",
+    jobScan: "Taranıyor…", jobIndex: "İndeksleniyor", jobDoneTitle: "İndeksleme bitti", jobFailedTitle: "İndeksleme hatalarla bitti",
+    jobErrors: "{0} hata", reportLine: "{0} yeni, {1} güncellendi, {2} değişmemiş, {3} yeniden kullanıldı, {4} kaynağı yok, {5} erişilemedi, {6} hata",
+    relPath: "Konum",
+
     page: "Sayfa", pages: "sayfa", chunks: "parça", superseded: "eski revizyon", toc: "İçindekiler", noToc: "Bu dokümanda yer imi yok.",
     readOnly: "salt-okunur", docs: "doküman", params: "parametre", modelsLoad: "Modelleri getir", test: "Test et",
     sameAsChat: "Sohbet modeliyle aynı", baseUrl: "API adresi (…/v1)", apiKey: "API anahtarı", model: "Model",
@@ -99,7 +118,7 @@ const I18N = {
     placeholder: "Type your question (English or Turkish)… Enter: send, Shift+Enter: new line",
     stPlanning: "Analysing the question and searching…", stAnswering: "Writing the answer…", stVerifying: "Checking statements against the sources…",
     stRegenerating: "{0} statement(s) failed verification, correcting…", stNoTools: "The server does not support tool calls; continuing without tools.",
-    scopeEntity: "scope: {0} (named in the question)", scopeUser: "scope: selected documents", scopeDomain: "collection: {0}", scopeAll: "scope: whole library",
+    scopeEntity: "scope: {0} (named in the question)", scopeUser: "scope: selected buckets / documents", scopeDomain: "collection: {0}", scopeAll: "scope: whole library",
     thinkingOn: "thinking on", searchAs: "search",
     vSupported: "✓ All {0} statements of the answer were verified against the sources (number/citation check and independent judge).",
     vCorrected: "✓ The remaining {0} statements were verified; {1} unverifiable statement(s) were removed.",
@@ -127,6 +146,25 @@ const I18N = {
     legacyNotice: "{0} document(s) use an older index format: PDF highlights and cell-level table checks need a migration.",
     migrate: "Build location data (quick migration)", legacyTag: "legacy index", userKind: "user input",
     scopeMissing: "not loaded: {0}",
+    toggleLeft: "Show/hide the sources panel", collapseLeft: "Collapse panel", toggleRight: "Source panel", hideRight: "Hide the source panel",
+    splitter: "Drag, or use ← →, to resize the source panel",
+    addFolder: "Add document folder", rescan: "Rescan", filterPh: "Filter documents or buckets…",
+    scopeLine: "Scope: {0}", scopeLibrary: "whole library", scopeDocsN: "{0} document(s)", clearScope: "Clear",
+    generalBucket: "General (top folder)", docsShort: "docs", missingNotice: "{0} document(s) have no source file any more; they are not used in answers.",
+    showMissing: "List", purgeMissing: "Remove from index", confirmPurge: "Remove the {0} document(s) without a source file from the index? (Your files are not touched.)",
+    missingTag: "source missing", jobLog: "Detailed log", indexNow: "Index", reindexAll: "Rescan everything",
+    folderPrompt: "Path of the document folder:", folderTitle: "Document folder: {0}", rescanTitle: "Rescan",
+    folderIntro: "Documents are read where they are; nothing is written into the folder and no file is moved or renamed.",
+    colBucket: "Bucket", colDocs: "Docs", colFolders: "Sub-folders", totalDocs: "{0} supported document(s) in total",
+    unsupportedN: "{0} unsupported file(s) will be skipped", emptyDirsN: "{0} empty folder(s)", linksN: "{0} link(s)/junction(s) not followed",
+    unreadableN: "{0} unreadable item(s)", notReachable: "The folder is not reachable: {0}", nothingFound: "No supported document found.",
+    planTitle: "What will happen", act_new: "new", act_changed: "changed", act_settings: "re-processed (settings changed)", act_moved: "moved (index reused)",
+    act_duplicate: "copy (index reused)", act_touched: "same content", act_restored: "back again", act_unchanged: "unchanged",
+    act_missing: "source deleted", act_unreachable: "unreachable (left as is)", apiNote: "Only new or changed documents are sent to the model APIs.",
+    jobScan: "Scanning…", jobIndex: "Indexing", jobDoneTitle: "Indexing finished", jobFailedTitle: "Indexing finished with errors",
+    jobErrors: "{0} error(s)", reportLine: "{0} new, {1} updated, {2} unchanged, {3} reused, {4} missing, {5} unreachable, {6} failed",
+    relPath: "Location",
+
     page: "Page", pages: "pages", chunks: "chunks", superseded: "superseded", toc: "Contents", noToc: "This document has no outline.",
     readOnly: "read-only", docs: "documents", params: "parameters", modelsLoad: "Load models", test: "Test",
     sameAsChat: "Same as chat model", baseUrl: "API base URL (…/v1)", apiKey: "API key", model: "Model",
@@ -165,7 +203,9 @@ function t(key, ...args) {
 function applyI18n() {
   document.documentElement.lang = LANG;
   $$("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  $$("[data-i18n-title]").forEach((el) => { el.title = t(el.dataset.i18nTitle); el.setAttribute("aria-label", el.title); });
   $("#question").placeholder = t("placeholder");
+  $("#doc-filter").placeholder = t("filterPh");
   $$(".lang").forEach((b) => b.classList.toggle("active", b.dataset.lang === LANG));
   const ex = $("#examples");
   if (ex) {
@@ -181,7 +221,15 @@ function applyI18n() {
 }
 
 // ------------------------------------------------------------------ state + api
-const state = { info: null, docs: [], selected: new Set(), history: [], busy: false, notes: loadNotes(), token: TOKEN };
+const state = { info: null, docs: [], selected: new Set(), selectedBuckets: new Set(), history: [], busy: false,
+  notes: loadNotes(), token: TOKEN, filter: "", ui: loadUi() };
+
+// Panel layout preferences (per user, kept across restarts; never affect what is searched).
+function loadUi() {
+  const d = { leftCollapsed: false, rightHidden: false, rightW: 440, openBuckets: [] };
+  try { return Object.assign(d, JSON.parse(localStorage.getItem("techrag.ui") || "{}")); } catch { return d; }
+}
+function saveUi() { safeSet("techrag.ui", JSON.stringify(state.ui)); }
 
 function safeGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
 function safeSet(k, v) { try { localStorage.setItem(k, v); } catch { /* unavailable */ } }
@@ -294,13 +342,16 @@ async function loadInfo() {
   const ro = i.read_only ? ` · ${t("readOnly")}` : "";
   $("#lib-info").textContent = `${i.library} · ${i.stats.documents} ${t("docs")} · ${i.stats.parameters || 0} ${t("params")}${ro}`;
   $("#add-box").hidden = !i.allow_upload;
+  $("#src-actions").hidden = !i.allow_upload;
   const banner = $("#banner");
   const missing = SERVICES.filter((s) => s !== "vision" && !i.models[s]);
   if (i.error) { banner.hidden = false; banner.textContent = `${t("errorPrefix")}: ${i.error}`; }
   else if (i.legacy_documents && !i.read_only) { banner.hidden = false; banner.textContent = `${t("legacyNotice", i.legacy_documents)} → ${t("library")} › ${t("migrate")}`; }
   else if (missing.length) { banner.hidden = false; banner.textContent = `${t("settings")}: ${missing.map((s) => t("svc_" + s)).join(", ")} — ${t("model")}?`; }
   else banner.hidden = true;
-  $("#collection-list").innerHTML = i.domains.map((d) => `<option value="${esc(d.key)}">${esc(d.name)}</option>`).join("");
+  $("#collection-list").innerHTML = (i.buckets || []).filter((b) => b.name).map((b) => `<option value="${esc(b.name)}"></option>`).join("");
+  const ids = new Set((i.buckets || []).map((b) => b.id));
+  for (const id of [...state.selectedBuckets]) if (!ids.has(id)) state.selectedBuckets.delete(id);
 }
 
 async function loadDocs() {
@@ -316,38 +367,184 @@ function docTags(d) {
   if (d.revision) tags.push(`<span class="tag">rev ${esc(d.revision)}</span>`);
   if (d.superseded_by) tags.push(`<span class="tag">${t("superseded")}</span>`);
   if (d.legacy) tags.push(`<span class="tag errata" title="${esc(t("loc_legacy_index"))}">${t("legacyTag")}</span>`);
+  if (d.missing) tags.push(`<span class="tag errata">${t("missingTag")}</span>`);
   return tags.join("");
 }
+
+const bucketName = (b) => (b && b.name) || t("generalBucket");
+const fold = (x) => String(x || "").toLocaleLowerCase("tr").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ı/g, "i");
+const docLocation = (d) => [d.bucket || t("generalBucket"), d.subpath, (d.rel_path || d.path).split("/").pop()].filter(Boolean).join(" / ");
 
 function renderCollections() {
   const wrap = $("#collections");
   wrap.innerHTML = "";
-  const domains = state.info ? state.info.domains.filter((d) => d.documents > 0) : [];
-  for (const d of domains) {
-    const docs = state.docs.filter((x) => x.domain === d.key);
+  const buckets = (state.info && state.info.buckets) || [];
+  const q = fold(state.filter.trim());
+  let shown = 0;
+  for (const b of buckets) {
+    const docs = state.docs.filter((x) => (x.bucket_id || "") === b.id);
+    const bucketHit = !q || fold(bucketName(b)).includes(q);
+    const visibleDocs = bucketHit ? docs : docs.filter((d) => fold(`${d.title} ${d.rel_path || d.path}`).includes(q));
+    if (!visibleDocs.length && !bucketHit) continue;
+    shown += visibleDocs.length;
+    const open = q ? visibleDocs.length > 0 : state.ui.openBuckets.includes(b.id);
+    const bsel = state.selectedBuckets.has(b.id);
     const sec = document.createElement("div");
-    sec.className = "collection";
-    const allSel = docs.length > 0 && docs.every((x) => state.selected.has(x.id));
-    const someSel = docs.some((x) => state.selected.has(x.id));
-    sec.innerHTML = `<label><input type="checkbox" ${allSel ? "checked" : ""}><span title="${esc(d.name)}">${esc(d.key.toUpperCase())}</span><span class="count">${docs.length}</span></label>`;
-    const cb = $("input", sec);
-    cb.indeterminate = someSel && !allSel;
-    cb.addEventListener("change", () => { for (const x of docs) cb.checked ? state.selected.add(x.id) : state.selected.delete(x.id); renderCollections(); });
-    for (const doc of docs) {
+    sec.className = "bucket" + (open ? " open" : "") + (bsel ? " selected" : "");
+    sec.dataset.bucket = b.id;
+    const miss = b.missing ? ` <span class="tag errata" title="${esc(t("missingNotice", b.missing))}">⚠${b.missing}</span>` : "";
+    sec.innerHTML = `<div class="bucket-head"><button type="button" class="chev" aria-expanded="${open}">${open ? "▾" : "▸"}</button>
+      <input type="checkbox" class="bucket-cb" ${bsel ? "checked" : ""} title="${esc(t("scopeLine", bucketName(b)))}">
+      <span class="bucket-name" title="${esc(bucketName(b))}">${esc(bucketName(b))}</span>${miss}<span class="count">${docs.length}</span></div>`;
+    const list = document.createElement("div");
+    list.className = "bucket-docs";
+    list.hidden = !open;
+    for (const doc of visibleDocs) {
       const row = document.createElement("div");
-      row.className = "doc" + (doc.superseded_by ? " superseded" : "");
+      row.className = "doc" + (doc.superseded_by ? " superseded" : "") + (doc.missing ? " missing" : "");
       const warn = doc.warnings && doc.warnings.length ? ` <span class="tag errata" title="${esc(doc.warnings.join("\n"))}">⚠</span>` : "";
-      row.innerHTML = `<input type="checkbox" ${state.selected.has(doc.id) ? "checked" : ""}><span><a href="#" title="${esc(doc.path)}">${esc(doc.title)}</a> ${docTags(doc)}${warn}</span>`;
+      const checked = bsel || state.selected.has(doc.id);
+      row.innerHTML = `<input type="checkbox" ${checked ? "checked" : ""} ${bsel ? "disabled" : ""}>
+        <a href="#" class="doc-name"></a><span class="doc-tags">${docTags(doc)}${warn}</span>`;
+      const a = $("a", row);
+      a.textContent = doc.title;
+      a.title = `${doc.title}\n${t("relPath")}: ${docLocation(doc)}`;
       $("input", row).addEventListener("change", (e) => { e.target.checked ? state.selected.add(doc.id) : state.selected.delete(doc.id); renderCollections(); });
-      $("a", row).addEventListener("click", (e) => { e.preventDefault(); showDocument(doc.id); });
-      sec.append(row);
+      a.addEventListener("click", (e) => { e.preventDefault(); showDocument(doc.id); });
+      list.append(row);
     }
+    $(".chev", sec).addEventListener("click", () => toggleBucket(b.id));
+    $(".bucket-name", sec).addEventListener("click", () => toggleBucket(b.id));
+    $(".bucket-cb", sec).addEventListener("change", (e) => {
+      if (e.target.checked) { state.selectedBuckets.add(b.id); docs.forEach((d) => state.selected.delete(d.id)); }
+      else state.selectedBuckets.delete(b.id);
+      renderCollections();
+    });
+    sec.append(list);
     wrap.append(sec);
   }
-  $("#scope-info").textContent = state.selected.size ? `${state.selected.size} ✓` : "";
+  if (!wrap.children.length) wrap.innerHTML = `<p class="muted small">${esc(q ? t("nothingFound") : t("viewerEmpty").replace(/\s*\[n\].*$/, ""))}</p>`;
+  $("#doc-count").textContent = state.docs.length ? `${state.docs.length} ${t("docsShort")}` : "";
+  renderScopeLine();
+  const missing = state.docs.filter((d) => d.missing);
+  const mb = $("#missing-box");
+  mb.hidden = !missing.length;
+  if (missing.length) {
+    mb.innerHTML = `⚠ ${esc(t("missingNotice", missing.length))} <a href="#" class="show-missing">${t("showMissing")}</a>
+      ${state.info && !state.info.read_only ? `· <a href="#" class="purge-missing">${t("purgeMissing")}</a>` : ""}
+      <ul class="missing-list" hidden>${missing.map((d) => `<li title="${esc(d.rel_path || d.path)}">${esc(docLocation(d))}</li>`).join("")}</ul>`;
+    $(".show-missing", mb).addEventListener("click", (e) => { e.preventDefault(); $(".missing-list", mb).hidden = !$(".missing-list", mb).hidden; });
+    const purge = $(".purge-missing", mb);
+    if (purge) purge.addEventListener("click", async (e) => {
+      e.preventDefault();
+      if (!confirm(t("confirmPurge", missing.length))) return;
+      try { await postJSON("/api/documents/purge-missing", {}); await loadInfo(); await loadDocs(); } catch (err) { alert(err.message); }
+    });
+  }
 }
 
-const scope = () => (state.selected.size ? { doc_ids: [...state.selected] } : {});
+function toggleBucket(id) {
+  const open = new Set(state.ui.openBuckets);
+  open.has(id) ? open.delete(id) : open.add(id);
+  state.ui.openBuckets = [...open];
+  saveUi();
+  renderCollections();
+}
+
+function renderScopeLine() {
+  const buckets = ((state.info && state.info.buckets) || []).filter((b) => state.selectedBuckets.has(b.id));
+  const parts = buckets.map((b) => bucketName(b));
+  if (state.selected.size) parts.push(t("scopeDocsN", state.selected.size));
+  const line = $("#scope-line");
+  line.innerHTML = `${esc(t("scopeLine", parts.length ? parts.join(", ") : t("scopeLibrary")))}`
+    + (parts.length ? ` <a href="#" class="clear-scope">${t("clearScope")}</a>` : "");
+  line.classList.toggle("active", parts.length > 0);
+  const c = $(".clear-scope", line);
+  if (c) c.addEventListener("click", (e) => { e.preventDefault(); state.selected.clear(); state.selectedBuckets.clear(); renderCollections(); });
+  $("#btn-toggle-left").classList.toggle("scoped", parts.length > 0);
+  $("#btn-toggle-left").title = `${t("toggleLeft")} — ${t("scopeLine", parts.length ? parts.join(", ") : t("scopeLibrary"))}`;
+}
+
+const scope = () => {
+  const out = {};
+  if (state.selected.size) out.doc_ids = [...state.selected];
+  if (state.selectedBuckets.size) out.buckets = [...state.selectedBuckets];
+  return out;
+};
+
+// ------------------------------------------------------------------ layout: left panel, splitter, right panel
+const MIN_RIGHT = 300, MIN_CHAT = 380, NARROW = 980;
+const isNarrow = () => window.innerWidth < NARROW;
+function leftWidth() {
+  const el = $("#sources-panel");
+  return state.ui.leftCollapsed || isNarrow() || !el ? 0 : el.getBoundingClientRect().width;
+}
+function maxRight() { return Math.max(MIN_RIGHT, window.innerWidth - leftWidth() - MIN_CHAT - 48); }
+function setRightWidth(w, persist) {
+  const clamped = Math.round(Math.min(Math.max(w, MIN_RIGHT), maxRight()));
+  document.documentElement.style.setProperty("--right-w", `${clamped}px`);
+  const sp = $("#splitter");
+  sp.setAttribute("aria-valuenow", clamped);
+  sp.setAttribute("aria-valuemin", MIN_RIGHT);
+  sp.setAttribute("aria-valuemax", maxRight());
+  if (persist) { state.ui.rightW = clamped; saveUi(); }
+  return clamped;
+}
+function applyLayout() {
+  // Wide window: panels follow the saved preferences. Narrow window: they become drawers, closed by default.
+  const narrow = isNarrow();
+  const b = document.body;
+  b.classList.toggle("narrow", narrow);
+  b.classList.toggle("left-collapsed", narrow ? !state.narrowLeft : !!state.ui.leftCollapsed);
+  b.classList.toggle("right-hidden", narrow ? !state.narrowRight : !!state.ui.rightHidden);
+  $("#btn-toggle-left").setAttribute("aria-expanded", String(!b.classList.contains("left-collapsed")));
+  $("#btn-toggle-right").setAttribute("aria-pressed", String(!b.classList.contains("right-hidden")));
+  setRightWidth(state.ui.rightW || 440, false); // a width saved on a larger screen is clamped, not overwritten
+}
+function setLeftCollapsed(v) {
+  if (isNarrow()) state.narrowLeft = !v; else { state.ui.leftCollapsed = v; saveUi(); }
+  applyLayout();
+}
+function setRightHidden(v) {
+  if (isNarrow()) state.narrowRight = !v; else { state.ui.rightHidden = v; saveUi(); }
+  applyLayout();
+}
+const leftOpen = () => !document.body.classList.contains("left-collapsed");
+const rightOpen = () => !document.body.classList.contains("right-hidden");
+function showRight() { if (!rightOpen()) setRightHidden(false); }
+
+function bindSplitter() {
+  const sp = $("#splitter");
+  let startX = 0, startW = 0;
+  const move = (e) => setRightWidth(startW + (startX - e.clientX), false);
+  const up = (e) => {
+    sp.releasePointerCapture(e.pointerId);
+    document.body.classList.remove("resizing");
+    sp.removeEventListener("pointermove", move);
+    sp.removeEventListener("pointerup", up);
+    state.ui.rightW = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--right-w"), 10) || state.ui.rightW;
+    saveUi();
+  };
+  sp.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault(); // no text selection while dragging
+    startX = e.clientX;
+    startW = $("#viewer-panel").getBoundingClientRect().width;
+    sp.setPointerCapture(e.pointerId);
+    document.body.classList.add("resizing");
+    sp.addEventListener("pointermove", move);
+    sp.addEventListener("pointerup", up);
+  });
+  sp.addEventListener("keydown", (e) => {
+    const cur = $("#viewer-panel").getBoundingClientRect().width;
+    const step = e.shiftKey ? 80 : 20;
+    const keys = { ArrowLeft: cur + step, ArrowRight: cur - step, Home: maxRight(), End: MIN_RIGHT };
+    if (e.key in keys) { e.preventDefault(); setRightWidth(keys[e.key], true); }
+    else if (e.key === "Enter") { e.preventDefault(); setRightHidden(true); }
+  });
+  sp.addEventListener("dblclick", () => setRightWidth(440, true));
+  window.addEventListener("resize", () => applyLayout());
+}
 
 // ------------------------------------------------------------------ viewer
 function openTab(name) {
@@ -468,6 +665,7 @@ function markQuotes(html, quotes) {
 }
 
 function showSource(s, msg, claimId, override) {
+  showRight();
   openTab("source");
   const pane = $("#tab-source");
   const ev = override ? [] : evidenceOf(msg, s, claimId);
@@ -521,6 +719,7 @@ function showSource(s, msg, claimId, override) {
 }
 
 async function showDocument(id) {
+  showRight();
   const d = await getJSON(`/api/documents/${id}`);
   docCache[id] = Promise.resolve(d);
   openTab("source");
@@ -625,6 +824,7 @@ async function ask(question) {
     pending = true;
     requestAnimationFrame(() => {
       pending = false;
+      if (el._final) return; // a draft frame queued before the final answer must not overwrite it
       let d = $(".draft-box", body);
       if (!d) {
         body.innerHTML = `<details class="draft-box"><summary>${t("showDraft")} <span class="small muted draft-len"></span></summary><div class="markdown draft"></div></details>`;
@@ -645,7 +845,7 @@ async function ask(question) {
         const parts = [];
         if (s.missing && s.missing.length) parts.push(t("scopeMissing", s.missing.join(", ")));
         if (s.reason === "entity") parts.push(t("scopeEntity", (s.entities || []).join(", ")));
-        else if (s.reason === "user") parts.push(t("scopeUser"));
+        else if (s.reason === "user" || (s.buckets || []).length) parts.push(t("scopeUser"));
         else if (s.reason === "domain") parts.push(t("scopeDomain", (s.domains || []).join(", ")));
         else parts.push(t("scopeAll"));
         if (ev.plan.english && ev.plan.english !== ev.plan.question) parts.push(`${t("searchAs")}: “${esc(ev.plan.english)}”`);
@@ -772,46 +972,126 @@ async function exportNotes() {
 }
 
 // ------------------------------------------------------------------ jobs / adding documents
-async function pollJob(job, log) {
-  log.hidden = false;
+// Indexing runs on the server in the background; this only polls, so the window never freezes.
+async function pollJob(job, title) {
+  const box = $("#job-box");
+  box.hidden = false;
+  $("#job-title").textContent = title || t("jobIndex");
+  const log = $("#job-log");
+  let j = null;
   for (;;) {
-    await new Promise((r) => setTimeout(r, 1200));
-    const j = await getJSON(`/api/jobs/${job}`);
-    log.textContent = j.messages.slice(-200).join("\n") + `\n[${j.status}]`;
+    await new Promise((r) => setTimeout(r, 900));
+    j = await getJSON(`/api/jobs/${job}`);
+    const p = j.progress || {};
+    const pct = p.total ? Math.round((100 * (p.done || 0)) / p.total) : (j.status === "done" ? 100 : 5);
+    $("#job-bar").style.width = `${pct}%`;
+    $("#job-now").textContent = p.phase === "scan" ? t("jobScan")
+      : p.file ? `${p.bucket || t("generalBucket")} · ${p.file} (${(p.done || 0) + 1}/${p.total})` : (p.total ? `${p.done}/${p.total}` : "");
+    $("#job-errors").textContent = p.errors ? t("jobErrors", p.errors) : "";
+    log.textContent = j.messages.slice(-300).join("\n");
     log.scrollTop = log.scrollHeight;
     if (j.status === "done" || j.status === "failed") break;
   }
+  const r = j.report || {};
+  $("#job-title").textContent = j.status === "done" && !Object.keys(r.failed || {}).length ? t("jobDoneTitle") : t("jobFailedTitle");
+  $("#job-bar").style.width = "100%";
+  if (r.summary) {
+    $("#job-now").textContent = t("reportLine", (r.added || []).length, (r.updated || []).length, r.unchanged || 0,
+      (r.reused || []).length, (r.missing || []).length, (r.unreachable || []).length, Object.keys(r.failed || {}).length);
+    const failed = Object.entries(r.failed || {});
+    $("#job-errors").innerHTML = failed.slice(0, 20).map(([k, v]) => `<div title="${esc(v)}">✕ ${esc(k.replace(/^@\d+\//, ""))}</div>`).join("");
+  } else if (j.status === "failed") {
+    $("#job-errors").textContent = j.messages.slice(-1)[0] || "";
+  }
   await loadInfo();
   await loadDocs();
+  return j;
 }
+
 async function addFiles() {
   const collection = $("#add-collection").value.trim() || "general";
-  const log = $("#job-log");
   try {
     if (desk()) {
       const paths = await desk().pick_files();
       if (!paths || !paths.length) return;
       const r = await postJSON("/api/sources/add", { paths, collection });
-      await pollJob(r.job, log);
+      await pollJob(r.job);
     } else {
       $("#add-file-input").click();
     }
-  } catch (e) { log.hidden = false; log.textContent = `${t("errorPrefix")}: ${e.message}`; }
+  } catch (e) { alert(`${t("errorPrefix")}: ${e.message}`); }
 }
 async function uploadFiles(files) {
   const collection = $("#add-collection").value.trim() || "general";
-  const log = $("#job-log");
   for (const f of files) {
     const fd = new FormData();
     fd.append("file", f);
     fd.append("domain", collection);
-    try { const r = await (await api("/api/upload", { method: "POST", body: fd })).json(); await pollJob(r.job, log); }
-    catch (e) { log.hidden = false; log.textContent += `\n${t("errorPrefix")}: ${e.message}`; }
+    try { const r = await (await api("/api/upload", { method: "POST", body: fd })).json(); await pollJob(r.job); }
+    catch (e) { alert(`${t("errorPrefix")}: ${e.message}`); }
   }
 }
-async function reindex(rebuild) {
-  try { const r = await postJSON("/api/ingest", { rebuild: !!rebuild }); await pollJob(r.job, $("#job-log")); }
-  catch (e) { alert(e.message); }
+
+function planHtml(plan) {
+  const counts = (plan && plan.counts) || {};
+  const order = ["new", "changed", "settings", "moved", "duplicate", "restored", "touched", "unchanged", "missing", "unreachable"];
+  const rows = order.filter((k) => counts[k]).map((k) => `<li><b>${counts[k]}</b> ${esc(t("act_" + k))}</li>`).join("");
+  return rows ? `<h3>${t("planTitle")}</h3><ul class="plan-list">${rows}</ul><p class="small muted">${t("apiNote")}</p>` : "";
+}
+
+function scanHtml(sc) {
+  if (!sc.reachable) return `<div class="verify warning">${esc(t("notReachable", sc.error || sc.root))}</div>`;
+  const rows = (sc.buckets || []).map((b) => `<tr><td>${esc(bucketName(b))}</td><td class="num">${b.documents}</td>
+    <td class="small muted">${esc((b.folders || []).slice(0, 6).join(", "))}${(b.folders || []).length > 6 ? " …" : ""}</td></tr>`).join("");
+  const notes = [];
+  if (sc.unsupported_count) notes.push(`<li title="${esc((sc.unsupported || []).join("\n"))}">${esc(t("unsupportedN", sc.unsupported_count))}</li>`);
+  if ((sc.empty_dirs || []).length) notes.push(`<li title="${esc(sc.empty_dirs.join("\n"))}">${esc(t("emptyDirsN", sc.empty_dirs.length))}</li>`);
+  if ((sc.skipped_links || []).length) notes.push(`<li title="${esc(sc.skipped_links.join("\n"))}">${esc(t("linksN", sc.skipped_links.length))}</li>`);
+  if ((sc.unreadable || []).length) notes.push(`<li class="bad" title="${esc(sc.unreadable.join("\n"))}">${esc(t("unreadableN", sc.unreadable.length))}</li>`);
+  return `${rows ? `<table class="bucket-table"><thead><tr><th>${t("colBucket")}</th><th>${t("colDocs")}</th><th>${t("colFolders")}</th></tr></thead><tbody>${rows}</tbody></table>`
+    : `<p>${t("nothingFound")}</p>`}<p class="small"><b>${esc(t("totalDocs", sc.documents))}</b></p>${notes.length ? `<ul class="small scan-notes">${notes.join("")}</ul>` : ""}`;
+}
+
+function confirmDialog(title, html, canGo) {
+  return new Promise((resolve) => {
+    const dlg = $("#dlg-folder");
+    $("#folder-title").textContent = title;
+    $("#folder-body").innerHTML = html;
+    $("#folder-status").textContent = "";
+    $("#btn-folder-go").disabled = !canGo;
+    $$("#dlg-folder [data-i18n]").forEach((x) => { x.textContent = t(x.dataset.i18n); });
+    const done = () => { dlg.removeEventListener("close", done); resolve(dlg.returnValue === "default"); };
+    dlg.addEventListener("close", done);
+    dlg.returnValue = "";
+    dlg.showModal();
+  });
+}
+
+async function addFolder() {
+  let path = null;
+  try {
+    if (desk()) path = await desk().pick_folder();
+    else path = prompt(t("folderPrompt"), "");
+    if (!path) return;
+    const pv = await postJSON("/api/folders/preview", { path });
+    const ok = await confirmDialog(t("folderTitle", path), `<p class="small muted">${t("folderIntro")}</p>${scanHtml(pv.scan)}${pv.known ? planHtml(pv.plan) : ""}`,
+      pv.scan.reachable && pv.scan.documents > 0);
+    if (!ok) return;
+    const r = await postJSON("/api/folders", { path });
+    await pollJob(r.job, `${t("jobIndex")}: ${path}`);
+  } catch (e) { alert(`${t("errorPrefix")}: ${e.message}`); }
+}
+
+async function rescan(rebuild) {
+  try {
+    const pv = await postJSON("/api/rescan/preview", {});
+    const roots = pv.roots.filter((r) => !r.library || r.scan.documents || r.plan.counts.missing);
+    const body = roots.map((r) => `<div class="rescan-root"><div class="small"><b>${esc(r.root)}</b></div>${r.scan.reachable ? planHtml(r.plan) : scanHtml(r.scan)}</div>`).join("");
+    const ok = await confirmDialog(t("rescanTitle"), body || `<p>${t("nothingFound")}</p>`, true);
+    if (!ok) return;
+    const r = await postJSON("/api/rescan", { rebuild: !!rebuild });
+    await pollJob(r.job, t("rescan"));
+  } catch (e) { alert(`${t("errorPrefix")}: ${e.message}`); }
 }
 
 // ------------------------------------------------------------------ settings dialog
@@ -1040,15 +1320,23 @@ function bind() {
     try { const r = await postJSON("/api/library/publish", { dest: $("#lib-publish-path").value }); $("#lib-status").textContent = t("published", r.path); }
     catch (e) { $("#lib-status").textContent = `${t("errorPrefix")}: ${e.message}`; }
   });
-  $("#btn-reindex-all").addEventListener("click", () => { $("#dlg-library").close(); reindex($("#lib-rebuild").checked); });
+  $("#btn-reindex-all").addEventListener("click", () => { $("#dlg-library").close(); rescan($("#lib-rebuild").checked); });
   $("#btn-migrate").addEventListener("click", async () => {
     $("#dlg-library").close();
-    try { const r = await postJSON("/api/library/migrate", {}); await pollJob(r.job, $("#job-log")); }
+    try { const r = await postJSON("/api/library/migrate", {}); await pollJob(r.job, t("migrate")); }
     catch (e) { alert(e.message); }
   });
   $("#btn-add-files").addEventListener("click", addFiles);
   $("#add-file-input").addEventListener("change", (e) => uploadFiles([...e.target.files]));
-  $("#btn-reindex").addEventListener("click", () => reindex(false));
+  $("#btn-add-folder").addEventListener("click", addFolder);
+  $("#btn-rescan").addEventListener("click", () => rescan(false));
+  $("#btn-job-close").addEventListener("click", () => { $("#job-box").hidden = true; });
+  $("#doc-filter").addEventListener("input", (e) => { state.filter = e.target.value; renderCollections(); });
+  $("#btn-toggle-left").addEventListener("click", () => setLeftCollapsed(leftOpen()));
+  $("#btn-collapse-left").addEventListener("click", () => setLeftCollapsed(true));
+  $("#btn-toggle-right").addEventListener("click", () => setRightHidden(rightOpen()));
+  $("#btn-close-right").addEventListener("click", () => setRightHidden(true));
+  bindSplitter();
   $("#btn-export-notes").addEventListener("click", exportNotes);
   $("#btn-clear-notes").addEventListener("click", () => { if (confirm(t("confirmClear"))) { state.notes = []; saveNotes(); } });
 }
@@ -1056,6 +1344,7 @@ function bind() {
 (async function init() {
   LANG = safeGet("techrag.lang") || LANG;
   bind();
+  applyLayout();
   applyI18n();
   renderNotes();
   try {

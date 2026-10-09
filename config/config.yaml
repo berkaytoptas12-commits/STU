@@ -13,6 +13,7 @@ paths:
 
 llm:                                 # answering model (tool calling + vision capable)
   base_url: http://localhost:8000/v1
+  # every endpoint also takes: timeout, verify_ssl, max_retries (HTTP 429/503, honours Retry-After), max_retry_wait
   api_key: ""
   model: ""                          # pick from the server's /v1/models (Settings dialog shows a dropdown)
   temperature: 0.1

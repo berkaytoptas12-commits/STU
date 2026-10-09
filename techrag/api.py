@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+from email.utils import parsedate_to_datetime
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -25,11 +27,40 @@ def current_tls() -> TLSConfig:
 
 
 class APIError(RuntimeError):
-    def __init__(self, message: str, status: int = 0, body: str = "", code: str = ""):
+    def __init__(self, message: str, status: int = 0, body: str = "", code: str = "",
+                 retry_after: Optional[float] = None):
         super().__init__(message)
         self.status = status
         self.body = body
         self.code = code
+        self.retry_after = retry_after
+
+
+RETRY_STATUS = (429, 503)
+_sleep = time.sleep  # patched in tests
+
+
+def retry_after_seconds(headers) -> Optional[float]:
+    """Retry-After as seconds (delta-seconds or an HTTP date); None when absent/unparseable."""
+    value = (headers or {}).get("retry-after") if hasattr(headers, "get") else None
+    if not value:
+        return None
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        pass
+    try:
+        from datetime import datetime, timezone
+
+        return max(0.0, (parsedate_to_datetime(value) - datetime.now(timezone.utc)).total_seconds())
+    except Exception:
+        return None
+
+
+def backoff(attempt: int, retry_after: Optional[float], max_wait: float) -> float:
+    """The server's own wait if it gave one, else 1, 2, 4 ... seconds; never more than max_wait."""
+    wait = retry_after if retry_after is not None else float(2 ** attempt)
+    return min(max(wait, 0.0), max_wait)
 
 
 def normalize_base_url(url: str) -> str:
@@ -76,14 +107,20 @@ class APIClient:
     def post(self, path: str, payload: dict) -> dict:
         if not self.base:
             raise APIError("endpoint base URL is not configured", code="config")
-        try:
-            r = self.http.post(self.url(path), json=payload)
-        except httpx.ConnectError as exc:
-            raise connect_error(exc, self.base) from exc
-        if r.status_code >= 400:
-            raise APIError(f"{self.base}/{path.lstrip('/')} -> HTTP {r.status_code}: {r.text[:400]}",
-                           r.status_code, r.text, code="http")
-        return r.json()
+        retries = max(0, int(getattr(self.svc, "max_retries", 3)))
+        for attempt in range(retries + 1):
+            try:
+                r = self.http.post(self.url(path), json=payload)
+            except httpx.ConnectError as exc:
+                raise connect_error(exc, self.base) from exc
+            if r.status_code in RETRY_STATUS and attempt < retries:
+                _sleep(backoff(attempt, retry_after_seconds(r.headers), getattr(self.svc, "max_retry_wait", 60.0)))
+                continue
+            if r.status_code >= 400:
+                raise APIError(f"{self.base}/{path.lstrip('/')} -> HTTP {r.status_code}: {r.text[:400]}",
+                               r.status_code, r.text, code="http", retry_after=retry_after_seconds(r.headers))
+            return r.json()
+        raise APIError("unreachable")  # pragma: no cover
 
     def list_models(self) -> list[str]:
         if not self.base:

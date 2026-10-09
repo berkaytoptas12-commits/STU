@@ -114,3 +114,56 @@ def test_page_info_and_migrate_endpoint(client):
             break
         time.sleep(0.05)
     assert st["status"] == "done" and st["report"]["documents"] == 0, "nothing to migrate in a current index"
+
+
+def _wait_job(client, job):
+    for _ in range(400):
+        st = client.get(f"/api/jobs/{job}").json()
+        if st["status"] in ("done", "failed"):
+            return st
+        time.sleep(0.05)
+    raise AssertionError(st)
+
+
+def test_document_folder_endpoints(client, tmp_path):
+    from test_folders import simple_pdf
+
+    root = tmp_path / "Teknik Belgeler"
+    simple_pdf(root / "PCIe" / "Base.pdf", "PCI Express Base Specification 5.0", "LTSSM.")
+    simple_pdf(root / "DDR" / "DDR5" / "Specification.pdf", "JEDEC DDR5 SDRAM", "tRFC is 295 ns.")
+    (root / "notes.xlsx").write_bytes(b"x")
+    pv = client.post("/api/folders/preview", json={"path": str(root)}).json()
+    assert pv["scan"]["documents"] == 2 and pv["scan"]["unsupported_count"] == 1 and not pv["known"]
+    assert {b["name"] for b in pv["scan"]["buckets"]} == {"PCIe", "DDR"}
+    r = client.post("/api/folders", json={"path": str(root)}).json()
+    st = _wait_job(client, r["job"])
+    assert st["status"] == "done" and st["progress"]["total"] == 2 and len(st["report"]["added"]) == 2
+    info = client.get("/api/info").json()
+    assert {"PCIe", "DDR"} <= {b["name"] for b in info["buckets"]} and info["roots"][0]["documents"] == 2
+    docs = client.get("/api/documents").json()
+    d5 = next(d for d in docs if d.get("subpath") == "DDR5")
+    assert d5["bucket"] == "DDR" and client.get(f"/api/documents/{d5['id']}/page/1.png").status_code == 200
+    pv = client.post("/api/folders/preview", json={"path": str(root)}).json()
+    assert pv["known"] and pv["plan"]["counts"] == {"unchanged": 2}
+    (root / "PCIe" / "Base.pdf").unlink()
+    pv = client.post("/api/rescan/preview", json={}).json()
+    assert pv["counts"]["missing"] == 1
+    st = _wait_job(client, client.post("/api/rescan", json={}).json()["job"])
+    assert st["report"]["missing"] and client.get("/api/info").json()["missing_documents"] == 1
+    assert client.post("/api/documents/purge-missing").json()["removed"]
+    assert client.post("/api/folders", json={"path": str(tmp_path / "yok")}).status_code == 400
+
+
+def test_single_files_with_the_same_name_do_not_overwrite(client, tmp_path):
+    a, b = tmp_path / "a" / "Spec.md", tmp_path / "b" / "Spec.md"
+    a.parent.mkdir()
+    b.parent.mkdir()
+    a.write_text("# A\n\nFirst specification text about I2C.\n", encoding="utf-8")
+    b.write_text("# B\n\nSecond specification text about SPI.\n", encoding="utf-8")
+    r1 = client.post("/api/sources/add", json={"paths": [str(a)], "collection": "Arayüz Notları"}).json()
+    _wait_job(client, r1["job"])
+    r2 = client.post("/api/sources/add", json={"paths": [str(b)], "collection": "Arayüz Notları"}).json()
+    _wait_job(client, r2["job"])
+    assert r1["copied"][0] != r2["copied"][0] and r2["copied"][0].endswith("Spec (2).md")
+    names = {d["rel_path"] for d in client.get("/api/documents").json() if d["bucket"] == "Arayüz Notları"}
+    assert names == {"Arayüz Notları/Spec.md", "Arayüz Notları/Spec (2).md"}

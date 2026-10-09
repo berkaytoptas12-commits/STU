@@ -9,7 +9,8 @@ from typing import Iterator, Optional, Sequence
 
 import httpx
 
-from techrag.api import APIClient, APIError, connect_error
+from techrag import api as _api
+from techrag.api import RETRY_STATUS, APIClient, APIError, backoff, connect_error, retry_after_seconds
 from techrag.config import LLMConfig, ServiceConfig
 
 Message = dict
@@ -125,12 +126,18 @@ class LLMClient:
         """Yields ("content", str), ("reasoning", str) and finally ("result", ChatResult)."""
         if not self.model:
             raise LLMError("no chat model configured (Settings > Chat model)")
-        for attempt in range(4):
+        svc = self.api.svc
+        retries, waited = max(0, int(getattr(svc, "max_retries", 3))), 0
+        for attempt in range(4 + retries):
             payload = self._payload(messages, tools, thinking, json_mode, max_tokens, temperature)
             try:
                 yield from self._stream_once(payload)
                 return
             except APIError as exc:
+                if exc.status in RETRY_STATUS and waited < retries:
+                    _api._sleep(backoff(waited, exc.retry_after, getattr(svc, "max_retry_wait", 60.0)))
+                    waited += 1
+                    continue
                 body = (exc.body or str(exc)).lower()
                 if exc.status in (400, 422) and "chat_template_kwargs" in body and self._send_template_kwargs:
                     self._send_template_kwargs = False
@@ -154,7 +161,8 @@ class LLMClient:
             with self.api.http.stream("POST", self.api.url("chat/completions"), json=payload) as r:
                 if r.status_code >= 400:
                     body = r.read().decode("utf-8", "replace")
-                    raise APIError(f"LLM HTTP {r.status_code}: {body[:400]}", r.status_code, body)
+                    raise APIError(f"LLM HTTP {r.status_code}: {body[:400]}", r.status_code, body,
+                                   retry_after=retry_after_seconds(r.headers))
                 for line in r.iter_lines():
                     line = line.strip()
                     if not line.startswith("data:"):

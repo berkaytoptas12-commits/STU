@@ -1,5 +1,22 @@
 ## TechRAG — Windows masaüstü uygulaması
 
+### 0.3.0 — belge klasörü ekleme ve panel düzeni
+- **Belge klasörü ekle**: ana klasörü bir kez seçin; alt klasörlerdeki desteklenen belgeler bulunur. Ana klasörün
+  doğrudan altındaki klasörler bucket olur (DDR/DDR5/… → "DDR"), kökteki dosyalar "Genel" bucket'ına gider.
+  İndekslemeden önce bucket'lar, belge sayıları ve atlanacak dosyalar gösterilir; tek "İndeksle" ile tümü işlenir.
+  Belgeler bulundukları yerden okunur, kaynak klasöre yazılmaz. Tek dosya ekleme korunuyor (aynı adlı dosyalar
+  artık üzerine yazılmıyor).
+- **Yeniden tara**: yeni ve değişen belgeler işlenir; değişmeyen, taşınan veya kopyalanan belgeler model
+  API'lerine yeniden gönderilmez. Ayrıştırma/tablo ayarları değiştiyse gereken yeniden işleme algılanır. Kaynağı
+  silinen belgeler bildirilir ve cevaplarda kullanılmaz; erişilemeyen klasör (kopuk ağ paylaşımı) belgeleri silinmiş
+  saydırmaz. İlerlemede bucket, dosya, sayı ve hatalar görünür; hız sınırında (429) sunucunun bekleme süresine uyulur.
+- **Sol panel**: dar, tamamen daraltılabilir; bucket'lar kapalı başlar, belge sayısı, arama kutusu, kapsam satırı.
+  Bucket seçimi aramayı o bucket'la sınırlar (standart/sürüm kontrolleri korunur). Durumlar yeniden açılışta korunur.
+- **Sağ panel**: sürüklenebilir ve klavyeyle ayarlanabilir genişlik, gizle/göster, kalıcı genişlik, dar pencerede
+  çekmece. PDF görüntüsü ve vurgular her genişlikte hizalı.
+- Düzeltme: son cevap gelmeden hemen önce çizilen bir taslak karesi son cevabın üzerine yazılabiliyordu.
+- İndeks şeması 4: açılışta yerinde güncellenir; yeniden indeksleme gerekmez.
+
 ### 0.2.0 — doğruluk ve PDF'de kanıt vurgulama
 - **Atfa tıklayınca kanıt PDF'te vurgulanır**: ifadeyi destekleyen cümle ya da tablo değer hücresi (parametre
   adı, sütun başlığı, birim, dipnot ile) sayfa üzerinde işaretlenir; kanıtlar arasında gezinme, vurguyu

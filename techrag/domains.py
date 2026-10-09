@@ -161,7 +161,10 @@ class DomainRegistry:
         """Standards a document *is about* (not merely mentions): filename/title first, then the front
         matter, where only the dominant entity counts. ``extra`` are strings from LLM metadata."""
         doms = [domain] if domain in self.domains and self.domains[domain].entities else None
-        strong = self.detect_entities(" ".join([filename.replace("_", " "), title_text, *extra]), doms)
+        head = " ".join([filename.replace("_", " "), title_text, *extra])
+        # The collection (a folder name) only narrows the candidates; it is never evidence by itself. When the
+        # document's own name/title names a standard of another collection, that standard wins.
+        strong = self.detect_entities(head, doms) or (self.detect_entities(head) if doms else [])
         if strong:
             return strong
         counts = Counter({eid: self.entities[eid].count(front_text) for eid in self.detect_entities(front_text, doms)})

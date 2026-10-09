@@ -9,11 +9,13 @@
 </head>
 <body>
   <header class="topbar">
+    <button class="ghost icon" id="btn-toggle-left" aria-controls="sources-panel" data-i18n-title="toggleLeft">☰</button>
     <div class="brand">TechRAG <span class="muted small" id="lib-info"></span></div>
     <div class="top-actions">
       <button class="ghost" id="btn-new-chat" data-i18n="newChat"></button>
       <button class="ghost" id="btn-library" data-i18n="library"></button>
       <button class="ghost" id="btn-settings" data-i18n="settings"></button>
+      <button class="ghost" id="btn-toggle-right" aria-controls="viewer-panel" data-i18n="toggleRight"></button>
       <div class="lang-toggle" role="group">
         <button class="ghost lang" data-lang="tr">TR</button><button class="ghost lang" data-lang="en">EN</button>
       </div>
@@ -21,27 +23,39 @@
   </header>
   <div class="banner" id="banner" hidden></div>
 
-  <main class="layout">
-    <aside class="panel sources">
+  <main class="layout" id="layout">
+    <aside class="panel sources" id="sources-panel">
       <div class="panel-head">
         <h2 data-i18n="sources"></h2>
-        <span class="muted small" id="scope-info"></span>
+        <span class="muted small" id="doc-count"></span>
+        <button class="ghost icon small" id="btn-collapse-left" data-i18n-title="collapseLeft">«</button>
       </div>
-      <p class="hint" data-i18n="sourcesHint"></p>
-      <div id="collections"></div>
-      <div class="add-box" id="add-box">
-        <h3 data-i18n="addDocs"></h3>
+      <div class="src-actions" id="src-actions">
+        <button id="btn-add-folder" data-i18n="addFolder"></button>
+        <button class="ghost" id="btn-rescan" data-i18n-title="rescan">⟳</button>
+      </div>
+      <input type="search" id="doc-filter" class="doc-filter" autocomplete="off">
+      <div class="scope-line small" id="scope-line"></div>
+      <div class="missing-box small" id="missing-box" hidden></div>
+      <div class="bucket-list" id="collections"></div>
+      <div class="job-box" id="job-box" hidden>
+        <div class="job-head small"><span id="job-title"></span><button class="ghost icon small" id="btn-job-close">✕</button></div>
+        <div class="bar"><div class="bar-fill" id="job-bar"></div></div>
+        <div class="small job-now" id="job-now"></div>
+        <div class="small job-errors" id="job-errors"></div>
+        <details><summary class="small" data-i18n="jobLog"></summary><pre class="job-log" id="job-log"></pre></details>
+      </div>
+      <details class="add-box" id="add-box">
+        <summary class="small" data-i18n="addDocs"></summary>
         <label class="small"><span data-i18n="collection"></span>
           <input id="add-collection" list="collection-list" value="general">
           <datalist id="collection-list"></datalist>
         </label>
         <div class="row">
-          <button id="btn-add-files" data-i18n="chooseFiles"></button>
+          <button class="ghost" id="btn-add-files" data-i18n="chooseFiles"></button>
           <input type="file" id="add-file-input" accept=".pdf,.txt,.md,.html,.htm,.docx" multiple hidden>
-          <button class="ghost" id="btn-reindex" data-i18n="reindex"></button>
         </div>
-        <pre class="job-log" id="job-log" hidden></pre>
-      </div>
+      </details>
     </aside>
 
     <section class="panel chat">
@@ -58,10 +72,13 @@
       </form>
     </section>
 
-    <aside class="panel viewer">
+    <div class="splitter" id="splitter" role="separator" tabindex="0" aria-orientation="vertical"
+         aria-controls="viewer-panel" data-i18n-title="splitter"></div>
+    <aside class="panel viewer" id="viewer-panel">
       <div class="tabs">
         <button class="tab active" data-tab="source" data-i18n="tabSource"></button>
         <button class="tab" data-tab="notes"><span data-i18n="tabNotes"></span> <span id="notes-count" class="badge"></span></button>
+        <button class="ghost icon small viewer-close" id="btn-close-right" data-i18n-title="hideRight">✕</button>
       </div>
       <div class="tab-body" id="tab-source"><p class="muted" data-i18n="viewerEmpty"></p></div>
       <div class="tab-body" id="tab-notes" hidden>
@@ -126,9 +143,22 @@
         <div class="row"><input id="lib-publish-path"><button type="button" class="ghost" id="btn-pick-publish">…</button></div></label>
       <div class="row"><button type="button" class="ghost" id="btn-publish" data-i18n="publish"></button>
         <label class="small"><input type="checkbox" id="lib-rebuild"> <span data-i18n="rebuild"></span></label>
-        <button type="button" class="ghost" id="btn-reindex-all" data-i18n="reindex"></button></div>
+        <button type="button" class="ghost" id="btn-reindex-all" data-i18n="reindexAll"></button></div>
       <p class="small muted" id="lib-status"></p>
       <div class="dlg-actions"><button value="cancel" data-i18n="close"></button></div>
+    </form>
+  </dialog>
+
+  <!-- Folder / rescan preview -->
+  <dialog id="dlg-folder">
+    <form method="dialog" class="dlg">
+      <h2 id="folder-title"></h2>
+      <div id="folder-body" class="folder-body"></div>
+      <div class="dlg-actions">
+        <span class="muted small" id="folder-status"></span>
+        <button value="cancel" class="ghost" data-i18n="cancel"></button>
+        <button id="btn-folder-go" value="default" data-i18n="indexNow"></button>
+      </div>
     </form>
   </dialog>
 
