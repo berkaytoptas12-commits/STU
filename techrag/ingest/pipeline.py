@@ -17,8 +17,10 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import threading
 import time
 from collections import defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -40,6 +42,41 @@ from techrag.llm import LLMClient
 from techrag.store import Store
 
 Progress = Callable[[str], None]
+
+class IngestStopped(BaseException):
+    """The application is closing. A BaseException, so that per-file error handling never records it as a failed
+    document (the remaining documents are simply processed by the next rescan)."""
+
+
+class WriteGate:
+    """Lets a full exit stop background indexing without leaving the index half-written.
+
+    Jobs check `stop` before every document; every index write runs inside `write()`. `close()` waits for the write
+    in progress (a document is written in one SQLite transaction) and keeps the lock, so nothing is written after it
+    returns True. Documents whose model calls were still running are not written and are picked up again by the next
+    rescan as new/changed."""
+
+    def __init__(self):
+        self.stop = threading.Event()
+        self._lock = threading.Lock()
+        self._closed = False
+
+    def check(self) -> None:
+        if self.stop.is_set():
+            raise IngestStopped("TechRAG is closing")
+
+    @contextmanager
+    def write(self):
+        with self._lock:
+            self.check()
+            yield
+
+    def close(self, timeout: float) -> bool:
+        self.stop.set()
+        if not self._closed:
+            self._closed = self._lock.acquire(timeout=timeout)
+        return self._closed
+
 
 @dataclass
 class IngestReport:
@@ -206,8 +243,10 @@ def merge_vlm_tables(blocks: list[Block], tables: dict[int, list[ExtractedTable]
 class Ingestor:
     def __init__(self, cfg: Config, store: Store, embedder: Embedder, domains: DomainRegistry,
                  progress: Optional[Progress] = None, llm: Optional[LLMClient] = None,
-                 vision: Optional[LLMClient] = None, status: Optional[Callable[[dict], None]] = None):
+                 vision: Optional[LLMClient] = None, status: Optional[Callable[[dict], None]] = None,
+                 gate: Optional[WriteGate] = None):
         self.cfg = cfg
+        self.gate = gate or WriteGate()
         self.store = store
         self.embedder = embedder
         self.domains = domains
@@ -228,10 +267,11 @@ class Ingestor:
 
     def _check_embedding(self, rebuild: bool) -> None:
         name, dim = self.embedder.name, self.embedder.dim
-        if rebuild and self.store.get_meta("embedding_model") not in (None, name):
-            self.progress(f"embedding model changed -> clearing the index and re-embedding with {name}")
-            self.store.reset(name, dim)
-        self.store.check_embedding_model(name, dim)
+        with self.gate.write():
+            if rebuild and self.store.get_meta("embedding_model") not in (None, name):
+                self.progress(f"embedding model changed -> clearing the index and re-embedding with {name}")
+                self.store.reset(name, dim)
+            self.store.check_embedding_model(name, dim)
 
     # ------------------------------------------------------------------ syncs
     def run(self, target: Optional[Path] = None, rebuild: bool = False, prune: bool = True) -> IngestReport:
@@ -278,7 +318,8 @@ class Ingestor:
         scan = scan_root(r["path"], exclude=(self.cfg.library_dir,))
         if not scan.reachable:
             self.progress(f"folder not reachable, nothing changed: {r['path']} ({scan.error})")
-            self.store.set_root_status(root_id, f"unreachable: {scan.error}")
+            with self.gate.write():
+                self.store.set_root_status(root_id, f"unreachable: {scan.error}")
         else:
             self.progress(f"{len(scan.files)} document(s) in {len(scan.buckets())} bucket(s) under {r['path']}")
             for u in scan.unreadable[:10]:
@@ -287,8 +328,9 @@ class Ingestor:
                              rebuild)
         self._apply(items, root_id, lambda it: f"@{root_id}/{it.rel}", report, r["path"])
         if scan.reachable:
-            self.store.set_root_status(root_id, "ok" if not scan.unreadable else
-                                       f"partly unreadable: {len(scan.unreadable)} item(s)")
+            with self.gate.write():
+                self.store.set_root_status(root_id, "ok" if not scan.unreadable else
+                                           f"partly unreadable: {len(scan.unreadable)} item(s)")
         if finish:
             self._finish(report)
         report.seconds = time.time() - start
@@ -309,7 +351,8 @@ class Ingestor:
 
     def _finish(self, report: IngestReport) -> None:
         pairs = compute_supersedence([d for d in self.store.documents() if not d.missing])
-        self.store.set_superseded(pairs)
+        with self.gate.write():
+            self.store.set_superseded(pairs)
         for doc_id, newer in pairs:
             if newer:
                 d, nd = self.store.document(doc_id), self.store.document(newer)
@@ -349,12 +392,14 @@ class Ingestor:
         report.skipped += [key_of(it) for it in items if it.action == "unchanged"]
         total = len(work)
         for n, it in enumerate(work, 1):
+            self.gate.check()
             key = key_of(it)
             self.status({"phase": "index", "bucket": it.bucket, "file": it.rel, "action": it.action,
                          "done": n - 1, "total": total, "errors": len(report.failed)})
             try:
                 if it.action == "missing":
-                    self.store.set_missing([it.doc_id], True)
+                    with self.gate.write():
+                        self.store.set_missing([it.doc_id], True)
                     report.missing.append(key)
                     self.progress(f"source file not found (kept, excluded from answers): {it.rel}")
                     continue
@@ -365,17 +410,20 @@ class Ingestor:
                 source = {"root_id": root_id, "rel_path": it.rel, "bucket": it.bucket, "bucket_id": it.bucket_id,
                           "subpath": f.subpath, "file_size": f.size, "file_mtime": f.mtime_ns}
                 if it.action in ("touched", "restored"):
-                    self.store.update_source(it.doc_id, **source)
+                    with self.gate.write():
+                        self.store.update_source(it.doc_id, **source)
                     report.skipped.append(key)
                     continue
                 if it.action == "moved":
-                    self.store.update_source(it.from_doc, path=key, **source)
+                    with self.gate.write():
+                        self.store.update_source(it.from_doc, path=key, **source)
                     report.reused.append(key)
                     self.progress(f"[{n}/{total}] {it.rel}: moved, index reused")
                     continue
                 if it.action == "duplicate":
                     src_doc = self.store.document(it.from_doc)
-                    self.store.clone_document(it.from_doc, key, dict(source, ingest_fp=src_doc.ingest_fp))
+                    with self.gate.write():
+                        self.store.clone_document(it.from_doc, key, dict(source, ingest_fp=src_doc.ingest_fp))
                     report.reused.append(key)
                     self.progress(f"[{n}/{total}] {it.rel}: same content as '{src_doc.path}', index reused")
                     continue
@@ -468,13 +516,15 @@ class Ingestor:
         metadata = dict(doc.metadata)
         metadata.update({"figure_pages": figure_pages, "llm": meta.llm, "doc_key": meta.doc_key,
                          "version": meta.version, "part": meta.part})
-        self.store.replace_document(
-            path=rel, title=title, domain=domain, sha256=digest, n_pages=doc.n_pages,
-            toc=[list(t) for t in doc.toc], metadata=metadata, warnings=warnings, chunks=rows, embeddings=matrix,
-            entities=meta.entities, doc_type=meta.doc_type, revision=meta.revision, doc_date=meta.doc_date,
-            tables=table_rows, pages=[(p, g.label, *g.encode()) for p, g in sorted(doc.pages.items())],
-            source=dict(source or {"rel_path": rel}, ingest_fp=self.fingerprint),
-        )
+        with self.gate.write():  # one transaction per document
+            self.store.replace_document(
+                path=rel, title=title, domain=domain, sha256=digest, n_pages=doc.n_pages,
+                toc=[list(t) for t in doc.toc], metadata=metadata, warnings=warnings, chunks=rows,
+                embeddings=matrix, entities=meta.entities, doc_type=meta.doc_type, revision=meta.revision,
+                doc_date=meta.doc_date, tables=table_rows,
+                pages=[(p, g.label, *g.encode()) for p, g in sorted(doc.pages.items())],
+                source=dict(source or {"rel_path": rel}, ingest_fp=self.fingerprint),
+            )
         n_params = sum(1 for t in table_rows for p in t["parameters"] if p.get("verified"))
         self.progress(f"    -> {len(chunks)} chunks, {len(table_rows)} VLM tables, {n_params} verified parameters, "
                       f"collection={domain}, standard={', '.join(meta.entities) or '-'}, type={meta.doc_type}, "
@@ -491,7 +541,8 @@ def pdf_geometry(path: Path) -> dict:
         return {i + 1: PageGeom.from_page(page, i + 1) for i, page in enumerate(doc)}
 
 
-def migrate_index(cfg: Config, store: Store, progress: Progress = lambda m: None) -> dict:
+def migrate_index(cfg: Config, store: Store, progress: Progress = lambda m: None,
+                  gate: Optional[WriteGate] = None) -> dict:
     """Bring documents indexed by an older version up to date WITHOUT re-embedding or VLM calls:
     store page geometry from the (unchanged) source PDFs, then re-run cell-level grounding on the cached
     VLM tables/parameters stored in the index. Tables whose original PDF text the old version dropped and
@@ -502,16 +553,19 @@ def migrate_index(cfg: Config, store: Store, progress: Progress = lambda m: None
     from techrag.ingest.vlm import ExtractedTable, validate
     from techrag.store import INDEX_FORMAT
 
+    gate = gate or WriteGate()
     rep = {"documents": 0, "pages": 0, "tables_grounded": 0, "tables_not_grounded": 0, "parameters_verified": 0,
            "parameters_unverified": 0, "skipped": [], "needs_reindex": []}
     for doc in store.legacy_documents():
+        gate.check()
         path = store.source_path(doc, cfg.sources_dir)
         meta = dict(doc.metadata, index_format=INDEX_FORMAT)
         stem = Path(doc.path).stem
         meta.setdefault("doc_key", series_key(stem, doc.title))
         meta.setdefault("version", regex_version(f"{stem} {doc.title}"))
         if path.suffix.lower() != ".pdf":
-            store.set_pages(doc.id, [], meta)
+            with gate.write():
+                store.set_pages(doc.id, [], meta)
             rep["documents"] += 1
             continue
         if not path.exists():
@@ -544,12 +598,14 @@ def migrate_index(cfg: Config, store: Store, progress: Progress = lambda m: None
                 params.append((r["id"], p["verified"], p["status"], _json.dumps(p["evidence"], ensure_ascii=False),
                                p["value_kind"], p.get("min_si"), p.get("typ_si"), p.get("max_si"), p.get("base_unit", "")))
                 rep["parameters_verified" if p["verified"] else "parameters_unverified"] += 1
-        store.update_grounding(tables, params, chunk_ev)
-        store.set_pages(doc.id, [(p, g.label, *g.encode()) for p, g in sorted(geoms.items())], meta)
+        with gate.write():
+            store.update_grounding(tables, params, chunk_ev)
+            store.set_pages(doc.id, [(p, g.label, *g.encode()) for p, g in sorted(geoms.items())], meta)
         rep["documents"] += 1
         rep["pages"] += len(geoms)
     pairs = compute_supersedence(store.documents())
-    store.set_superseded(pairs)
+    with gate.write():
+        store.set_superseded(pairs)
     return rep
 
 

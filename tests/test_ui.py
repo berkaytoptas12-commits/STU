@@ -286,3 +286,49 @@ def test_add_document_folder_flow(ui, tmp_path):
     ui.wait_for_function("() => document.querySelectorAll('#collections .bucket').length >= 5")
     names = ui.locator("#collections .bucket-name").all_inner_texts()
     assert "Haberleşme Arayüzleri" in names and "Genel (ana klasör)" in names
+
+
+def test_notes_feature_is_gone_and_saved_notes_are_left_alone(ui):
+    saved = '[{"id": 1, "q": "eski soru", "a": "eski cevap", "ts": "dün", "sources": []}]'
+    ui.evaluate(f"localStorage.setItem('techrag.notes', {saved!r})")
+    ui.reload()
+    ui.wait_for_selector("#collections .bucket")
+    gone = ui.evaluate("""() => ['[data-tab="notes"]', '#tab-notes', '#notes-list', '#notes-count',
+        '#btn-export-notes', '#btn-clear-notes', '.btn-note', '.tabs'].filter((s) => document.querySelector(s))""")
+    assert gone == []
+    assert ui.inner_text("#viewer-panel .viewer-head h2") == "Kaynak"
+    _ask(ui, "DDR5 tRFC değeri nedir?")
+    actions = ui.evaluate("() => [...document.querySelectorAll('.msg.assistant .msg-actions button')].map((b) => b.className)")
+    assert actions == ["ghost small btn-copy"], "only Copy is left next to an answer"
+    _cite(ui)  # sources, PDF page and highlight still work
+    ui.wait_for_selector("#tab-source .hl.current")
+    assert "Not" not in ui.inner_text("#viewer-panel .viewer-head")
+    ui.click(".lang[data-lang=en]")
+    assert ui.inner_text("#viewer-panel .viewer-head h2") == "Source"
+    assert ui.evaluate("localStorage.getItem('techrag.notes')") == saved, "previously saved notes are not deleted"
+    footnote_role = ui.evaluate("() => I18N.tr.role_footnote + '/' + I18N.en.role_footnote")
+    assert footnote_role == "dipnot/footnote", "PDF footnotes (evidence role) are a different thing and stay"
+
+
+def test_hidden_window_does_not_poll_and_resumes_when_shown(ui):
+    calls = []
+    status = {"value": "running"}
+
+    def job(route):
+        calls.append(time.time())
+        body = ('{"id": "j1", "status": "%s", "messages": ["working"], "report": null, '
+                '"progress": {"phase": "index", "done": 1, "total": 3, "file": "a.pdf"}}') % status["value"]
+        route.fulfill(status=200, content_type="application/json", body=body)
+
+    ui.route("**/api/jobs/j1", job)
+    ui.evaluate("() => { pollJob('j1', 'test'); }")  # not awaited: it runs until the job ends
+    ui.wait_for_function("() => document.querySelector('#job-now').textContent.includes('a.pdf')")
+    assert ui.evaluate("window.techragHost.setVisible(false)") is False
+    ui.wait_for_timeout(1000)          # a request already on its way may still land
+    n = len(calls)
+    ui.wait_for_timeout(3000)
+    assert len(calls) == n, "no polling while the window is hidden"
+    status["value"] = "done"            # indexing went on in the backend meanwhile
+    ui.evaluate("window.techragHost.setVisible(true)")
+    ui.wait_for_function("() => document.querySelector('#job-bar').style.width === '100%'")
+    assert len(calls) > n

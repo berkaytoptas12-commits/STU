@@ -24,6 +24,15 @@ DEFAULT_CONFIG_PATH = Path("config/config.yaml")
 APP_NAME = "TechRAG"
 
 
+def write_text_atomic(path: Path, text: str) -> None:
+    """Write a cache file so that it is either complete or absent (never truncated by an exit mid-write)."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def resource_path(*parts: str) -> Path:
     """Path of a file shipped inside the package (works from source and from a PyInstaller bundle)."""
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))

@@ -75,6 +75,9 @@ def run() -> dict:
             assert png.status_code == 200 and png.content[:4] == b"\x89PNG"
         store.publish(Path(tmp) / "published", cfg.sources_dir)
         checks["publish"] = (Path(tmp) / "published" / "index.sqlite").exists()
+    from techrag.launcher import SIZE_DIP, render_icon
+
+    checks["launcher_icon"] = len(render_icon(SIZE_DIP)) == SIZE_DIP * SIZE_DIP * 4
     try:
         import webview  # noqa: F401
 

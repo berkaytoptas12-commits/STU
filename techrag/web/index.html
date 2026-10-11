@@ -75,19 +75,11 @@
     <div class="splitter" id="splitter" role="separator" tabindex="0" aria-orientation="vertical"
          aria-controls="viewer-panel" data-i18n-title="splitter"></div>
     <aside class="panel viewer" id="viewer-panel">
-      <div class="tabs">
-        <button class="tab active" data-tab="source" data-i18n="tabSource"></button>
-        <button class="tab" data-tab="notes"><span data-i18n="tabNotes"></span> <span id="notes-count" class="badge"></span></button>
+      <div class="panel-head viewer-head">
+        <h2 data-i18n="tabSource"></h2>
         <button class="ghost icon small viewer-close" id="btn-close-right" data-i18n-title="hideRight">✕</button>
       </div>
       <div class="tab-body" id="tab-source"><p class="muted" data-i18n="viewerEmpty"></p></div>
-      <div class="tab-body" id="tab-notes" hidden>
-        <div class="row">
-          <button class="ghost" id="btn-export-notes" data-i18n="exportNotes"></button>
-          <button class="ghost" id="btn-clear-notes" data-i18n="clearNotes"></button>
-        </div>
-        <div id="notes-list"></div>
-      </div>
     </aside>
   </main>
 
@@ -172,7 +164,6 @@
       <div class="verify" hidden></div>
       <div class="cites"></div>
       <div class="msg-actions" hidden>
-        <button class="ghost small btn-note" data-i18n="saveNote"></button>
         <button class="ghost small btn-copy" data-i18n="copy"></button>
         <span class="muted small timing"></span>
       </div>

@@ -303,3 +303,40 @@ def test_library_inside_the_picked_folder_is_skipped(tmp_path, cfg):
     simple_pdf(lib / "Copy.pdf", "copy inside the library")
     scan = scan_root(root, exclude=(root / "TechRAG" / "library",))
     assert [f.rel for f in scan.files] == ["PCIe/Base.pdf"]
+
+
+def test_full_exit_stops_indexing_at_a_document_boundary(tree, lib, fake):
+    """Quitting the desktop app during indexing: the document being written is completed, nothing is written after
+    it, and the next rescan picks up exactly the documents that were not indexed yet."""
+    import threading
+
+    from techrag.ingest.pipeline import IngestStopped, WriteGate
+
+    store, ingestor, _ = lib
+    root_id = store.add_root(str(tree))
+    gate = WriteGate()
+    written, closed, closers = [], {}, []
+    real = store.replace_document
+
+    def replace(**kw):  # runs inside gate.write(): the user quits while the 2nd document is being written
+        if len(written) == 1:
+            t = threading.Thread(target=lambda: closed.update(ok=gate.close(30)))
+            t.start()
+            closers.append(t)
+            assert gate.stop.wait(5)
+            assert "ok" not in closed, "the exit waits for the write in progress"
+        real(**kw)
+        written.append(kw["path"])
+
+    store.replace_document = replace
+    with pytest.raises(IngestStopped):
+        ingestor(gate=gate).sync_root(root_id)
+    store.replace_document = real
+    closers[0].join(10)
+    assert len(written) == 2 and closed.get("ok") is True
+    docs = {d.path: d for d in store.documents()}
+    assert set(docs) == set(written), "nothing written after the exit was requested"
+    assert all(store.page_chunks(d.id, 1, evidence_only=False) for d in docs.values()), "complete documents"
+    report = ingestor().sync_root(root_id)
+    assert set(report.skipped) >= set(written) and len(report.added) == 6, "the rescan resumes where it stopped"
+    assert len(store.documents()) == 8

@@ -1,20 +1,26 @@
 """Desktop entry point (TechRAG.exe).
 
-* No arguments: start the FastAPI backend in-process on a random localhost port with a per-launch token
-  and show the UI in a native window (Microsoft Edge WebView2 through pywebview). No browser is opened.
+* No arguments: start the FastAPI backend in-process on a random localhost port with a per-launch token. On Windows
+  the app then shows a small round launcher icon (techrag.launcher); a click on it opens the chat window - the same
+  UI in a native window (Microsoft Edge WebView2 through pywebview). No browser is opened. A second TechRAG.exe
+  brings the running one forward instead of starting another backend.
 * With arguments: behave exactly like the `techrag` CLI (e.g. `TechRAG.exe ingest`, `TechRAG.exe doctor`).
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import queue
 import secrets
 import socket
+import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
+from typing import Callable, Optional
 
 log = logging.getLogger("techrag.desktop")
 
@@ -100,21 +106,200 @@ class JsApi:
             file_types=("Documents (*.pdf;*.docx;*.md;*.txt;*.html;*.htm)", "All files (*.*)"))
         return list(r) if r else []
 
-    def save_text(self, filename: str, content: str) -> bool:
-        r = self._window.create_file_dialog(_dialog("SAVE"), save_filename=filename)
-        path = r if isinstance(r, str) else (r[0] if r else None)
-        if not path:
-            return False
-        Path(path).write_text(content, encoding="utf-8")
-        return True
-
 
 SMOKE_JS = """(function () {
   var b = document.querySelector('.brand');
   return {brand: b ? b.textContent : '', ready: document.readyState,
           bridge: !!(window.pywebview && window.pywebview.api && window.pywebview.api.pick_folder),
-          collections: !!document.querySelector('#collections')};
+          collections: !!document.querySelector('#collections'),
+          host: !!window.techragHost,
+          notes: !!document.querySelector('[data-tab="notes"], #tab-notes, #notes-list, .btn-note')};
 })()"""
+
+
+class DesktopApp:
+    """TechRAG.exe while it runs: one backend, one chat window and one launcher icon for the whole session.
+
+    The chat window is created once and from then on only shown and hidden: the conversation, the selected buckets,
+    the open PDF page and the panel sizes stay exactly as they were, and indexing (a backend thread) goes on while it
+    is hidden. Its close button hides it (explained once); the full exit is the icon's "Quit" or Windows logging off.
+    Launcher callbacks only queue work; it runs here on one thread, in order.
+    """
+
+    def __init__(self, chat, jobs, lang: Callable[[], str], state, hide_on_close: bool = True,
+                 notice: Optional[Callable[[str, str], object]] = None,
+                 confirm: Optional[Callable[[str, str], bool]] = None):
+        from techrag import launcher as L
+
+        self._L = L
+        self.chat, self.jobs, self._lang, self.state = chat, jobs, lang, state
+        self.hide_on_close = hide_on_close
+        self.notice = notice or L.message_box
+        self.confirm = confirm or L.ask_yes_no
+        self.launcher = None
+        self.quitting = False
+        self.visible = not hide_on_close
+        self.stats = {"opened": 0, "hidden": 0, "activations": 0, "hints": 0}
+        self._shutdown_lock = threading.Lock()
+        self._shutdown_done = False
+        self._q: queue.Queue = queue.Queue()
+        threading.Thread(target=self._loop, name="desktop", daemon=True).start()
+
+    # ------------------------------------------------------------ called from the launcher / pywebview threads
+    def lang(self) -> str:
+        try:
+            return self._lang() or "tr"
+        except Exception:
+            return "tr"
+
+    def open_chat(self) -> None:
+        self._post(self._open, None)
+
+    def open_settings(self) -> None:
+        self._post(self._open, "window.techragHost && window.techragHost.openSettings()")
+
+    def command(self, cmd: int) -> None:
+        L = self._L
+        if cmd == L.IDM_OPEN:
+            self.open_chat()
+        elif cmd == L.IDM_SETTINGS:
+            self.open_settings()
+        elif cmd == L.IDM_QUIT:
+            self.request_quit()
+
+    def activate(self) -> None:
+        """A second TechRAG.exe was started: it exits, this one shows its chat window."""
+        self.stats["activations"] += 1
+        self.open_chat()
+
+    def icon_moved(self, anchor: dict) -> None:
+        self._post(self.state.set, "launcher", anchor)
+
+    def request_quit(self, confirm: bool = True) -> None:
+        self._post(self._quit, confirm)
+
+    def session_end(self, final: bool) -> None:
+        """Windows is logging off / shutting down: let the chat window close; when it is final, stop indexing at a
+        safe point right away (Windows ends the process soon after)."""
+        self.quitting = True
+        if final:
+            self.shutdown(timeout=5)
+
+    def on_chat_closing(self) -> bool:
+        """pywebview `closing` handler (GUI thread). Returning False cancels the close: the window is hidden."""
+        if self.quitting or not self.hide_on_close or self._L.session_ending():
+            self.quitting = True
+            return True
+        self._post(self._hide, True)
+        return False
+
+    def idle(self, timeout: float = 10.0) -> bool:
+        """Wait until everything queued so far is done (tests)."""
+        done = threading.Event()
+        self._post(done.set)
+        return done.wait(timeout)
+
+    def shutdown(self, timeout: float) -> None:
+        """Stop background indexing at a safe point (see Jobs.shutdown); idempotent."""
+        with self._shutdown_lock:
+            if self._shutdown_done:
+                return
+            t0 = time.time()
+            ok = self.jobs.shutdown(timeout)
+            self._shutdown_done = True
+            log.info("background jobs stopped (%s) in %.1f s", "index writes complete" if ok else
+                     "a write did not finish in time; SQLite rolls it back", time.time() - t0)
+
+    def finish(self) -> None:
+        """The GUI loop has ended (quit, Windows logging off or a failure)."""
+        self.quitting = True
+        self.shutdown(timeout=30)
+        if self.launcher is not None:
+            self.launcher.close()
+        self._q.put((None, ()))
+
+    # ------------------------------------------------------------ desktop thread
+    def _post(self, fn, *args) -> None:
+        self._q.put((fn, args))
+
+    def _loop(self) -> None:
+        while True:
+            fn, args = self._q.get()
+            if fn is None:
+                return
+            try:
+                fn(*args)
+            except Exception:
+                log.exception("desktop action %s failed", getattr(fn, "__name__", fn))
+
+    def chat_hwnd(self) -> Optional[int]:
+        try:
+            return int(self.chat.native.Handle.ToInt64())
+        except Exception:
+            return None
+
+    def _open(self, script: Optional[str]) -> None:
+        if self.quitting:
+            return
+        if not self.chat.events.shown.wait(120):  # clicked while the window was still being created
+            log.error("the chat window was not created")
+            return
+        self.chat.show()
+        hwnd = self.chat_hwnd()
+        if hwnd and os.name == "nt":
+            self._L.bring_to_front(hwnd)  # also restores a minimized window
+            if self.launcher is not None:
+                self.launcher.set_companion(hwnd)
+        self.visible = True
+        self.stats["opened"] += 1
+        self._page("window.techragHost && window.techragHost.setVisible(true)")
+        if script:
+            self._page(script)
+
+    def _hide(self, from_close: bool = False) -> None:
+        if self.quitting:
+            return
+        self.chat.hide()
+        self.visible = False
+        self.stats["hidden"] += 1
+        self._page("window.techragHost && window.techragHost.setVisible(false)")
+        if from_close and not self.state.get("close_hint_shown"):
+            self.state.set("close_hint_shown", True)
+            self.stats["hints"] += 1
+            lang = self.lang()
+            threading.Thread(target=self.notice, args=(self._L.text(lang, "hint_title"), self._L.text(lang, "hint")),
+                             name="hint", daemon=True).start()
+
+    def _page(self, script: str) -> None:
+        """Tell the page (never blocks this thread: evaluate_js waits for the page to be ready)."""
+        def run():
+            try:
+                self.chat.evaluate_js(script)
+            except Exception as exc:
+                log.warning("page call failed: %s", exc)
+
+        threading.Thread(target=run, name="page-call", daemon=True).start()
+
+    def _quit(self, confirm: bool) -> None:
+        if self._shutdown_done and self.quitting:
+            return
+        if confirm and self.jobs.running():
+            lang = self.lang()
+            if not self.confirm(self._L.text(lang, "busy_title"), self._L.text(lang, "busy")):
+                return
+        log.info("quit requested")
+        self.quitting = True
+        if self.launcher is not None:
+            self.launcher.hide()
+        if self.visible:
+            try:
+                self.chat.hide()
+            except Exception:
+                pass
+        self.shutdown(timeout=60)
+        if self.launcher is not None:
+            self.launcher.close()
+        self.chat.destroy()  # ends webview.start() in the main thread
 
 
 def _setup_logging(install_hooks: bool) -> Path:
@@ -172,32 +357,181 @@ def _unblock_bundle() -> int:
     return n
 
 
-def _smoke(window, result_path: str) -> None:
-    """CI check of the real window: page loaded, UI rendered, JS<->Python bridge answers; then close."""
-    import json
+def _wait(pred: Callable[[], object], timeout: float, step: float = 0.2):
+    deadline = time.time() + timeout
+    while True:
+        try:
+            v = pred()
+        except Exception:
+            v = None
+        if v or time.time() > deadline:
+            return v
+        time.sleep(step)
 
-    result: dict = {"ok": False}
+
+def _smoke(desk: DesktopApp, result_path: str) -> None:
+    """CI check of the packaged app with real windows: the launcher icon comes first; a drag moves it without opening
+    the chat; a click opens the chat (UI, JS<->Python bridge, no notes UI); the close button only hides it and the
+    page is kept; a second TechRAG.exe hands over instead of starting a backend; the icon's menu opens the settings and
+    finally quits the app (the CI step checks that the process then ends by itself)."""
+    chat = desk.chat
+    r: dict = {"ok": False, "checks": {}}
+    checks = r["checks"]
+
+    def check(name: str, cond) -> None:
+        checks[name] = bool(cond)
+
+    def page(timeout: float = 120) -> dict:
+        res = _wait(lambda: (lambda v: v if v and v.get("bridge") and v.get("collections") else None)(
+            chat.evaluate_js(SMOKE_JS)), timeout, 1.0)
+        return res or (chat.evaluate_js(SMOKE_JS) or {})
+
+    hint_before = bool(desk.state.get("close_hint_shown"))  # a previous run (the other build) already showed it
+    r["saved_position_at_start"] = desk.state.get("launcher")
     try:
-        if not window.events.loaded.wait(120):
-            raise TimeoutError("page did not finish loading within 120 s")
-        r: dict = {}
-        deadline = time.time() + 60
-        while time.time() < deadline:
-            r = window.evaluate_js(SMOKE_JS) or {}
-            if r.get("bridge") and r.get("collections"):
-                break
-            time.sleep(1)
-        result.update(r)
-        result["ok"] = bool(r.get("bridge") and "TechRAG" in str(r.get("brand", "")))
+        lw = desk.launcher
+        if os.name != "nt" or lw is None:  # no launcher on this platform: the window opened directly
+            check("loaded", chat.events.loaded.wait(120))
+            r["page"] = pg = page()
+            check("chat_ui", pg.get("bridge") and "TechRAG" in str(pg.get("brand", "")))
+            check("notes_removed", pg.get("notes") is False)
+        else:
+            from techrag import launcher as L
+
+            L.use_physical_pixels()
+            a = L.win32()
+            check("launcher_created", lw.ready.wait(30) and lw.hwnd)
+            info = lw.info()
+            r["launcher"] = info
+            check("launcher_visible", info.get("visible"))
+            check("launcher_topmost", info.get("topmost"))
+            check("launcher_never_activates", info.get("noactivate") and info.get("toolwindow"))
+            check("launcher_per_pixel_alpha", info.get("layered"))
+            check("launcher_size_56_64_dip", 56 <= float(info.get("size_dip", 0)) <= 64)
+            rect, work = info["rect"], info["work"]
+            check("launcher_inside_work_area", work[0] <= rect[0] and work[1] <= rect[1] and rect[2] <= work[2]
+                  and rect[3] <= work[3])
+            check("chat_window_created", chat.events.shown.wait(120))
+            hwnd = desk.chat_hwnd()
+            check("chat_hidden_at_start", hwnd and not L.window_state(hwnd)["visible"])
+
+            def post(msg: int, x: int, y: int) -> None:
+                a.PostMessageW(lw.hwnd, msg, 0 if msg == L.WM_LBUTTONUP else L.MK_LBUTTON, L.lparam_point(x, y))
+
+            c = (rect[2] - rect[0]) // 2
+            post(L.WM_LBUTTONDOWN, c, c)
+            post(L.WM_MOUSEMOVE, c - 30, c - 20)
+            post(L.WM_MOUSEMOVE, c - 90, c - 70)
+            post(L.WM_LBUTTONUP, c, c)
+            time.sleep(1.5)
+            moved = lw.info()
+            r["after_drag"] = moved
+            check("drag_moves_icon", moved["rect"][:2] != rect[:2])
+            check("drag_does_not_open_chat", not L.window_state(hwnd)["visible"] and desk.stats["opened"] == 0)
+            check("drag_position_saved", _wait(lambda: (desk.state.get("launcher") or {}).get("h"), 5))
+
+            def click() -> None:
+                cc = (moved["rect"][2] - moved["rect"][0]) // 2
+                post(L.WM_LBUTTONDOWN, cc, cc)
+                post(L.WM_LBUTTONUP, cc, cc)
+
+            click()
+            check("click_opens_chat", _wait(lambda: L.window_state(hwnd)["visible"], 30))
+            r["page"] = pg = page()
+            check("chat_ui", pg.get("bridge") and "TechRAG" in str(pg.get("brand", "")) and pg.get("host"))
+            check("notes_removed", pg.get("notes") is False)
+            chat.evaluate_js("window.__smoke = 'kept'; document.querySelector('#question').value = 'draft'; 1")
+            a.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE: the window's close button
+            check("close_hides_chat", _wait(lambda: not L.window_state(hwnd)["visible"], 30))
+            time.sleep(1.0)
+            check("app_keeps_running_after_close", lw.hwnd and not desk.quitting)
+            check("close_hint_only_the_first_time", desk.stats["hints"] == (0 if hint_before else 1))
+            click()
+            check("click_reopens_chat", _wait(lambda: L.window_state(hwnd)["visible"], 30))
+            check("page_state_kept", chat.evaluate_js(
+                "[window.__smoke, document.querySelector('#question').value]") == ["kept", "draft"])
+            if getattr(sys, "frozen", False):
+                env = {k: v for k, v in os.environ.items() if k != "TECHRAG_SMOKE"}
+                env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"  # a fresh start of the exe, as from Explorer
+                before, t0 = desk.stats["activations"], time.time()
+                code = subprocess.run([sys.executable], env=env, timeout=180).returncode
+                r["second_instance"] = {"exit_code": code, "seconds": round(time.time() - t0, 1)}
+                check("second_instance_exits", code == 0)
+                check("second_instance_hands_over", _wait(lambda: desk.stats["activations"] > before, 20))
+            a.PostMessageW(lw.hwnd, L.WM_COMMAND, L.IDM_SETTINGS, 0)
+            check("menu_opens_settings", _wait(
+                lambda: chat.evaluate_js("document.querySelector('#dlg-settings').open") is True, 30))
+            chat.evaluate_js("document.querySelector('#dlg-settings').close(); 1")
+            r["stats"] = dict(desk.stats)
+        r["ok"] = bool(checks) and all(checks.values())
     except Exception as exc:
-        result["error"] = f"{exc.__class__.__name__}: {exc}"
-    log.info("smoke result: %s", result)
-    Path(result_path).write_text(json.dumps(result), encoding="utf-8")
-    window.destroy()
+        r["error"] = f"{exc.__class__.__name__}: {exc}"
+    log.info("smoke result: %s", r)
+    Path(result_path).write_text(json.dumps(r, indent=1), encoding="utf-8")
+    if desk.launcher is not None and desk.launcher.hwnd:  # full exit through the icon's menu, as a user would
+        from techrag import launcher as L
+
+        desk.launcher.post(L.WM_COMMAND, L.IDM_QUIT)
+    else:
+        desk.request_quit(confirm=False)
+
+
+def _smoke_exit(result_path: str, clean: bool) -> None:
+    try:
+        r = json.loads(Path(result_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        r = {"ok": False, "error": "no smoke result"}
+    r["exit"] = "clean" if clean else "error"
+    Path(result_path).write_text(json.dumps(r, indent=1), encoding="utf-8")
+
+
+def _set_process_dpi_aware() -> None:
+    """The system DPI awareness pywebview sets for its window - set before any window exists (the launcher icon is
+    created first), so the chat window looks exactly as before. The icon's own thread is per-monitor aware."""
+    try:
+        import ctypes
+
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
+
+def _chat_size() -> tuple[int, int, int, int]:
+    """Chat window (width, height, min width, min height) in logical pixels: 1480 x 940 leaves room for the PDF panel;
+    smaller when the screen is."""
+    w, h = 1480, 940
+    if os.name == "nt":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.WinDLL("user32")
+            r = wintypes.RECT()
+            if user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(r), 0):  # SPI_GETWORKAREA (primary)
+                dpi = user32.GetDpiForSystem() if hasattr(user32, "GetDpiForSystem") else 96
+                scale = max(int(dpi or 96), 48) / 96
+                w = min(w, int((r.right - r.left) / scale * 0.94))
+                h = min(h, int((r.bottom - r.top) / scale * 0.92))
+        except Exception:
+            pass
+    return w, h, min(960, w), min(620, h)
+
+
+def _launcher_supported() -> bool:
+    return os.name == "nt" and not os.environ.get("TECHRAG_NO_LAUNCHER")
+
+
+def _make_launcher(key: str, desk: DesktopApp, state):
+    from techrag.launcher import Launcher
+
+    return Launcher(key, state.get("launcher"), desk.lang, on_click=desk.open_chat, on_command=desk.command,
+                    on_activate=desk.activate, on_moved=desk.icon_moved, on_session_end=desk.session_end)
 
 
 def run_gui() -> int:
     from techrag import __version__
+    from techrag.launcher import SingleInstance, instance_key
+    from techrag.settings import settings_path
 
     log_path = _setup_logging(install_hooks=getattr(sys, "frozen", False))
     log.info("=== TechRAG %s starting (frozen=%s, python=%s, exe=%s)", __version__, getattr(sys, "frozen", False),
@@ -206,9 +540,31 @@ def run_gui() -> int:
         log.info("mark-of-the-web removed from %d bundled file(s)", _unblock_bundle())
     except Exception as exc:
         log.warning("could not unblock bundled files: %s", exc)
+    if os.name == "nt":
+        _set_process_dpi_aware()
+    key = instance_key(settings_path())
+    guard = SingleInstance(key)
+    deadline = time.monotonic() + 20
+    while not guard.acquire():  # another TechRAG runs (or is still starting / just closing)
+        if guard.notify_running(timeout=0.5):
+            log.info("TechRAG is already running in this session: asked it to open its chat window")
+            return 0
+        if time.monotonic() > deadline:
+            from techrag.launcher import text
+
+            _message_box("TechRAG", text("tr", "running") + "\n\n" + text("en", "running"))
+            return 0
+    try:
+        return _run_gui(key, log_path)
+    finally:
+        guard.release()
+
+
+def _run_gui(key: str, log_path: Path) -> int:
     import uvicorn
 
     from techrag.config import load_config, user_config_dir
+    from techrag.launcher import DesktopState
     from techrag.server import create_app
 
     cfg = load_config()
@@ -219,7 +575,8 @@ def run_gui() -> int:
     app = create_app(cfg, desktop=True)
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning",
                                            log_config=None, access_log=False))
-    threading.Thread(target=server.run, name="backend", daemon=True).start()
+    backend = threading.Thread(target=server.run, name="backend", daemon=True)
+    backend.start()
     deadline = time.time() + 30
     while not server.started and time.time() < deadline:
         time.sleep(0.05)
@@ -235,15 +592,30 @@ def run_gui() -> int:
         _message_box("TechRAG", "pywebview is missing from this build.")
         return 1
     log.info("pywebview %s", _webview_version(webview))
+    use_launcher = _launcher_supported()
+    state = DesktopState(log_path.parent / "desktop.json")
     api = JsApi()
-    window = webview.create_window("TechRAG", f"http://127.0.0.1:{port}/?token={token}", js_api=api,
-                                   width=1480, height=940, min_size=(960, 620), text_select=True)
-    api._window = window
+    width, height, min_w, min_h = _chat_size()
+    chat = webview.create_window("TechRAG", f"http://127.0.0.1:{port}/?token={token}", js_api=api,
+                                 width=width, height=height, min_size=(min_w, min_h), text_select=True,
+                                 hidden=use_launcher)  # created once, in the background: the icon shows it
+    api._window = chat
+    desk = DesktopApp(chat, app.state.jobs, lambda: app.state.state["cfg"].ui.language, state,
+                      hide_on_close=use_launcher)
+    chat.events.closing += desk.on_chat_closing
     try:
-        window.events.loaded += lambda: log.info("page loaded")
-        window.events.closed += lambda: log.info("window closed")
+        chat.events.loaded += lambda: log.info("page loaded")
+        chat.events.closed += lambda: log.info("chat window closed")
     except Exception:
         pass
+    if use_launcher:
+        launcher = _make_launcher(key, desk, state)
+        desk.launcher = launcher
+        if not launcher.start():
+            log.error("launcher icon unavailable (%s): opening the chat window directly", launcher.error)
+            desk.launcher = None
+            desk.hide_on_close = False
+            desk.open_chat()
     try:
         webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = False
         webview.settings["ALLOW_DOWNLOADS"] = True
@@ -252,15 +624,17 @@ def run_gui() -> int:
     storage = user_config_dir() / "webview"
     storage.mkdir(parents=True, exist_ok=True)
     smoke = os.environ.get("TECHRAG_SMOKE")
+    clean = False
     try:
         kwargs = {"private_mode": False, "storage_path": str(storage),
                   "debug": bool(os.environ.get("TECHRAG_WEBVIEW_DEBUG"))}
         if os.name == "nt":
             kwargs["gui"] = "edgechromium"  # never fall back to the legacy IE engine
         if smoke:
-            kwargs.update(func=_smoke, args=(window, smoke))
-        log.info("starting GUI loop (%s)", kwargs.get("gui", "default"))
+            kwargs.update(func=_smoke, args=(desk, smoke))
+        log.info("starting GUI loop (%s, launcher=%s)", kwargs.get("gui", "default"), desk.launcher is not None)
         webview.start(**kwargs)
+        clean = True
     except Exception as exc:
         log.exception("GUI failed")
         _message_box("TechRAG", "Could not open the window. On Windows the Microsoft Edge WebView2 Runtime is "
@@ -268,7 +642,11 @@ def run_gui() -> int:
                                 f"{exc.__class__.__name__}: {exc}\n\nLog: {log_path}")
         return 1
     finally:
+        desk.finish()
         server.should_exit = True
+        backend.join(5)
+        if smoke:
+            _smoke_exit(smoke, clean)
     log.info("exit")
     return 0
 

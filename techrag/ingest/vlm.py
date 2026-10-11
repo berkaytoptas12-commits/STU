@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
+from techrag.config import write_text_atomic
 from techrag.geometry import FIELD_HEADERS, PageGeom, find_unit, ground_cell, norm_tokens
 from techrag.llm import LLMClient, image_part, parse_json_object
 from techrag.units import (NON_SI_UNITS, base_unit, find_quantities, number_ambiguous, to_si, unit_info,
@@ -91,6 +92,15 @@ class ExtractedTable:
         if self.footnotes:
             lines.append("Notes: " + " ".join(_cell(f) for f in self.footnotes))
         return "\n".join(lines)
+
+
+def _read_cache(path: Path) -> Optional[dict]:
+    """A cached page result, or None (not cached yet, or an unreadable leftover: the page is asked again)."""
+    try:
+        obj = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return obj if isinstance(obj, dict) else None
 
 
 def _cell(v) -> str:
@@ -363,9 +373,8 @@ class TableExtractor:
     def extract_page(self, pdf_path: Path, doc_sha: str, page: int, page_text: str,
                      read_only_cache: bool = False, geoms: Optional[dict] = None) -> list[ExtractedTable]:
         cache = self._cache_file(doc_sha, page)
-        if cache.exists():
-            obj = json.loads(cache.read_text(encoding="utf-8"))
-        else:
+        obj = _read_cache(cache)
+        if obj is None:
             png = render_page(pdf_path, page, self.dpi)
             text_layer = page_text if page_text.strip() else "(no text layer: scanned page)"
             res = self.client.chat(
@@ -376,8 +385,7 @@ class TableExtractor:
                 json_mode=True, max_tokens=self.max_tokens, temperature=0.0, thinking=False)
             obj = parse_json_object(res.content) or {"tables": [], "_unparsed": res.content[:2000]}
             if not read_only_cache:
-                cache.parent.mkdir(parents=True, exist_ok=True)
-                cache.write_text(json.dumps(obj, ensure_ascii=False), encoding="utf-8")
+                write_text_atomic(cache, json.dumps(obj, ensure_ascii=False))
         geoms = geoms or {}
         return [validate(t, geoms.get(page), geoms.get(page - 1), geoms.get(page + 1)) for t in _parse(obj, page)]
 

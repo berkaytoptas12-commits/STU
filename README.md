@@ -218,6 +218,30 @@ kullanıcıların onu açması önerilir (açıkken üzerine yazmayın).
 
 ## 4. Kullanım
 
+### Açılış: sohbet simgesi
+
+* `TechRAG.exe` açılınca önce ekranın sağ alt köşesinde (görev çubuğunun üstünde) küçük, yuvarlak bir **sohbet
+  simgesi** belirir. Simge normal pencerelerin üzerinde kalır ama klavye odağını almaz; yazdığınız uygulama
+  odakta kalır. Ayrı bir tarayıcı açılmaz.
+* **Tıklayınca** sohbet penceresi açılır (sohbet, bucket seçimi, kaynak/PDF paneli, vurgu — hepsi aynı arayüz).
+  Pencere normal bir penceredir: boyutlandırılabilir, ekranı kaplayabilir, üstte sabit kalmaz. Sohbet penceresi
+  etkinken simge onun arkasına geçer, böylece pencerenin düğmelerini örtmez.
+* **Sürükleyerek** simge taşınır (sürükleme sohbeti açmaz); yeri, bulunduğu monitör ve en yakın köşeye uzaklığıyla
+  hatırlanır. Çözünürlük, ölçek (DPI) veya görev çubuğu değişince, monitör çıkarılınca simge görünür alana geri
+  alınır; her monitörde o monitörün ölçeğinde çizilir.
+* **Sağ tık menüsü:** "Sohbeti aç", "Ayarlar", "Uygulamadan çık" (arayüz dili TR/EN).
+* Sohbet penceresinin **kapat (✕)** düğmesi uygulamadan çıkmaz, pencereyi gizler (ilk seferde kısa bir bilgi
+  gösterilir). Sohbet geçmişi, seçili bucket, açık PDF sayfası ve panel genişlikleri korunur; süren indeksleme
+  arka planda devam eder. Gizliyken arayüz ilerleme sorgulamaz.
+* **Tamamen çıkmak** için simgeye sağ tıklayıp "Uygulamadan çık". İndeksleme sürüyorsa onay istenir; o an
+  yazılan belge kaydı tamamlanır, sonraki belgeler bir sonraki "Yeniden tara"da işlenir (indeks yarım kalmaz).
+* `TechRAG.exe` ikinci kez çalıştırılırsa yeni bir arka uç başlatılmaz; çalışan uygulamanın sohbet penceresi öne
+  gelir. Uygulama Windows başlangıcına eklenmez.
+* Simgenin yeri ve tek seferlik bilgiler `%APPDATA%\TechRAG\desktop.json` dosyasındadır (silinirse simge
+  varsayılan köşeye döner).
+
+### Sohbet penceresi
+
 * **Sol panel (Kaynaklar):** belgeler bucket başlıkları altında gruplanır; bucket'lar başlangıçta kapalıdır,
   başlığa tıklayınca açılır, yanında belge sayısı görünür. Üstteki arama kutusu belge ve bucket adına göre
   süzer. Uzun adlar üç noktayla kısalır; üzerine gelince tam ad ve göreli konum görünür. Liste kendi içinde
@@ -262,8 +286,6 @@ kullanıcıların onu açması önerilir (açıkken üzerine yazmayın).
 
 Kaynak kayıtları kalıcı bilgiler taşır: doküman SHA-256'sı, fiziksel sayfa, basılı etiket, eşleşen metin ve
 hem ekran (0–1, döndürme/CropBox uygulanmış) hem PDF kullanıcı uzayı koordinatları.
-
-* **Notlar:** cevapları kaydedin, Markdown olarak dışa aktarın.
 
 ### Komut satırı (aynı exe)
 
@@ -323,6 +345,8 @@ doğrulama, hücre eşleştirme, konum, geçiş) sınar, gerçek bir modelin do�
 | Belirti | Çözüm |
 |---|---|
 | Pencere açılmıyor | WebView2 Runtime kurulu mu? Günlük: `%APPDATA%\TechRAG\techrag.log` |
+| Simge görünmüyor / tıklayınca bir şey olmuyor | Uygulama zaten çalışıyor olabilir: `TechRAG.exe`'yi yeniden çalıştırmak sohbeti öne getirir. Simgenin yerini sıfırlamak için uygulamadan çıkıp `%APPDATA%\TechRAG\desktop.json` dosyasını silin. Simge oluşturulamazsa sohbet penceresi doğrudan açılır (günlükte nedeni yazar). |
+| Kapat düğmesi uygulamayı kapatmıyor | Bilerek böyle: pencere gizlenir. Çıkış: simgeye sağ tık → "Uygulamadan çık". |
 | "no chat/embedding model configured" | Ayarlar → model seçin; `TechRAG.exe doctor` |
 | "indexed with embedding model …" | Embedding modeli değişti: Kütüphane → "Tamamen yeniden oluştur" veya `ingest --rebuild` |
 | Araç kullanılmıyor | vLLM'i `--enable-auto-tool-choice --tool-call-parser …` ile başlatın |
@@ -377,6 +401,11 @@ girerek açıyorsa model sunucuları için **"Sistem proxy ayarlarını kullan"*
   paylaşımı ve Windows junction'ları üzerinde henüz denenmedi. 0.2 ile indekslenmiş belgelerde dosya boyutu/tarihi
   kayıtlı olmadığından ilk yeniden taramada her dosyanın SHA-256'sı bir kez hesaplanır (yalnızca disk/ağ okuması,
   API maliyeti yok).
+* Sohbet simgesi: CI'da gerçek Windows pencereleriyle (tek monitör, %100 ölçek) doğrulanır — simgenin önce
+  açılması, sürüklemenin sohbeti açmaması, tıklamanın açması, kapatmanın gizlemesi ve sayfanın korunması, ikinci
+  exe'nin devretmesi, menüden tam çıkış. Çoklu monitör, farklı DPI'lar arası sürükleme, monitör çıkarma ve
+  görev çubuğu değişikliği kuralları birim testleriyle doğrulandı ama gerçek çoklu monitörlü bir makinede
+  denenmedi; WebView2 penceresinin odak/öne getirme davranışı Windows'un odak kurallarına bağlıdır.
 * Kapsam sorusu sezgiseldir: standart adı geçmeyen sayısal sorularda kanıt kardeş sürümlerden geliyorsa sorulur.
 * Değerlendirme betiğindeki olgu eşleştirme sezgiseldir (parametre adı, değer+birim, koşul kelimeleri,
   olumsuzlama); şüpheli durumlarda yanlış sayar.
@@ -387,7 +416,9 @@ girerek açıyorsa model sunucuları için **"Sistem proxy ayarlarını kullan"*
 
 ```
 techrag/
-  desktop.py       exe giriş noktası: süreç içi FastAPI + pywebview penceresi, argümanla CLI
+  desktop.py       exe giriş noktası: tek örnek, süreç içi FastAPI, gizli açılan pywebview sohbet penceresi,
+                   gizle/göster, güvenli çıkış; argümanla CLI
+  launcher.py      yuvarlak sohbet simgesi (Win32 katmanlı pencere, DPI/çoklu monitör, sağ tık menüsü), tek örnek kilidi
   server.py        API: ayarlar, kütüphane (yayımla, geçiş), dokümanlar, sayfa görüntüsü/bilgisi, SSE soru akışı
   engine.py        plan -> kapsam -> arama -> ajan döngüsü -> doğrulama/denetçi/yeniden üretim -> kanıt konumu
   tools.py         ajan araçları (ortak kapsam) + atıf kayıt defteri + izlenebilir hesap makinesi

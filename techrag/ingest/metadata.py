@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from techrag.config import write_text_atomic
 from techrag.domains import DomainRegistry
 from techrag.llm import LLMClient, parse_json_object
 
@@ -135,16 +136,17 @@ def llm_metadata(client: LLMClient, front_text: str, doc_sha: str, cache_dir: Pa
                  read_only_cache: bool = False) -> dict:
     key = hashlib.sha256(f"{META_PROMPT_VERSION}|{client.model}".encode()).hexdigest()[:12]
     cache = Path(cache_dir) / doc_sha[:24] / f"meta_{key}.json"
-    if cache.exists():
+    try:
         return json.loads(cache.read_text(encoding="utf-8"))
+    except (OSError, ValueError):  # not cached yet (or an unreadable leftover): ask the model again
+        pass
     res = client.chat([{"role": "system", "content": SYSTEM},
                        {"role": "user", "content": front_text[:6000]}],
                       json_mode=True, max_tokens=400, temperature=0.0, thinking=False)
     obj = parse_json_object(res.content) or {}
     obj = {k: str(obj.get(k, "") or "") for k in ("title", "standard", "version", "revision", "date", "doc_type")}
     if not read_only_cache:
-        cache.parent.mkdir(parents=True, exist_ok=True)
-        cache.write_text(json.dumps(obj, ensure_ascii=False), encoding="utf-8")
+        write_text_atomic(cache, json.dumps(obj, ensure_ascii=False))
     return obj
 
 

@@ -1,53 +1,304 @@
-"""Desktop launcher wiring with a stand-in for pywebview (no display needed)."""
+"""Desktop app lifecycle with stand-ins for pywebview and the Win32 launcher icon (no display needed): one backend,
+the icon first, a click opens the chat, closing only hides it, a second start hands over, the full exit stops
+indexing safely. The real icon window is tested on Windows in test_launcher.py and by the CI GUI smoke test."""
 
+import json
 import sys
+import threading
 import types
 
 import httpx
+import pytest
+from fastapi import HTTPException
 
 from techrag import desktop
+from techrag.ingest.pipeline import IngestStopped
+from techrag import launcher as L
 
 
-def test_gui_starts_backend_with_token_and_opens_window(monkeypatch, tmp_path):
+class FakeEvent:
+    """pywebview.Event semantics: handlers via +=, set() returns True when a handler returned False (cancel)."""
+
+    def __init__(self):
+        self.items, self._ev = [], threading.Event()
+
+    def __iadd__(self, fn):
+        self.items.append(fn)
+        return self
+
+    def set(self, *args):
+        results = [fn() for fn in self.items]
+        self._ev.set()
+        return any(r is False for r in results)
+
+    def wait(self, timeout=None):
+        return self._ev.wait(timeout)
+
+    def is_set(self):
+        return self._ev.is_set()
+
+
+class FakeWindow:
+    def __init__(self, url, **kw):
+        self.url, self.kw = url, kw
+        self.events = types.SimpleNamespace(**{n: FakeEvent() for n in ("shown", "loaded", "closing", "closed")})
+        self.visible = not kw.get("hidden")
+        self.calls, self.scripts = [], []
+        self.destroyed = threading.Event()
+
+    def show(self):
+        self.calls.append("show")
+        self.visible = True
+
+    def hide(self):
+        self.calls.append("hide")
+        self.visible = False
+
+    def user_closes(self) -> bool:
+        """The close button: True if the window really closed."""
+        cancelled = self.events.closing.set()
+        if not cancelled:
+            self.visible = False
+            self.destroyed.set()
+        return not cancelled
+
+    def destroy(self):
+        self.calls.append("destroy")
+        if self.user_closes() is False:
+            raise AssertionError("destroy() must not be cancelled")
+
+    def evaluate_js(self, script):
+        self.scripts.append(script)
+        return True
+
+    def create_file_dialog(self, kind, **kw):
+        return ["C:/picked"]
+
+
+class FakeLauncher:
+    instances: list = []
+
+    def __init__(self, key, desk, state):
+        self.key, self.desk, self.anchor = key, desk, state.get("launcher")
+        self.calls = []
+        FakeLauncher.instances.append(self)
+
+    def start(self):
+        self.calls.append("start")
+        return True
+
+    def hide(self):
+        self.calls.append("hide")
+
+    def close(self):
+        self.calls.append("close")
+
+    def set_companion(self, hwnd):
+        pass
+
+    # what the user does with the icon
+    def click(self):
+        self.desk.open_chat()
+
+    def menu(self, cmd):
+        self.desk.command(cmd)
+
+
+class FakeGuard:
+    running = False
+    log: list = []
+
+    def __init__(self, key):
+        self.key = key
+
+    def acquire(self):
+        FakeGuard.log.append(("acquire", self.key))
+        return not FakeGuard.running
+
+    def release(self):
+        FakeGuard.log.append(("release", self.key))
+
+    def notify_running(self, timeout=20.0):
+        FakeGuard.log.append(("notify", self.key))
+        return True
+
+
+@pytest.fixture
+def gui(monkeypatch, tmp_path):
     monkeypatch.setenv("TECHRAG_SETTINGS", str(tmp_path / "settings.json"))
     monkeypatch.setenv("TECHRAG_PATHS__LIBRARY_DIR", str(tmp_path / "lib"))
     monkeypatch.setenv("TECHRAG_NO_USER_SETTINGS", "1")
-    seen = {}
+    monkeypatch.delenv("TECHRAG_SMOKE", raising=False)
+    FakeLauncher.instances = []
+    FakeGuard.running, FakeGuard.log = False, []
+    monkeypatch.setattr(L, "SingleInstance", FakeGuard)
+    monkeypatch.setattr(desktop, "_launcher_supported", lambda: True)
+    monkeypatch.setattr(desktop, "_make_launcher", lambda key, desk, state: FakeLauncher(key, desk, state))
+    notices, answers = [], []
+    real_init = desktop.DesktopApp.__init__
 
+    def init(self, *a, **kw):
+        kw["notice"] = lambda title, body: notices.append((title, body))
+        kw["confirm"] = lambda title, body: answers.pop(0)
+        real_init(self, *a, **kw)
+        seen["desk"] = self
+
+    monkeypatch.setattr(desktop.DesktopApp, "__init__", init)
+    seen: dict = {"windows": [], "servers": 0}
+    import uvicorn
+
+    real_server = uvicorn.Server
+
+    def server(*a, **kw):
+        seen["servers"] += 1
+        return real_server(*a, **kw)
+
+    monkeypatch.setattr(uvicorn, "Server", server)
     fake = types.ModuleType("webview")
     fake.settings = {}
     fake.FileDialog = types.SimpleNamespace(OPEN=10, FOLDER=20, SAVE=30)
 
-    class Window:
-        def __init__(self, url):
-            self.url = url
-
-        def create_file_dialog(self, kind, **kw):
-            return ["C:/picked"] if kind != 30 else "C:/out.md"
-
     def create_window(title, url, js_api=None, **kw):
-        seen["url"], seen["api"] = url, js_api
-        return Window(url)
+        w = FakeWindow(url, **kw)
+        js_api._window = w
+        seen["windows"].append(w)
+        seen["api"] = js_api
+        return w
+
+    fake.create_window = create_window
+    monkeypatch.setitem(sys.modules, "webview", fake)
+    return types.SimpleNamespace(fake=fake, seen=seen, notices=notices, answers=answers, path=tmp_path)
+
+
+def _run(gui, scenario):
+    """webview.start(): the GUI loop runs until the chat window is destroyed; the scenario plays the user."""
+    errors = []
 
     def start(**kw):
-        seen["start"] = kw
-        url = seen["url"]
-        base, token = url.split("/?token=")
-        seen["with_token"] = httpx.get(f"{base}/api/info", headers={"Authorization": f"Bearer {token}"}).status_code
-        seen["without_token"] = httpx.get(f"{base}/api/info").status_code
-        seen["ui"] = httpx.get(base + "/").status_code
+        gui.seen["start"] = kw
+        w = gui.seen["windows"][0]
+        w.events.shown.set()
 
-    fake.create_window, fake.start = create_window, start
-    monkeypatch.setitem(sys.modules, "webview", fake)
+        def play():
+            try:
+                scenario(w, FakeLauncher.instances[0], gui.seen["desk"])
+            except BaseException as exc:  # reported after the loop
+                errors.append(exc)
+                w.destroyed.set()
 
+        t = threading.Thread(target=play)
+        t.start()
+        assert w.destroyed.wait(30), "the GUI loop never ended"
+        t.join(10)
+
+    gui.fake.start = start
+    code = desktop.run_gui()
+    if errors:
+        raise errors[0]
+    return code
+
+
+def test_icon_first_then_click_opens_the_one_chat_window(gui):
+    def scenario(w, icon, desk):
+        assert icon.calls == ["start"], "the launcher icon is shown before the GUI loop"
+        assert w.kw["hidden"] is True and not w.visible, "the chat window starts hidden"
+        base, token = w.url.split("/?token=")
+        assert httpx.get(f"{base}/api/info", headers={"Authorization": f"Bearer {token}"}).status_code == 200
+        assert httpx.get(f"{base}/api/info").status_code == 401
+        for _ in range(3):  # repeated clicks: the same window, the same backend
+            icon.click()
+        assert desk.idle()
+        assert w.visible and w.calls == ["show"] * 3 and desk.stats["opened"] == 3
+        assert any("setVisible(true)" in s for s in w.scripts)
+        icon.menu(L.IDM_QUIT)
+
+    assert _run(gui, scenario) == 0
+    w = gui.seen["windows"][0]
+    assert len(gui.seen["windows"]) == 1 and gui.seen["servers"] == 1
+    assert gui.seen["start"]["private_mode"] is False
+    assert gui.seen["api"].pick_folder() == "C:/picked"
+    assert w.calls[-2:] == ["hide", "destroy"]
+    icon_calls = FakeLauncher.instances[0].calls
+    assert icon_calls[:2] == ["start", "hide"] and icon_calls[-1] == "close", "icon hidden at once, then closed"
+    assert [x[0] for x in FakeGuard.log] == ["acquire", "release"]
+
+
+def test_close_button_hides_and_keeps_the_page(gui):
+    def scenario(w, icon, desk):
+        icon.click()
+        assert desk.idle()
+        assert w.user_closes() is False, "the close button does not end the app"
+        assert desk.idle() and not w.visible and not desk.quitting
+        assert any("setVisible(false)" in s for s in w.scripts), "the page stops polling while hidden"
+        assert len(gui.notices) == 1 and "simge" in gui.notices[0][1], "explained once (TR by default)"
+        icon.click()
+        assert desk.idle() and w.visible
+        assert w.user_closes() is False and desk.idle()
+        assert len(gui.notices) == 1, "only the first time"
+        assert "destroy" not in w.calls, "hide/show never re-creates or reloads the page"
+        icon.menu(L.IDM_SETTINGS)
+        assert desk.idle() and w.visible
+        assert any("openSettings" in s for s in w.scripts)
+        desk.icon_moved({"monitor": "D1", "h": "left", "dx": 40, "v": "top", "dy": 10})
+        icon.menu(L.IDM_QUIT)
+
+    assert _run(gui, scenario) == 0
+    st = json.loads((gui.path / "desktop.json").read_text(encoding="utf-8"))
+    assert st["close_hint_shown"] is True and st["launcher"]["h"] == "left"
+
+
+def test_quit_while_indexing_asks_and_stops_at_a_safe_point(gui):
+    def scenario(w, icon, desk):
+        jobs = desk.jobs
+        job = jobs.create("ingest")
+        job["status"] = "running"
+        gui.answers.extend([False, True])
+        icon.menu(L.IDM_QUIT)
+        assert desk.idle() and not desk.quitting and not jobs.gate.stop.is_set(), "'No' keeps the app running"
+        icon.menu(L.IDM_QUIT)
+        assert w.destroyed.wait(10)
+        assert jobs.gate.stop.is_set(), "jobs were told to stop"
+        with pytest.raises(HTTPException):
+            jobs.create("ingest")       # nothing new starts while closing
+        with pytest.raises(IngestStopped):
+            jobs.gate.check()           # a running job stops before its next document
+        assert jobs.gate._lock.locked(), "the write lock is kept: no index write starts after the exit"
+
+    assert _run(gui, scenario) == 0
+    assert not gui.answers
+
+
+def test_session_end_lets_the_window_close(gui):
+    def scenario(w, icon, desk):
+        icon.click()
+        assert desk.idle()
+        desk.session_end(False)
+        assert w.user_closes() is True, "Windows logging off is never blocked"
+
+    assert _run(gui, scenario) == 0
+
+
+def test_second_start_hands_over_without_a_backend(gui, monkeypatch):
+    FakeGuard.running = True
+    monkeypatch.setattr(desktop, "_run_gui", lambda *a: (_ for _ in ()).throw(AssertionError("second backend")))
     assert desktop.run_gui() == 0
-    assert seen["url"].startswith("http://127.0.0.1:") and "?token=" in seen["url"]
-    assert seen["with_token"] == 200 and seen["without_token"] == 401 and seen["ui"] == 200
-    assert seen["start"]["private_mode"] is False
-    assert seen["api"].pick_folder() == "C:/picked"
-    out = tmp_path / "notes.md"
-    seen["api"]._window.create_file_dialog = lambda kind, **kw: str(out)
-    assert seen["api"].save_text("notes.md", "# hi") and out.read_text() == "# hi"
+    assert [x[0] for x in FakeGuard.log] == ["acquire", "notify"]
+    assert gui.seen["servers"] == 0 and not gui.seen["windows"]
+
+
+def test_without_a_launcher_the_window_opens_and_closes_normally(gui, monkeypatch):
+    monkeypatch.setattr(desktop, "_launcher_supported", lambda: False)
+
+    def scenario(w, icon, desk):
+        raise AssertionError("no launcher expected")
+
+    def start(**kw):
+        w = gui.seen["windows"][0]
+        assert w.kw["hidden"] is False and w.visible and not FakeLauncher.instances
+        assert w.user_closes() is True
+
+    gui.fake.start = start
+    assert desktop.run_gui() == 0
 
 
 def test_arguments_run_the_cli(monkeypatch, capsys, tmp_path):
@@ -102,7 +353,7 @@ def test_js_api_bridge_does_not_descend_into_the_window():
     api = desktop.JsApi()
     api._window = Window()
     exposed = _pywebview_walk(api)
-    assert sorted(exposed) == ["pick_files", "pick_folder", "save_text"]
+    assert sorted(exposed) == ["pick_files", "pick_folder"], "notes export (save_text) is gone"
     public_data = [n for n in dir(api) if not n.startswith("_") and not callable(getattr(api, n))]
     assert public_data == [], "JsApi must not have public data attributes (pywebview walks them)"
 
@@ -110,8 +361,6 @@ def test_js_api_bridge_does_not_descend_into_the_window():
         def __init__(self):
             super().__init__()
             self.window = Window()
-
-    import pytest
 
     with pytest.raises(RecursionError):
         _pywebview_walk(Old())

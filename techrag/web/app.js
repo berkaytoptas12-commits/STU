@@ -14,15 +14,15 @@ const I18N = {
     sourcesHint: "Seçim yapmazsanız tüm kaynaklarda aranır. Soruda adı geçen standart (DDR5, PCIe 4.0, ARINC 429 …) aramayı yalnızca o standarda kesin olarak daraltır.",
     addDocs: "Doküman ekle", collection: "Koleksiyon (klasör)", chooseFiles: "Dosya seç…", reindex: "Yeniden indeksle",
     emptyTitle: "Standartlara sorun", emptyText: "Cevaplar yalnızca yüklü dokümanlardan üretilir; her ifade [n] atfıyla kaynağına bağlanır, sayılar ve iddialar cevaptan önce kaynaklara karşı denetlenir.",
-    ask: "Sor", tabSource: "Kaynak", tabNotes: "Notlar", viewerEmpty: "Bir [n] atfına veya bir dokümana tıklayın.",
-    exportNotes: "Markdown kaydet", clearNotes: "Tümünü sil", answering: "Cevaplama", thinking: "Düşünme modu",
+    ask: "Sor", tabSource: "Kaynak", viewerEmpty: "Bir [n] atfına veya bir dokümana tıklayın.",
+    answering: "Cevaplama", thinking: "Düşünme modu",
     thinkingControl: "Düşünme kontrolü", tools: "Araç kullanımı (tool calling)", judge: "Bağımsız denetçi (her iddia için ayrı LLM kontrolü)",
     regenerate: "Hatalı iddiaları bir kez yeniden ürettir", failedClaims: "Doğrulanamayan iddialar", strip: "Kaldır", flag: "İşaretle",
     visionEnabled: "VLM ile tablo çıkarımı ve sayfa görüntüleri", cancel: "Vazgeç", save: "Kaydet", close: "Kapat",
     currentLibrary: "Açık kütüphane", libraryHint: "Kütüphane klasörü: sources/<koleksiyon>/*.pdf + index.sqlite + cache/. Bir kişi indeksler, diğerleri kopyasını veya ağ paylaşımındaki yayımlanmış sürümü salt-okunur açar.",
     libraryFolder: "Kütüphane klasörü", openReadOnly: "Salt-okunur aç (paylaşılan kütüphane)", openLibrary: "Aç",
     publishTo: "Yayımlanacak hedef klasör (ör. ağ paylaşımı)", publish: "Yayımla", rebuild: "Tamamen yeniden oluştur",
-    reasoning: "Model düşünmesi", saveNote: "Not olarak kaydet", copy: "Kopyala", saved: "Kaydedildi ✓", copied: "Kopyalandı ✓",
+    reasoning: "Model düşünmesi", copy: "Kopyala", copied: "Kopyalandı ✓",
     placeholder: "Sorunuzu yazın (Türkçe veya İngilizce)… Enter: gönder, Shift+Enter: yeni satır",
     stPlanning: "Soru çözümleniyor ve kaynaklar aranıyor…", stAnswering: "Cevap yazılıyor…", stVerifying: "İfadeler kaynaklara karşı doğrulanıyor…",
     stRegenerating: "{0} ifade doğrulanamadı, düzeltiliyor…", stNoTools: "Sunucu araç çağrısını desteklemiyor; araçsız devam ediliyor.",
@@ -78,8 +78,8 @@ const I18N = {
     sameAsChat: "Sohbet modeliyle aynı", baseUrl: "API adresi (…/v1)", apiKey: "API anahtarı", model: "Model",
     svc_llm: "Sohbet modeli (LLM)", svc_vision: "Görsel model (VLM)", svc_embedding: "Embedding", svc_reranker: "Reranker",
     enabled: "etkin", notOnServer: "(sunucuda yok)", savedSettings: "Ayarlar kaydedildi.", noModels: "Model listesi alınamadı",
-    errorPrefix: "Hata", needToken: "Bu sunucu bir API anahtarı istiyor:", confirmClear: "Tüm notlar silinsin mi?",
-    noNotes: "Henüz not yok.", newChatStarted: "Yeni sohbet başladı.", calc: "hesap", parameter: "parametre", table: "tablo", pageKind: "sayfa", unverified: "doğrulanmamış çıkarım",
+    errorPrefix: "Hata", needToken: "Bu sunucu bir API anahtarı istiyor:",
+    newChatStarted: "Yeni sohbet başladı.", calc: "hesap", parameter: "parametre", table: "tablo", pageKind: "sayfa", unverified: "doğrulanmamış çıkarım",
     tlsTitle: "Bağlantı güvenliği (HTTPS sertifikaları)",
     tlsSystem: "Windows sertifika deposuna güven (BT'nin dağıttığı şirket CA sertifikaları)",
     tlsProxy: "Sistem proxy ayarlarını kullan (model sunucuları yerel ağdaysa kapalı bırakın)",
@@ -106,15 +106,15 @@ const I18N = {
     sourcesHint: "With nothing selected, all sources are searched. A standard named in the question (DDR5, PCIe 4.0, ARINC 429 …) hard-restricts the search to that standard.",
     addDocs: "Add documents", collection: "Collection (folder)", chooseFiles: "Choose files…", reindex: "Re-index",
     emptyTitle: "Ask the standards", emptyText: "Answers come only from the loaded documents; every statement is tied to its source with an [n] citation, and numbers and claims are checked against the sources before you see the answer.",
-    ask: "Ask", tabSource: "Source", tabNotes: "Notes", viewerEmpty: "Click an [n] citation or a document.",
-    exportNotes: "Save as Markdown", clearNotes: "Delete all", answering: "Answering", thinking: "Thinking mode",
+    ask: "Ask", tabSource: "Source", viewerEmpty: "Click an [n] citation or a document.",
+    answering: "Answering", thinking: "Thinking mode",
     thinkingControl: "Thinking control", tools: "Tool calling", judge: "Independent judge (separate LLM check per claim)",
     regenerate: "Regenerate failing claims once", failedClaims: "Unverifiable claims", strip: "Remove", flag: "Flag",
     visionEnabled: "VLM table extraction and page images", cancel: "Cancel", save: "Save", close: "Close",
     currentLibrary: "Open library", libraryHint: "A library folder holds sources/<collection>/*.pdf + index.sqlite + cache/. One person indexes; others open a copy or a published version on a network share read-only.",
     libraryFolder: "Library folder", openReadOnly: "Open read-only (shared library)", openLibrary: "Open",
     publishTo: "Publish to folder (e.g. a network share)", publish: "Publish", rebuild: "Full rebuild",
-    reasoning: "Model reasoning", saveNote: "Save as note", copy: "Copy", saved: "Saved ✓", copied: "Copied ✓",
+    reasoning: "Model reasoning", copy: "Copy", copied: "Copied ✓",
     placeholder: "Type your question (English or Turkish)… Enter: send, Shift+Enter: new line",
     stPlanning: "Analysing the question and searching…", stAnswering: "Writing the answer…", stVerifying: "Checking statements against the sources…",
     stRegenerating: "{0} statement(s) failed verification, correcting…", stNoTools: "The server does not support tool calls; continuing without tools.",
@@ -170,8 +170,8 @@ const I18N = {
     sameAsChat: "Same as chat model", baseUrl: "API base URL (…/v1)", apiKey: "API key", model: "Model",
     svc_llm: "Chat model (LLM)", svc_vision: "Vision model (VLM)", svc_embedding: "Embedding", svc_reranker: "Reranker",
     enabled: "enabled", notOnServer: "(not on server)", savedSettings: "Settings saved.", noModels: "Could not load models",
-    errorPrefix: "Error", needToken: "This server requires an API token:", confirmClear: "Delete all notes?",
-    noNotes: "No notes yet.", newChatStarted: "New chat started.", calc: "calculation", parameter: "parameter", table: "table", pageKind: "page", unverified: "unverified extraction",
+    errorPrefix: "Error", needToken: "This server requires an API token:",
+    newChatStarted: "New chat started.", calc: "calculation", parameter: "parameter", table: "table", pageKind: "page", unverified: "unverified extraction",
     tlsTitle: "Connection security (HTTPS certificates)",
     tlsSystem: "Trust the Windows certificate store (company CA certificates deployed by IT)",
     tlsProxy: "Use system proxy settings (leave off when the model servers are on the LAN)",
@@ -222,7 +222,7 @@ function applyI18n() {
 
 // ------------------------------------------------------------------ state + api
 const state = { info: null, docs: [], selected: new Set(), selectedBuckets: new Set(), history: [], busy: false,
-  notes: loadNotes(), token: TOKEN, filter: "", ui: loadUi() };
+  token: TOKEN, filter: "", ui: loadUi() };
 
 // Panel layout preferences (per user, kept across restarts; never affect what is searched).
 function loadUi() {
@@ -234,6 +234,18 @@ function saveUi() { safeSet("techrag.ui", JSON.stringify(state.ui)); }
 function safeGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
 function safeSet(k, v) { try { localStorage.setItem(k, v); } catch { /* unavailable */ } }
 const desk = () => (window.pywebview && window.pywebview.api) || null;
+
+// TechRAG.exe hides this window instead of closing it: the page, the chat and running jobs stay as they are. While
+// it is hidden nothing is polled (indexing goes on in the backend); progress is fetched again once it is shown.
+const host = { hidden: false, waiters: [] };
+const pageHidden = () => host.hidden || document.hidden;
+function wakeUp() { if (!pageHidden()) host.waiters.splice(0).forEach((r) => r()); }
+const whenShown = () => (pageHidden() ? new Promise((r) => host.waiters.push(r)) : Promise.resolve());
+document.addEventListener("visibilitychange", wakeUp);
+window.techragHost = {
+  setVisible(v) { host.hidden = !v; wakeUp(); return !host.hidden; },
+  openSettings() { if (!$("#dlg-settings").open) openSettings().catch((e) => alert(e.message)); return true; },
+};
 
 async function api(path, opts = {}) {
   const headers = Object.assign({}, opts.headers || {});
@@ -547,12 +559,6 @@ function bindSplitter() {
 }
 
 // ------------------------------------------------------------------ viewer
-function openTab(name) {
-  $$(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
-  $("#tab-source").hidden = name !== "source";
-  $("#tab-notes").hidden = name !== "notes";
-}
-
 const ZOOMS = [1, 1.5, 2, 3];
 const docCache = {};
 async function docInfo(id) {
@@ -666,7 +672,6 @@ function markQuotes(html, quotes) {
 
 function showSource(s, msg, claimId, override) {
   showRight();
-  openTab("source");
   const pane = $("#tab-source");
   const ev = override ? [] : evidenceOf(msg, s, claimId);
   const recs = override ? [override] : ev.map((x) => x.rec);
@@ -722,7 +727,6 @@ async function showDocument(id) {
   showRight();
   const d = await getJSON(`/api/documents/${id}`);
   docCache[id] = Promise.resolve(d);
-  openTab("source");
   const pane = $("#tab-source");
   const toc = (d.toc || []).slice(0, 500).map(([lvl, title, page]) =>
     `<li style="padding-left:${(lvl - 1) * 12}px"><a data-page="${page}">${esc(title)}</a><span class="pg">${page}</span></li>`).join("");
@@ -896,7 +900,6 @@ async function ask(question) {
         const acts = $(".msg-actions", el);
         acts.hidden = false;
         $(".timing", acts).textContent = ev.timings && ev.timings.total ? `${ev.timings.total.toFixed(1)} s` : "";
-        $(".btn-note", acts).addEventListener("click", (e) => { addNote(question, text, el._sources); e.target.textContent = t("saved"); });
         $(".btn-copy", acts).addEventListener("click", (e) => {
           const refs = el._sources.filter((s) => s.cited).map((s) => `[${s.n}] ${s.doc_title} — ${s.section} — p.${s.page_start}`).join("\n");
           navigator.clipboard && navigator.clipboard.writeText(`${text}\n\n${refs}`);
@@ -939,38 +942,6 @@ async function ask(question) {
   }
 }
 
-// ------------------------------------------------------------------ notes
-function loadNotes() { try { return JSON.parse(safeGet("techrag.notes") || "[]"); } catch { return []; } }
-function saveNotes() { safeSet("techrag.notes", JSON.stringify(state.notes)); renderNotes(); }
-function addNote(q, a, sources) {
-  state.notes.unshift({ id: Date.now(), q, a, ts: new Date().toLocaleString(),
-    sources: sources.filter((s) => s.cited !== false).map((s) => ({ n: s.n, title: s.doc_title, section: s.section, page: s.page_start })) });
-  saveNotes();
-}
-function renderNotes() {
-  $("#notes-count").textContent = state.notes.length ? `(${state.notes.length})` : "";
-  const list = $("#notes-list");
-  if (!state.notes.length) { list.innerHTML = `<p class="muted">${t("noNotes")}</p>`; return; }
-  list.innerHTML = "";
-  for (const n of state.notes) {
-    const div = document.createElement("div");
-    div.className = "note";
-    div.innerHTML = `<button class="ghost del">✕</button><div class="q">${esc(n.q)}</div><div class="markdown">${renderMarkdown(n.a, false)}</div>
-      <ul class="small">${n.sources.map((s) => `<li>[${s.n}] ${esc(s.title)} — ${esc(s.section || "")} — p.${s.page}</li>`).join("")}</ul><div class="small muted">${esc(n.ts)}</div>`;
-    $(".del", div).addEventListener("click", () => { state.notes = state.notes.filter((x) => x.id !== n.id); saveNotes(); });
-    list.append(div);
-  }
-}
-async function exportNotes() {
-  const md = "# TechRAG\n\n" + state.notes.map((n) =>
-    `## ${n.q}\n\n${n.a}\n\n${n.sources.map((s) => `- [${s.n}] ${s.title} — ${s.section || ""} — p.${s.page}`).join("\n")}\n\n_${n.ts}_\n`).join("\n---\n\n");
-  if (desk()) { await desk().save_text("techrag-notes.md", md); return; }
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([md], { type: "text/markdown" }));
-  a.download = "techrag-notes.md";
-  a.click();
-}
-
 // ------------------------------------------------------------------ jobs / adding documents
 // Indexing runs on the server in the background; this only polls, so the window never freezes.
 async function pollJob(job, title) {
@@ -981,6 +952,7 @@ async function pollJob(job, title) {
   let j = null;
   for (;;) {
     await new Promise((r) => setTimeout(r, 900));
+    await whenShown();
     j = await getJSON(`/api/jobs/${job}`);
     const p = j.progress || {};
     const pct = p.total ? Math.round((100 * (p.done || 0)) / p.total) : (j.status === "done" ? 100 : 5);
@@ -990,7 +962,7 @@ async function pollJob(job, title) {
     $("#job-errors").textContent = p.errors ? t("jobErrors", p.errors) : "";
     log.textContent = j.messages.slice(-300).join("\n");
     log.scrollTop = log.scrollHeight;
-    if (j.status === "done" || j.status === "failed") break;
+    if (j.status === "done" || j.status === "failed" || j.status === "cancelled") break;
   }
   const r = j.report || {};
   $("#job-title").textContent = j.status === "done" && !Object.keys(r.failed || {}).length ? t("jobDoneTitle") : t("jobFailedTitle");
@@ -1290,13 +1262,11 @@ function bind() {
     const s = (msg && msg._sources || []).find((x) => x.n === +c.dataset.n);
     if (s) showSource(s, msg, c.dataset.claim ? +c.dataset.claim : null);
   });
-  $$(".tab").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.tab)));
   $("#btn-new-chat").addEventListener("click", () => { state.history = []; $("#messages").innerHTML = `<div class="empty"><p>${t("newChatStarted")}</p></div>`; });
   $$(".lang").forEach((b) => b.addEventListener("click", () => {
     LANG = b.dataset.lang;
     safeSet("techrag.lang", LANG);
     applyI18n();
-    renderNotes();
     renderCollections();
     postJSON("/api/settings", { ui: { language: LANG } }, "PUT").catch(() => {});
   }));
@@ -1337,8 +1307,6 @@ function bind() {
   $("#btn-toggle-right").addEventListener("click", () => setRightHidden(rightOpen()));
   $("#btn-close-right").addEventListener("click", () => setRightHidden(true));
   bindSplitter();
-  $("#btn-export-notes").addEventListener("click", exportNotes);
-  $("#btn-clear-notes").addEventListener("click", () => { if (confirm(t("confirmClear"))) { state.notes = []; saveNotes(); } });
 }
 
 (async function init() {
@@ -1346,7 +1314,6 @@ function bind() {
   bind();
   applyLayout();
   applyI18n();
-  renderNotes();
   try {
     await loadInfo();
     applyI18n();

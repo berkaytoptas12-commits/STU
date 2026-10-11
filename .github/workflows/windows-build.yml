@@ -57,7 +57,12 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "onefile selftest failed" }
           $j = Get-Content selftest-onedir.json | ConvertFrom-Json
           if ($j.pywebview -ne $true) { throw "pywebview not bundled: $($j.pywebview)" }
-      - name: GUI smoke test (real WebView2 window, both builds)
+      - name: GUI smoke test (launcher icon -> chat window, both builds)
+        # techrag.desktop._smoke drives the real windows: the icon appears first and the chat window is hidden; a
+        # drag moves the icon without opening the chat; a click opens it (UI + bridge, no notes UI); the close button
+        # only hides it and the page is kept; a click reopens it; a second TechRAG.exe exits and hands over instead
+        # of starting a backend; the icon menu opens the settings; finally "Quit" in the icon menu must end the
+        # process by itself.
         shell: pwsh
         run: |
           $log = Join-Path $env:APPDATA "TechRAG/techrag.log"
@@ -67,17 +72,23 @@ jobs:
             $env:TECHRAG_SMOKE = $out
             Write-Host "=== $exe"
             $p = Start-Process -FilePath $exe -PassThru
-            if (-not $p.WaitForExit(240000)) {
+            $null = $p.Handle  # keeps ExitCode available after the process ends
+            if (-not $p.WaitForExit(420000)) {
               Stop-Process -Id $p.Id -Force
-              Get-Content $log -Tail 120 -ErrorAction SilentlyContinue
-              throw "$exe did not finish: the window hung (not responding)"
+              Get-Content $log -Tail 150 -ErrorAction SilentlyContinue
+              throw "$exe did not finish: a window hung, or 'Quit' in the launcher menu did not end the process"
             }
-            Get-Content $log -Tail 40 -ErrorAction SilentlyContinue
+            Get-Content $log -Tail 60 -ErrorAction SilentlyContinue
             if (-not (Test-Path $out)) { throw "$exe exited (code $($p.ExitCode)) without a smoke result - crashed" }
             Get-Content $out
-            $j = Get-Content $out | ConvertFrom-Json
+            $j = Get-Content $out -Raw | ConvertFrom-Json
             if (-not $j.ok) { throw "$exe GUI smoke test failed" }
+            if ($j.exit -ne "clean") { throw "$exe did not shut down cleanly after 'Quit'" }
+            if ($p.ExitCode -ne 0) { throw "$exe exit code $($p.ExitCode)" }
+            Start-Sleep -Seconds 2
+            if (Get-Process -Name $name -ErrorAction SilentlyContinue) { throw "$exe still running after 'Quit'" }
           }
+          Remove-Item Env:TECHRAG_SMOKE
       - name: Package
         shell: pwsh
         run: Compress-Archive -Path dist/TechRAG -DestinationPath TechRAG-win64.zip

@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Iterator, Optional, Sequence
 
-from techrag.config import Config
+from techrag.config import Config, write_text_atomic
 from techrag.domains import DomainRegistry
 from techrag.embeddings import Embedder, create_embedder
 from techrag.evidence import EvidenceLocator
@@ -146,8 +146,7 @@ class RAGEngine:
             return None
         if text:
             try:
-                cache.parent.mkdir(parents=True, exist_ok=True)
-                cache.write_text(text, encoding="utf-8")
+                write_text_atomic(cache, text)
             except OSError:
                 pass
         return "(VLM transcription of the page image)\n" + text if text else None

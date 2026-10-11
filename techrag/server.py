@@ -26,6 +26,7 @@ from techrag.api import APIClient, check_service, configure_tls, current_tls, no
 from techrag.config import Config, ServiceConfig, resource_path
 from techrag.engine import RAGEngine
 from techrag.ingest.loaders import SUPPORTED_SUFFIXES
+from techrag.ingest.pipeline import IngestStopped, WriteGate
 from techrag.settings import MASK, public_settings, settings_path, update_settings
 
 WEB_DIR = resource_path("web")
@@ -90,12 +91,27 @@ class FolderRequest(BaseModel):
     path: str = Field(min_length=1, max_length=4000)
 
 
+STOPPED_MESSAGE = "stopped: TechRAG is closing (remaining documents are processed by the next rescan)"
+
+
 class Jobs:
     def __init__(self):
         self.items: dict[str, dict] = {}
         self.lock = threading.Lock()
+        self.gate = WriteGate()  # full exit of the desktop app: see shutdown()
+
+    def running(self) -> bool:
+        return any(j["status"] in ("queued", "running") for j in list(self.items.values()))
+
+    def shutdown(self, timeout: float = 60.0) -> bool:
+        """The application is closing: jobs stop before their next document, the index write in progress is allowed
+        to finish and no write starts afterwards. False if a write did not finish within `timeout` (SQLite still
+        rolls an interrupted transaction back, so the index stays consistent)."""
+        return self.gate.close(timeout)
 
     def create(self, kind: str) -> dict:
+        if self.gate.stop.is_set():
+            raise HTTPException(503, "TechRAG is closing")
         job = {"id": uuid.uuid4().hex[:12], "kind": kind, "status": "queued", "messages": [], "report": None,
                "progress": {}, "created": time.time()}
         self.items[job["id"]] = job
@@ -421,8 +437,10 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             with jobs.lock:
                 job["status"] = "running"
                 try:
+                    jobs.gate.check()
                     ing = Ingestor(c, e.store, e.embedder, e.domains, progress=lambda m: job["messages"].append(m),
-                                   llm=e.llm if c.llm.model else None, vision=e.vision, status=status)
+                                   llm=e.llm if c.llm.model else None, vision=e.vision, status=status,
+                                   gate=jobs.gate)
                     if root_id is not None:
                         report = ing.sync_root(root_id, rebuild)
                     elif everything:
@@ -431,6 +449,9 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                         report = ing.run(target, rebuild=rebuild, prune=target is None)
                     job["report"] = report.to_dict()
                     job["status"] = "failed" if report.failed and not (report.added or report.updated) else "done"
+                except IngestStopped:
+                    job["messages"].append(STOPPED_MESSAGE)
+                    job["status"] = "cancelled"
                 except Exception as exc:
                     job["messages"].append(f"ERROR: {exc}")
                     job["status"] = "failed"
@@ -571,10 +592,13 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             with jobs.lock:
                 job["status"] = "running"
                 try:
-                    rep = migrate_index(c, e.store, lambda m: job["messages"].append(m))
+                    rep = migrate_index(c, e.store, lambda m: job["messages"].append(m), gate=jobs.gate)
                     job["report"] = rep
                     job["messages"].append(json.dumps(rep, ensure_ascii=False, indent=1))
                     job["status"] = "done"
+                except IngestStopped:
+                    job["messages"].append(STOPPED_MESSAGE)
+                    job["status"] = "cancelled"
                 except Exception as exc:
                     job["messages"].append(f"ERROR: {exc}")
                     job["status"] = "failed"

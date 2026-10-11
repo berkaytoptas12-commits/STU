@@ -170,9 +170,7 @@ button.cite { background: var(--accent-soft); color: var(--accent); border: 0; p
 .composer { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--border); }
 .composer textarea { flex: 1; resize: vertical; min-height: 44px; max-height: 240px; }
 
-.tabs { display: flex; gap: 6px; margin-bottom: 10px; }
-.tab { background: transparent; color: var(--muted); border-color: var(--border); }
-.tab.active { color: var(--text); border-color: var(--accent); }
+.viewer-head { margin-bottom: 10px; }
 .badge { font-size: 11px; color: var(--muted); }
 .source-card h3 { margin: 0 0 4px; font-size: 14.5px; }
 .source-meta { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
@@ -211,9 +209,6 @@ button.cite { background: var(--accent-soft); color: var(--accent); border: 0; p
 .toc a { color: var(--text); text-decoration: none; cursor: pointer; }
 .toc a:hover { color: var(--accent); }
 .toc .pg { color: var(--muted); font-size: 11px; margin-left: 6px; }
-.note { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin: 8px 0; font-size: 13px; }
-.note .q { font-weight: 600; margin-bottom: 4px; }
-.note .del { float: right; font-size: 11px; padding: 1px 6px; }
 
 dialog { border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--text); padding: 0; width: min(980px, 94vw); max-height: 92vh; }
 dialog::backdrop { background: rgba(0, 0, 0, .35); }

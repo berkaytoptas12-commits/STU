@@ -1,5 +1,19 @@
 ## TechRAG — Windows masaüstü uygulaması
 
+### 0.4.0 — sohbet simgesiyle açılış, Notlar kaldırıldı
+- **Yuvarlak sohbet simgesi**: uygulama ekranın sağ alt köşesinde küçük bir simge olarak açılır (normal
+  pencerelerin üzerinde, klavye odağını almaz). Tıklayınca sohbet penceresi açılır; sürüklemek simgeyi taşır ve
+  sohbeti açmaz. Yeri monitör ve köşe uzaklığıyla hatırlanır; çözünürlük/DPI/görev çubuğu değişince ve monitör
+  çıkarılınca görünür alana alınır. Sağ tık: "Sohbeti aç", "Ayarlar", "Uygulamadan çık".
+- **Kapat düğmesi pencereyi gizler**: sohbet, bucket seçimi, açık PDF sayfası ve panel genişlikleri korunur,
+  indeksleme arka planda sürer, gizliyken arayüz sorgulama yapmaz. İlk seferde kısa bilgi gösterilir.
+- **Tek uygulama**: exe ikinci kez açılırsa yeni arka uç başlatılmaz, çalışan uygulamanın penceresi öne gelir.
+- **Güvenli çıkış**: "Uygulamadan çık" süren indekslemeyi belge sınırında durdurur, yazılmakta olan kaydı bitirir
+  ve sonrasında yazma başlatmaz; kalan belgeler sonraki taramada işlenir. Model önbellek dosyaları artık yarım
+  yazılamaz. Windows oturum kapatmayı engellenmez. Uygulama Windows başlangıcına eklenmez.
+- **Notlar özelliği kaldırıldı** (Notlar sekmesi, "Not olarak kaydet", dışa aktarma). Daha önce kaydedilmiş notlar
+  silinmedi (tarayıcı deposunda olduğu gibi duruyor). PDF dipnotları ve tablo notları etkilenmez.
+
 ### 0.3.0 — belge klasörü ekleme ve panel düzeni
 - **Belge klasörü ekle**: ana klasörü bir kez seçin; alt klasörlerdeki desteklenen belgeler bulunur. Ana klasörün
   doğrudan altındaki klasörler bucket olur (DDR/DDR5/… → "DDR"), kökteki dosyalar "Genel" bucket'ına gider.
