@@ -207,3 +207,98 @@ def test_values_only_in_a_page_image_transcription_are_unverified():
     claims = split_claims("The refresh window is 412 ns [1].")
     deterministic_check(claims, reg)
     assert claims[0].status == UNVERIFIED and "page-image transcription" in claims[0].reasons[0]
+
+
+# ------------------------------------------------------------------ review findings (answer parsing)
+
+def _parsed_claims(text):
+    return [c.text for c in split_claims(text)]
+
+
+def test_not_found_sentence_does_not_hide_a_statement():
+    assert _parsed_claims("Bu bilgi yüklenen dokümanlarda bulunamadı.") == []
+    assert len(_parsed_claims("This information was not found in the loaded documents, but DDR5 tRFC for 16Gb is "
+                              "410 ns [1].")) == 1
+    assert len(_parsed_claims("This information was not found in the loaded documents, but DDR5 has no ODT.")) == 1
+
+
+def test_openers_do_not_exempt_statements():
+    for s in ("Sure, DDR5 devices do not support on-die ECC.", "Summary: refresh is optional in DDR5.",
+              "Kısaca: DDR5'te ODT yoktur."):
+        assert not is_framing(s), s
+    for s in ("Merhaba!", "Umarım yardımcı olur.", "Here are the details:", "Thanks for asking."):
+        assert is_framing(s), s
+
+
+def test_statements_written_as_headings_or_bold_are_checked():
+    from techrag.verify import render
+
+    ans = "**DDR5 tRFC for 16Gb devices is 410 ns.**\n\n### Answer: 999 ns\n\n### PCIe 5.0 LTSSM\n\ntRFC is 295 ns [1]."
+    p = parse_answer(ans)
+    assert [c.text for c in p.claims] == ["**DDR5 tRFC for 16Gb devices is 410 ns.**", "Answer: 999 ns",
+                                          "tRFC is 295 ns [1]."]
+    out = render(p, lambda c: "keep" if "295" in c.text else "drop")
+    assert "410" not in out and "999" not in out and "### PCIe 5.0 LTSSM" in out and "295 ns" in out
+    assert is_framing("### Kaynaklarda belirtilen") and not is_framing("### tRFC: 350 ns")
+
+
+def test_table_header_values_and_short_rows_are_checked():
+    from techrag.verify import render
+
+    p = parse_answer("| tRFC 16Gb | 410 ns |\n|---|---|\n| ODT | Disabled |\n\nDone [1].")
+    assert [c.text for c in p.claims] == ["| tRFC 16Gb | 410 ns |", "| ODT | Disabled |", "Done [1]."]
+    out = render(p, lambda c: "drop" if "410" in c.text else "keep")
+    assert "|" not in out, "rows cannot stand without the header that failed"
+    p = parse_answer("| Parameter | Value |\n|---|---|\n| **Timing** | |\n| tRFC | 295 ns [1] |")
+    assert [c.text for c in p.claims] == ["| tRFC | 295 ns [1] |"], "column labels and group rows are structure"
+
+
+def test_page_and_section_numbers_are_no_evidence_for_values():
+    reg = SourceRegistry()
+    reg.add_passage(Passage(1, "Doc", "d.pdf", "ddr", "3.2 Refresh", 32, 32, "text",
+                            "DDR5 has eight bank groups. tRFC is 295 ns.", 1.0, [1], [1]))
+    claims = split_claims("DDR5 devices have 32 bank groups [1].\nSee section 3.2: tRFC is 295 ns [1].")
+    deterministic_check(claims, reg)
+    assert claims[0].status == UNSUPPORTED and "number '32' not found" in claims[0].reasons[0]
+    assert claims[1].status == "pending", "a section reference may point at the source's section"
+
+
+def test_calculation_needs_a_sourced_input_and_its_label_is_no_evidence():
+    from techrag.tools import trace_inputs
+
+    reg = _registry("tRFC is 295 ns. The device has 16 banks.")
+    assert trace_inputs("4*4", reg)[1] is False and trace_inputs("3*100+5*10", reg)[1] is False
+    assert trace_inputs("295*2", reg)[1] is True
+    assert trace_inputs("16*8", reg, [{"value": "16", "source": 1}])[1] is True, "a declared small constant counts"
+    inputs, ok = trace_inputs("4*4", reg)
+    calc, _ = reg.add_calc("4*4", "16", inputs, ok, label="tRFC for 16Gb is 410 ns")
+    assert "410" not in calc.evidence() and "410" in calc.text
+    claims = split_claims(f"DDR5 tRFC for 16Gb is 410 ns [{calc.n}].")
+    deterministic_check(claims, reg)
+    assert claims[0].status == UNSUPPORTED
+
+
+def test_user_value_needs_an_attribution_in_its_own_clause():
+    from techrag.tools import trace_inputs
+
+    reg = _registry("The limit tLIM shall be 100 ns.", question="Sınır 999 ns mi?")
+    u = reg.items[-1].n
+    claims = split_claims(f"For the given speed grade, tRFC is 999 ns [1][{u}].\n"
+                          f"Tabloda verilen tRFC değeri 999 ns'dir [1][{u}].\n"
+                          f"Verdiğiniz 999 ns değeri sınırdan büyüktür [1][{u}].")
+    deterministic_check(claims, reg)
+    assert [c.status for c in claims] == [UNSUPPORTED, UNSUPPORTED, "pending"]
+    inputs, ok = trace_inputs("999*1", reg)
+    calc, _ = reg.add_calc("999*1", "999", inputs, ok)
+    claims = split_claims(f"tRFC is 999 clock cycles [{calc.n}].")
+    deterministic_check(claims, reg)
+    assert claims[0].uses_user_input and claims[0].status == UNSUPPORTED, "a calculation on a user value"
+
+
+def test_judge_sees_the_rows_a_claim_relies_on():
+    from techrag.engine import judge_excerpt
+
+    table = "Table 5 Timing\n| Param | Value |\n|---|---|\n" + "\n".join(f"| tX{i} | {100 + i} ns |" for i in range(600))
+    out = judge_excerpt(table, "tX550 is 650 ns [1]", 6000)
+    assert len(out) <= 6000 and "| tX550 | 650 ns |" in out and out.startswith("Table 5 Timing")
+    assert judge_excerpt("short", "x", 6000) == "short"

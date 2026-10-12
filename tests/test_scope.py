@@ -180,3 +180,40 @@ def test_scope_is_reported_to_the_ui(engine):
     assert json.dumps(fin["scope"])
     plan = QueryPlan("x", "x", "x", "en")
     assert plan.wants_parameters is False
+
+
+def test_named_revision_pins_only_its_own_standard(cfg, make_engine):
+    _pcie_library(cfg)
+    (cfg.sources_dir / "pcie" / "PCIe_Base_4.0_r1.0.md").write_text(
+        "# PCI Express Base Specification 4.0\n\n## 4.2.6.3 Polling.Active\n\nThe timeout is 24 ms.\n", encoding="utf-8")
+    engine = make_engine()
+    d = {doc.title: doc.id for doc in engine.store.documents()}
+    res = engine.retrieve("PCIe 4.0 vs PCIe 5.0 r0.9 Polling.Active timeout")
+    assert not res.scope.missing and d["PCIe Base 4.0 r1.0"] in res.scope.doc_ids, "PCIe 4.0 is still loaded"
+    assert d["PCIe Base 5.0 r0.9"] in res.scope.doc_ids and d["PCIe Base 5.0 r1.0"] not in res.scope.doc_ids
+    res = engine.retrieve("PCIe 4.0 vs PCIe 5.0 r1.0 Polling.Active timeout")
+    assert res.scope.explicit_revisions == [d["PCIe Base 5.0 r1.0"]], "r1.0 belongs to PCIe 5.0, not to PCIe 4.0"
+
+
+def test_named_standard_applies_inside_a_document_selection(engine, fake):
+    ddr4 = [x.id for x in engine.store.documents() if "DDR4" in x.entities]
+    _, fin = final(engine, "DDR5 tRFC değeri nedir?", doc_ids=ddr4)
+    assert "350" not in fin["answer"] and fin["verification"]["status"] == "not_found"
+    assert "DDR5" in fin["answer"] and not answer_calls(fake), "said to be outside the selection, no DDR4 answer"
+    both = [x.id for x in engine.store.documents() if {"DDR4", "DDR5"} & set(x.entities)]
+    res = engine.retrieve("DDR5 tRFC", doc_ids=both)
+    assert res.passages and all(p.entities == ["DDR5"] for p in res.passages), "no DDR4 text in a DDR5 answer"
+
+
+def test_new_collection_does_not_disturb_running_questions(engine):
+    reg = engine.domains
+    before = reg.domains
+    key = reg.ensure_collection("Yeni Klasör")
+    assert key in reg.domains and key not in before, "a new dict is swapped in, the old one is left unchanged"
+
+
+def test_tools_never_widen_a_routed_scope_silently(engine):
+    res, ex = _executor(engine, "DDR refresh cycle time")
+    assert res.scope.reason == "domain"
+    out = ex.run("get_parameter", {"name": "fast-mode", "standard": "I2C"})
+    assert not out.new_sources and "outside this question's scope" in out.text

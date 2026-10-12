@@ -30,7 +30,11 @@ def test_unnamed_standard_searches_everything_and_ui_scope_wins(engine):
     assert res.scope.reason == "all"
     i2c = [d.id for d in engine.store.documents() if d.domain == "i2c"]
     res = engine.retrieve("DDR5 tRFC", doc_ids=i2c)
-    assert res.scope.reason == "user" and {p.domain for p in res.passages} <= {"i2c"}
+    assert {p.domain for p in res.passages} <= {"i2c"}, "nothing outside the user's selection"
+    assert res.scope.reason == "entity_missing" and res.scope.missing == ["DDR5"], \
+        "the standard named in the question still applies inside the selection"
+    res = engine.retrieve("Fast-mode bit rate", doc_ids=i2c)
+    assert res.scope.reason == "user" and res.passages and {p.domain for p in res.passages} == {"i2c"}
 
 
 def test_small_to_big_expands_to_whole_short_section(engine):

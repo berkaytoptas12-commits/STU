@@ -8,6 +8,7 @@ documents carrying that id, so a sibling standard (DDR4 vs DDR5) can never enter
 from __future__ import annotations
 
 import re
+import threading
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -53,20 +54,24 @@ class DomainRegistry:
     _SOFTEN = {"k": "[kg]", "p": "[pb]", "t": "[td]"}
 
     def __init__(self, domains: dict[str, Domain], term_map: dict[str, str]):
+        self._lock = threading.Lock()
         self.domains = domains
         self.term_map = term_map
         self._terms = [(self._term_pattern(fold_tr(k)), v) for k, v in term_map.items()]
         self._rebuild()
 
     def _rebuild(self) -> None:
-        self._folder_index = {f.lower(): d.key for d in self.domains.values() for f in [d.key, *d.folders]}
-        self.entities = {e.id: e for d in self.domains.values() for e in d.entities}
-        self._acronyms: list[tuple[re.Pattern, str, str]] = []
-        for d in self.domains.values():
+        # Built aside and swapped in: questions running in other threads keep reading consistent objects.
+        domains = self.domains
+        acronyms: list[tuple[re.Pattern, str, str]] = []
+        for d in domains.values():
             for acro, expansion in d.glossary.items():
                 flags = 0 if len(acro) <= 3 else re.IGNORECASE
                 pat = re.compile(r"(?<![A-Za-z0-9])" + re.escape(acro) + r"(?![A-Za-z0-9])", flags)
-                self._acronyms.append((pat, acro, expansion))
+                acronyms.append((pat, acro, expansion))
+        self._folder_index = {f.lower(): d.key for d in domains.values() for f in [d.key, *d.folders]}
+        self.entities = {e.id: e for d in domains.values() for e in d.entities}
+        self._acronyms = acronyms
 
     @classmethod
     def _term_pattern(cls, folded_key: str) -> re.Pattern:
@@ -105,9 +110,12 @@ class DomainRegistry:
         if key:
             return key
         key = re.sub(r"[^a-z0-9_-]+", "_", folder.lower()).strip("_") or "general"
-        if key not in self.domains:
-            self.domains[key] = Domain(key=key, name=folder)
-            self._rebuild()
+        with self._lock:
+            if key not in self.domains:
+                # A new dict instead of an in-place insert: the indexing thread calls this while questions in
+                # other threads iterate self.domains ("dictionary changed size during iteration").
+                self.domains = {**self.domains, key: Domain(key=key, name=folder)}
+                self._rebuild()
         return key
 
     # ---------------------------------------------------------------- collections

@@ -155,8 +155,22 @@ class DocCatalog:
             if key.startswith("jesd") and re.search(r"\b" + re.escape(key) + r"\s?" + re.escape(rev) + r"\b", low):
                 out.append(d.id)
                 continue
-            named = bool(ents & {e.lower() for e in d.entities}) or (key and all(t in low for t in key.split()))
-            if named and re.search(r"\b(?:rev(?:ision)?|r|version|ver)\.?\s*" + re.escape(rev) + r"(?![\w.])", low):
+            rev_re = re.compile(r"\b(?:rev(?:ision)?|r|version|ver)\.?\s*" + re.escape(rev) + r"(?![\w.])")
+            # The revision must follow THIS document's standard ("PCIe 4.0 vs PCIe 5.0 r1.0" names a revision of
+            # PCIe 5.0 only): look right after each mention of its standard, up to the next separator.
+            windows = []
+            for e in d.entities:
+                for m in re.finditer(re.escape(e.lower()), low):
+                    tail = low[m.end():m.end() + 32]
+                    stop = _MENTION_STOP.search(tail)
+                    windows.append(tail[:stop.start()] if stop else tail)
+            if windows:
+                hit = any(rev_re.search(w) for w in windows)
+            else:  # the standard is not spelled out: only an unambiguous question can name its revision
+                named = (bool(ents & {e.lower() for e in d.entities}) and len(ents) <= 1) or \
+                    (key and all(t in low for t in key.split()))
+                hit = bool(named and rev_re.search(low))
+            if hit:
                 out.append(d.id)
         return out
 
@@ -168,7 +182,7 @@ class DocCatalog:
         wanted = list(entities) if entities else ([standard] if standard else (plan.entities if plan else []))
         text = f"{plan.question} {plan.standalone}" if plan else standard
         explicit = self.revision_mentions(text, wanted)
-        pinned = {doc_series(docs[i]) for i in explicit}
+        pinned = {_same_document(docs[i]) for i in explicit}
         notes: list[str] = []
 
         def usable(d: DocumentRow) -> bool:
@@ -176,7 +190,7 @@ class DocCatalog:
                 return False  # its source file is gone: stale content never enters an answer
             if d.id in explicit:
                 return True
-            if d.doc_type == "base" and doc_series(d) in pinned:
+            if d.doc_type == "base" and _same_document(d) in pinned:
                 return False  # another revision of a document whose revision the user named
             return d.superseded_by is None
 
@@ -213,13 +227,19 @@ class DocCatalog:
             return Scope(doc_ids=ids, reason="user", notes=notes, explicit_revisions=explicit, buckets=list(buckets))
         if doc_ids:
             sel = [docs[i] for i in doc_ids if i in docs]
-            sc = Scope(doc_ids=list(doc_ids), reason="user", notes=notes, explicit_revisions=explicit)
-            if wanted:
-                sc.entities = [e for e in wanted if tagged(sel, e)]
-                sc.missing = [e for e in wanted if not tagged(sel, e)]
-                if sc.missing:
-                    sc.notes.append(f"none of the selected documents is tagged {', '.join(sc.missing)}")
-            return sc
+            if entity_filter and wanted:
+                # The standard named in the question still applies inside the user's selection: a DDR5 question
+                # with a DDR4 document selected is "not in the selection", never answered from DDR4.
+                per = {e: tagged(sel, e) for e in wanted}
+                found = {e: ids for e, ids in per.items() if ids}
+                missing = [e for e in wanted if not per[e]]
+                notes.append("restricted to the selected documents")
+                if missing:
+                    notes.append(f"none of the selected documents is tagged {', '.join(missing)}")
+                return Scope(doc_ids=sorted({i for v in found.values() for i in v}),
+                             reason="entity" if found else "entity_missing", entities=list(found), missing=missing,
+                             per_entity=found, notes=notes, explicit_revisions=explicit)
+            return Scope(doc_ids=list(doc_ids), reason="user", notes=notes, explicit_revisions=explicit)
         if domains:
             pool = [d for d in pool if d.domain in set(domains)]
             if not (entity_filter and wanted):
@@ -241,6 +261,15 @@ class DocCatalog:
         restricted = len(pool) != len(docs)
         return Scope(doc_ids=[d.id for d in pool] if restricted else None, reason="all", notes=notes,
                      explicit_revisions=explicit)
+
+
+_MENTION_STOP = re.compile(r"\b(?:vs|versus|and|or|ve|veya|ile|ya da|compared|karşı\w*)\b|[,;/]")
+
+
+def _same_document(d: DocumentRow) -> tuple:
+    """Revisions of the same document share series, version and standard set (as in compute_supersedence):
+    naming a revision of PCIe 5.0 must not drop PCIe 4.0."""
+    return doc_series(d), d.version, tuple(sorted(e.lower() for e in d.entities))
 
 
 class Retriever:

@@ -36,14 +36,26 @@ _LIST_MARKER = re.compile(r"^(\s*(?:[-*•]|\d+[.)])\s+)")
 _SENT_SPLIT = re.compile(r"(?<=[.!?])\s+(?=\S)")
 _ABBREV = re.compile(r"(?:\b(?:e\.g|i\.e|figs?|nos?|approx|min|max|typ|vs|cf|sec|eq|rev|ref|vol|pp|ch|etc|incl|resp|"
                      r"ca|örn|vb|bkz|yy|max|nom)\.|(?<![\w.])(?<!\d )[A-Za-z]\.)$", re.I)
-_GREETING = re.compile(r"^(?:merhaba|selam|hello|hi|sure|tabii|elbette|thanks|thank you|teşekkür\w*|umarım|"
-                       r"i hope|hope this|kolay gelsin)\b", re.I)
-_LEADIN = re.compile(r"^(?:here (?:is|are)|below|the following|aşağıda(?:ki)?|kısaca|özetle|in short|in summary|"
-                     r"summary|özet|sonuç olarak|cevap|answer|details|ayrıntılar|kaynaklar|sources)\b", re.I)
-# Words that mark a value as the user's own (an assumption/input), not something a standard states.
-_USER_MARK = re.compile(r"\b(?:user|you|your|given|assum\w*|suppos\w*|if|for example|e\.g\.|kullanıcı\w*|"
-                        r"verdiğiniz|verilen|sizin|siz\w*|varsay\w*|örneğin|eğer|belirttiğiniz|sorudaki|"
+# Openers. A pleasantry followed by nothing technical is framing; after a lead-in or an affirmation
+# ("Sure, ...", "Kısaca: ...") the rest of the sentence is checked like any statement.
+_PLEASANTRY = re.compile(r"^(?:merhaba|selam|hello|hi|thanks|thank you|teşekkür\w*|umarım|i hope|hope this|"
+                         r"kolay gelsin)\b", re.I)
+_LEADIN = re.compile(r"^(?:sure|tabii|elbette|here (?:is|are)|below|the following|aşağıda(?:ki)?|kısaca|özetle|"
+                     r"in short|in summary|summary|özet|sonuç olarak|cevap|answer|details|ayrıntılar|kaynaklar|"
+                     r"sources)\b", re.I)
+_TECHNICAL = re.compile(r"\d|\b\w*[A-Z]{2,}\w*\b|\b[a-z]+[A-Z]\w*\b")  # digits, acronyms (DDR5, ODT), tRFC
+_CONTRAST = re.compile(r"\b(?:but|however|yet|although|though|except|ancak|fakat|ama|yalnız|lakin|"
+                       r"bununla birlikte|buna rağmen)\b", re.I)
+# Words that mark a value as the user's own (an assumption/input), not something a standard states. They must
+# stand in the same clause as the value ("the 999 ns you gave", "Verdiğiniz 999 ns") - a stray "if" elsewhere in
+# the sentence does not turn a documented-looking value into a user assumption.
+_USER_MARK = re.compile(r"\b(?:user|you|your|assum\w*|suppos\w*|if|for example|e\.g\.|kullanıcı\w*|"
+                        r"verdiğiniz|sizin|siz\w*|varsay\w*|örneğin|eğer|belirttiğiniz|sorudaki|"
                         r"soruda\w*)\b", re.I)
+_CLAUSE = re.compile(r"[,;:.()\[\]]|\s[-–—]\s")
+# A number right after these words is a reference (section, table, page), not a value.
+_REFERENCE = re.compile(r"(?:section|sec\.|§|clause|chapter|bölüm\w*|madde\w*|kısım\w*|table|tablo\w*|"
+                        r"figure|fig\.|şekil\w*|page|sayfa\w*|p\.|pp\.)\s*$", re.I)
 
 
 def split_sentences(text: str) -> list[str]:
@@ -86,16 +98,34 @@ def is_not_found(answer: str) -> bool:
 
 
 def is_framing(sentence: str) -> bool:
-    """True for text that states nothing technical (and so needs no evidence)."""
+    """True for text that states nothing technical (and so needs no evidence). A citation or a number always
+    makes it a statement - even next to the not-found sentence, a greeting or a lead-in."""
     s = CITATION.sub("", sentence).strip(" *_:-–")
-    if not s or is_not_found(s) or sentence.lstrip().startswith("#"):
+    if not s:
         return True
     if CITATION.search(sentence) or find_quantities(s) or _bare_numbers(s):
         return False
+    if is_not_found(s):
+        return not _CONTRAST.search(s)  # "... not found, but DDR5 has no ODT." still states something
+    if sentence.lstrip().startswith("#"):
+        return not _asserts(sentence.lstrip().lstrip("#"))
     words = s.split()
     if sentence.rstrip(" *").endswith(":") or len(words) < 3:
         return True
-    return bool((_GREETING.match(s) and len(words) <= 12) or (_LEADIN.match(s) and len(words) <= 8))
+    m = _PLEASANTRY.match(s)
+    if m:
+        return not _TECHNICAL.search(s[m.end():])
+    m = _LEADIN.match(s)
+    if m:
+        rest = s[m.end():].strip(" ,;:!.-–—")
+        return len(rest.split()) <= 3 and not _TECHNICAL.search(rest)
+    return False
+
+
+def _asserts(text: str) -> bool:
+    """A heading or bold line that states something (a value, a citation, a full sentence) is a statement."""
+    t = text.strip().strip("*").strip()
+    return bool(find_quantities(t) or CITATION.search(t) or t.endswith(".") or re.search(r"[:=]\s*[-+−]?\d", t))
 
 
 # ------------------------------------------------------------------------------------ parsing
@@ -188,11 +218,20 @@ def parse_answer(answer: str) -> ParsedAnswer:
         if not s:
             lines.append(Line("blank", line))
             continue
-        if s.startswith("#") or (s.startswith("**") and s.endswith("**") and len(s) > 4 and not CITATION.search(s)):
+        if s.startswith("#") or (s.startswith("**") and s.endswith("**") and len(s) > 4):
+            inner = s.lstrip("#").strip()
             if _heading_name(s, inf_heads):
                 section = "inference"
             elif _heading_name(s, doc_heads):
                 section = "documented"
+            elif _asserts(inner):
+                # A statement written as a heading or in bold is checked like any other statement.
+                lead = line[:len(line) - len(line.lstrip())]
+                hashes = s[:len(s) - len(s.lstrip("#"))]
+                body = inner if hashes else s
+                lines.append(Line("text", line, lead + (hashes + " " if hashes else ""),
+                                  [Segment(body, add_claim(body, i))]))
+                continue
             lines.append(Line("heading", line))
             continue
         if s.startswith("|"):
@@ -201,9 +240,16 @@ def parse_answer(answer: str) -> ParsedAnswer:
                 continue
             nxt = raw_lines[i + 1].strip() if i + 1 < len(raw_lines) else ""
             if _SEP.match(nxt):
-                lines.append(Line("table_head", line))
+                # Column labels need no evidence; a header that states values ("| tRFC 16Gb | 410 ns |") does.
+                cid = add_claim(s, i) if (find_quantities(s.replace("|", " ")) or CITATION.search(s)) else None
+                lines.append(Line("table_head", line, segments=[Segment(line, cid)] if cid else []))
                 continue
-            cid = None if is_framing(s.replace("|", " ")) else add_claim(s, i)
+            cells = [c.strip() for c in s.strip().strip("|").split("|")]
+            filled = [c for c in cells if c.strip("-:* ")]
+            # Every data row is a statement ("| ODT | Disabled |" included); only an empty row or a single
+            # group label without values ("| **Timing** | | |") is structure.
+            label = len(filled) <= 1 and not (CITATION.search(s) or find_quantities(s) or _bare_numbers(s))
+            cid = None if label else add_claim(s, i)
             lines.append(Line("table_row", line, segments=[Segment(line, cid)]))
             continue
         m = _LIST_MARKER.match(line)
@@ -242,11 +288,32 @@ def _evidence(src) -> str:
     return f"{src.header()}\n{src.evidence()}"
 
 
+def _value_evidence(src) -> str:
+    """What a value may be found in: the evidence text plus the document's identity (title, standard, revision) -
+    not the page or section number of the source header, which are no evidence for a value."""
+    if src.kind in ("calc", "user"):
+        return src.evidence()
+    ident = " ".join([src.doc_title or "", " ".join(src.entities or []), src.revision or ""])
+    return f"{ident}\n{src.evidence()}"
+
+
+def _user_marked(text: str, value: str) -> bool:
+    """The value is attributed to the user / an assumption within its own clause."""
+    i = text.find(value)
+    if i < 0:
+        return bool(_USER_MARK.search(text))
+    starts = [m.end() for m in _CLAUSE.finditer(text, 0, i)]
+    start = starts[-1] if starts else 0
+    m = _CLAUSE.search(text, i + len(value))
+    return bool(_USER_MARK.search(text[start:m.start() if m else len(text)]))
+
+
 def deterministic_check(claims: list[Claim], registry) -> None:
     """Sets status/reasons/values on each claim in place (registry: tools.SourceRegistry). Only what a claim
     CITES counts as its evidence; the user's question is a separate 'user input' source."""
-    pools_all = {s.n: _evidence(s) for s in registry.items}
-    qty_all = {n: find_quantities(t) for n, t in pools_all.items()}
+    pools_all = {s.n: _evidence(s) for s in registry.items}          # incl. page/section: for references
+    pools_val = {s.n: _value_evidence(s) for s in registry.items}    # for values
+    qty_all = {n: find_quantities(t) for n, t in pools_val.items()}
     for c in claims:
         c.reasons, c.values = [], []
         unverifiable = False
@@ -270,8 +337,12 @@ def deterministic_check(claims: list[Claim], registry) -> None:
         for s in calcs:
             if not s.extra.get("traceable"):
                 bad = [i["value"] for i in s.extra.get("inputs", []) if not i.get("sources")]
-                c.reasons.append(f"calculation [{s.n}] uses input(s) not found in any source: {', '.join(bad) or '?'}")
-        pools = [("document", good_docs), ("calculation", calcs), ("user", users)]
+                c.reasons.append(f"calculation [{s.n}] uses input(s) not found in any source: {', '.join(bad)}" if bad
+                                 else f"calculation [{s.n}] has no input taken from a source")
+        # A calculation fed by a value from the question gives a user value, not a documented one.
+        user_calcs = [s for s in calcs if any("user" in i.get("kinds", []) for i in s.extra.get("inputs", []))]
+        pools = [("document", good_docs), ("user", users + user_calcs),
+                 ("calculation", [s for s in calcs if s not in user_calcs])]
         text = CITATION.sub(" ", c.text)
         quantities = find_quantities(text)
         for q in quantities:
@@ -300,21 +371,23 @@ def deterministic_check(claims: list[Claim], registry) -> None:
         for num in _bare_numbers(text):
             if num.lstrip("-") in qty_numbers:
                 continue
+            at = text.find(num)
+            hay = pools_all if at >= 0 and _REFERENCE.search(text[max(0, at - 14):at]) else pools_val
             origin = None
             for name, srcs in pools:
-                hit = [s.n for s in srcs if _value_present(num, pools_all[s.n])]
+                hit = [s.n for s in srcs if _value_present(num, hay[s.n])]
                 if hit:
                     origin = {"text": num, "from": name, "sources": hit}
                     break
             if origin:
                 c.values.append(origin)
-            elif any(_value_present(num, pools_all[s.n]) for s in weak_docs) or \
+            elif any(_value_present(num, hay[s.n]) for s in weak_docs) or \
                     any(s.evidence_text and _value_present(num, s.text) for s in good_docs):
                 c.reasons.append(f"number '{num}' appears only in an unverified extraction")
                 unverifiable = True
             else:
                 c.reasons.append(f"number '{num}' not found in the cited sources")
-        if c.kind == "fact" and any(v["from"] == "user" for v in c.values) and not _USER_MARK.search(c.text):
+        if c.kind == "fact" and any(v["from"] == "user" and not _user_marked(text, v["text"]) for v in c.values):
             c.reasons.append("a value from the user's question is presented as documented; say it is the "
                              "user's input/assumption")
         c.deterministic = "fail" if c.reasons else "pass"
@@ -433,7 +506,18 @@ def render(parsed: ParsedAnswer, decide: Callable[[Claim], str]) -> str:
     """Rebuild the answer from its parsed lines. decide(claim) -> 'keep' | 'flag' | 'drop'. Lines whose
     claims are all dropped disappear, then empty tables, lead-ins and headings."""
     out: list[tuple[str, str]] = []  # (kind, text)
+    skip_table = False
     for ln in parsed.lines:
+        if skip_table and ln.kind in ("table_sep", "table_row"):
+            continue
+        skip_table = False
+        if ln.kind == "table_head" and ln.segments:
+            d = decide(parsed.claim(ln.segments[0].claim))
+            if d == "drop":  # a header stating values that failed: the rows cannot stand without it
+                skip_table = True
+                continue
+            out.append(("table_head", ln.raw if d == "keep" else ln.raw.rstrip().rstrip("|") + f" {FLAG} |"))
+            continue
         if ln.kind in ("blank", "heading", "fence", "table_sep", "table_head"):
             out.append((ln.kind, ln.raw))
             continue

@@ -145,15 +145,19 @@ class SourceRegistry:
         src, _ = self._add("u:question", kind="user", text=text, doc_title="User input")
         return src
 
-    def add_calc(self, expression: str, result: str, inputs: list[dict], traceable: bool) -> tuple[Source, bool]:
+    def add_calc(self, expression: str, result: str, inputs: list[dict], traceable: bool,
+                 label: str = "") -> tuple[Source, bool]:
         lines = [f"{expression} = {result}"]
         if inputs:
             lines.append("Inputs: " + "; ".join(
                 f"{i['value']} from " + (", ".join(f"[{n}]" for n in i["sources"]) if i["sources"] else "NO SOURCE")
                 for i in inputs))
-        return self._add(f"x:{expression}", kind="calc", text="\n".join(lines),
+        evidence = "\n".join(lines)
+        # The label is the model's own wording: shown, but never evidence for a value (it could say anything).
+        text = f"{label}: {evidence}" if label else evidence
+        return self._add(f"x:{label}:{expression}", kind="calc", text=text, evidence_text=evidence,
                          extra={"inputs": inputs, "traceable": traceable, "result": result,
-                                "expression": expression})
+                                "expression": expression, "label": label})
 
     def text_of(self, numbers) -> str:
         return "\n".join(s.evidence() for n in numbers if (s := self.get(n)))
@@ -262,8 +266,9 @@ def trace_inputs(expression: str, registry: "SourceRegistry", declared: Optional
             declared_src[str(d.get("value", "")).strip()] = int(d["source"])
     inputs, ok = [], True
     for text, v in literals(expression):
-        if _trivial(v):
-            continue
+        want = next((n for val, n in declared_src.items() if val and (val == text or val.split()[0] == text)), None)
+        if _trivial(v) and want is None:
+            continue  # small integers / powers of ten need no source - but they are no evidence either
         hits = []
         for s in registry.items:
             if not s.verified and s.kind not in ("calc", "user"):
@@ -273,13 +278,14 @@ def trace_inputs(expression: str, registry: "SourceRegistry", declared: Optional
             vals += [x for n in re.findall(r"-?\d+(?:[.,]\d+)*(?:e-?\d+)?", hay) for x in parse_number(n)]
             if any(_close(v, x) for x in vals):
                 hits.append(s.n)
-        want = next((n for val, n in declared_src.items() if val and (val == text or val.split()[0] == text)), None)
         if want is not None and want not in hits:
             hits = []
         kinds = sorted({registry.get(n).kind for n in hits})
         inputs.append({"value": text, "sources": hits, "kinds": kinds})
         ok = ok and bool(hits)
-    return inputs, ok
+    # Arithmetic on constants alone ("4*4", "3*100+5*10") proves nothing: at least one input must come from a
+    # source (a small constant counts when the call names the source it was taken from).
+    return inputs, ok and any(i["sources"] for i in inputs)
 
 
 # ------------------------------------------------------------------------------------- tools
@@ -399,7 +405,11 @@ class ToolExecutor:
                         f"version; say that it is not in the loaded documents.\n\n")
         ids = res.doc_ids
         if sc.doc_ids is not None and ids is not None:
-            ids = [i for i in ids if i in set(sc.doc_ids)] or ids
+            inside = [i for i in ids if i in set(sc.doc_ids)]
+            if not inside:  # never widen the question's scope silently
+                return [], (f"Note: '{standard}' is outside this question's scope. Do not use other standards or "
+                            f"versions to answer.\n\n")
+            ids = inside
         return ids, ""
 
     def _format(self, sources: list[Source], empty: str) -> str:
@@ -531,10 +541,11 @@ class ToolExecutor:
     def tool_calculate(self, expression: str, label: str = "", inputs: Optional[list] = None) -> ToolOutput:
         value = safe_eval(expression)
         result = f"{value:.10g}"
-        expr = f"{label}: {expression}" if label else expression
         traced, ok = trace_inputs(expression, self.registry, inputs)
-        src, is_new = self.registry.add_calc(expr, result, traced, ok)
-        warn = "" if ok else ("\nWARNING: input(s) " + ", ".join(i["value"] for i in traced if not i["sources"])
-                              + " are not found in any source; this result cannot support a verified statement.")
+        src, is_new = self.registry.add_calc(expression, result, traced, ok, label=label)
+        missing = [i["value"] for i in traced if not i["sources"]]
+        warn = "" if ok else ("\nWARNING: " + (f"input(s) {', '.join(missing)} are not found in any source"
+                                               if missing else "no input of this calculation comes from a source")
+                              + "; this result cannot support a verified statement.")
         return ToolOutput(f"{src.prompt_text()}{warn}", [src] if is_new else [],
                           summary=f"{expression} = {result}" + ("" if ok else " (untraceable input)"))

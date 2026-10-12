@@ -132,8 +132,8 @@ class RAGEngine:
         if not doc or self.vision is None:
             return None
         cache = self.cfg.page_cache_dir / f"{doc.sha256[:20]}_p{page}_desc.txt"
-        if cache.exists():
-            return cache.read_text(encoding="utf-8")
+        if cache.exists():  # same label as a fresh transcription: the model must know what it is reading
+            return "(VLM transcription of the page image)\n" + cache.read_text(encoding="utf-8")
         png = self.render_page(doc_id, page)
         if not png:
             return None
@@ -487,7 +487,7 @@ class RAGEngine:
             for n in dict.fromkeys(c.citations):
                 s = registry.get(n)
                 if s is not None:
-                    srcs.append((n, f"{s.header()}\n{s.evidence()}"[:JUDGE_SOURCE_CHARS]))
+                    srcs.append((n, f"{s.header()}\n{judge_excerpt(s.evidence(), c.text, JUDGE_SOURCE_CHARS)}"))
             items.append({"id": c.id, "type": c.kind, "claim": c.text, "sources": srcs})
         res = self.llm.chat([{"role": "system", "content": JUDGE_SYSTEM},
                              {"role": "user", "content": judge_user_prompt(items)}],
@@ -645,6 +645,38 @@ def cite_claims(answer: str, claims: list[Claim]) -> list[Optional[int]]:
         cid = next((sid for a, b, sid in spans if a <= m.start() < b), None)
         out.extend([cid] * len(parse_citations(m.group(0))))
     return out
+
+
+def judge_excerpt(text: str, claim: str, limit: int) -> str:
+    """The evidence the judge sees, at most `limit` characters. A longer source (an expanded section, a whole
+    table) is cut to its beginning plus the lines that share numbers or terms with the claim, in their original
+    order - a correct claim backed by a row far down a table must not be judged on the first page only."""
+    if len(text) <= limit:
+        return text
+    words = {w.lower() for w in re.findall(r"[A-Za-z][\w-]{2,}", claim)}
+    nums = set(re.findall(r"\d+(?:[.,]\d+)?", claim))
+    lines = text.split("\n")
+    used, keep = 0, set()
+    for i, ln in enumerate(lines):  # the beginning (title, column headers)
+        if used + len(ln) + 1 > limit // 4:
+            break
+        keep.add(i)
+        used += len(ln) + 1
+    scored = sorted(((3 * len(nums & set(re.findall(r"\d+(?:[.,]\d+)?", ln))) +
+                      len(words & {w.lower() for w in re.findall(r"[A-Za-z][\w-]{2,}", ln)}), i)
+                     for i, ln in enumerate(lines) if i not in keep), reverse=True)
+    for score, i in scored:
+        if score == 0 or used + len(lines[i]) + 1 > limit:
+            continue
+        keep.add(i)
+        used += len(lines[i]) + 1
+    out, last = [], -1
+    for i in sorted(keep):
+        if i != last + 1:
+            out.append("[...]")
+        out.append(lines[i])
+        last = i
+    return "\n".join(out)[:limit]
 
 
 def _mask_code(text: str) -> str:
