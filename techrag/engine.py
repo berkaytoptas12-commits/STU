@@ -641,7 +641,22 @@ def cite_claims(answer: str, claims: list[Claim]) -> list[Optional[int]]:
             spans.append((i, i + len(c.text), c.id))
             pos = i + len(c.text)
     out: list[Optional[int]] = []
-    for m in CITATION.finditer(answer):
+    for m in CITATION.finditer(_mask_code(answer)):  # positions unchanged: masking keeps the length
         cid = next((sid for a, b, sid in spans if a <= m.start() < b), None)
         out.extend([cid] * len(parse_citations(m.group(0))))
     return out
+
+
+def _mask_code(text: str) -> str:
+    """Blank out fenced code blocks and `inline code` (same length): the UI renders no citation buttons there, so
+    they must not be counted either - otherwise button i would get the claim of another citation."""
+    out, fence = [], False
+    for line in text.split("\n"):
+        if re.match(r"^\s*```", line):
+            fence = not fence
+            out.append(" " * len(line))
+        elif fence:
+            out.append(" " * len(line))
+        else:
+            out.append(re.sub(r"`[^`]+`", lambda m: " " * len(m.group(0)), line))
+    return "\n".join(out)

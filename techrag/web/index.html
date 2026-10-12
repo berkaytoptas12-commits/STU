@@ -112,7 +112,7 @@
       </fieldset>
       <div class="dlg-actions">
         <span class="muted small" id="settings-status"></span>
-        <button value="cancel" class="ghost" data-i18n="cancel"></button>
+        <button type="button" class="ghost" data-close data-i18n="cancel"></button>
         <button id="btn-save-settings" value="default" data-i18n="save"></button>
       </div>
     </form>
@@ -122,7 +122,7 @@
   <dialog id="dlg-library">
     <form method="dialog" class="dlg">
       <h2 data-i18n="library"></h2>
-      <p class="small"><span data-i18n="currentLibrary"></span>: <code id="lib-path"></code> <span id="lib-ro" class="pill" hidden>read-only</span></p>
+      <p class="small"><span data-i18n="currentLibrary"></span>: <code id="lib-path"></code> <span id="lib-ro" class="pill" data-i18n="readOnly" hidden></span></p>
       <p class="hint" data-i18n="libraryHint"></p>
       <div class="verify warning" id="lib-legacy" hidden><span id="lib-legacy-text"></span>
         <div class="row" style="margin-top:6px"><button type="button" id="btn-migrate" data-i18n="migrate"></button></div></div>
@@ -137,7 +137,7 @@
         <label class="small"><input type="checkbox" id="lib-rebuild"> <span data-i18n="rebuild"></span></label>
         <button type="button" class="ghost" id="btn-reindex-all" data-i18n="reindexAll"></button></div>
       <p class="small muted" id="lib-status"></p>
-      <div class="dlg-actions"><button value="cancel" data-i18n="close"></button></div>
+      <div class="dlg-actions"><button type="button" data-close data-i18n="close"></button></div>
     </form>
   </dialog>
 
@@ -148,7 +148,7 @@
       <div id="folder-body" class="folder-body"></div>
       <div class="dlg-actions">
         <span class="muted small" id="folder-status"></span>
-        <button value="cancel" class="ghost" data-i18n="cancel"></button>
+        <button type="button" class="ghost" data-close data-i18n="cancel"></button>
         <button id="btn-folder-go" value="default" data-i18n="indexNow"></button>
       </div>
     </form>

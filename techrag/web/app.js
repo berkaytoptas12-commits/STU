@@ -222,7 +222,7 @@ function applyI18n() {
 
 // ------------------------------------------------------------------ state + api
 const state = { info: null, docs: [], selected: new Set(), selectedBuckets: new Set(), history: [], busy: false,
-  token: TOKEN, filter: "", ui: loadUi() };
+  token: TOKEN, filter: "", ui: loadUi(), chatId: 0, abort: null, viewSeq: 0 };
 
 // Panel layout preferences (per user, kept across restarts; never affect what is searched).
 function loadUi() {
@@ -276,7 +276,8 @@ function expandCites(inner) {
   const out = [];
   for (const part of inner.split(/\s*,\s*/)) {
     const r = part.match(/^(\d+)\s*[–-]\s*(\d+)$/);
-    if (r) { for (let i = +r[1]; i <= +r[2] && i - +r[1] < 50; i++) out.push(i); }
+    // Same rule as the server (verify.parse_citations): button i must match cite_claims[i].
+    if (r) { const a = +r[1], b = +r[2]; if (b > a && b - a < 50) for (let i = a; i <= b; i++) out.push(i); }
     else if (/^\d+$/.test(part)) out.push(+part);
   }
   return out;
@@ -349,8 +350,14 @@ function renderMarkdown(md, cites = true) {
 // ------------------------------------------------------------------ info + sources panel
 async function loadInfo() {
   state.info = await getJSON("/api/info");
+  if (!safeGet("techrag.lang")) LANG = state.info.language || LANG;
+  renderInfo();
+  const ids = new Set((state.info.buckets || []).map((b) => b.id));
+  for (const id of [...state.selectedBuckets]) if (!ids.has(id)) state.selectedBuckets.delete(id);
+}
+function renderInfo() {
   const i = state.info;
-  if (!safeGet("techrag.lang")) LANG = i.language || LANG;
+  if (!i) return;
   const ro = i.read_only ? ` · ${t("readOnly")}` : "";
   $("#lib-info").textContent = `${i.library} · ${i.stats.documents} ${t("docs")} · ${i.stats.parameters || 0} ${t("params")}${ro}`;
   $("#add-box").hidden = !i.allow_upload;
@@ -362,12 +369,11 @@ async function loadInfo() {
   else if (missing.length) { banner.hidden = false; banner.textContent = `${t("settings")}: ${missing.map((s) => t("svc_" + s)).join(", ")} — ${t("model")}?`; }
   else banner.hidden = true;
   $("#collection-list").innerHTML = (i.buckets || []).filter((b) => b.name).map((b) => `<option value="${esc(b.name)}"></option>`).join("");
-  const ids = new Set((i.buckets || []).map((b) => b.id));
-  for (const id of [...state.selectedBuckets]) if (!ids.has(id)) state.selectedBuckets.delete(id);
 }
 
 async function loadDocs() {
   try { state.docs = await getJSON("/api/documents"); } catch { state.docs = []; }
+  for (const k of Object.keys(docCache)) delete docCache[k];  // re-indexed documents get new page info
   const ids = new Set(state.docs.map((d) => d.id));
   for (const id of [...state.selected]) if (!ids.has(id)) state.selected.delete(id);
   renderCollections();
@@ -671,6 +677,7 @@ function markQuotes(html, quotes) {
 }
 
 function showSource(s, msg, claimId, override) {
+  state.viewSeq++;
   showRight();
   const pane = $("#tab-source");
   const ev = override ? [] : evidenceOf(msg, s, claimId);
@@ -724,8 +731,10 @@ function showSource(s, msg, claimId, override) {
 }
 
 async function showDocument(id) {
+  const seq = ++state.viewSeq;
   showRight();
   const d = await getJSON(`/api/documents/${id}`);
+  if (seq !== state.viewSeq) return;  // the user opened something else meanwhile
   docCache[id] = Promise.resolve(d);
   const pane = $("#tab-source");
   const toc = (d.toc || []).slice(0, 500).map(([lvl, title, page]) =>
@@ -802,9 +811,19 @@ function stageText(ev) {
     regenerating: t("stRegenerating", ev.failed || ""), tools_unsupported: t("stNoTools") }[ev.stage] || "";
 }
 
+function newChat(note) {
+  state.chatId++;  // events of an answer still streaming no longer touch the new chat
+  if (state.abort) state.abort.abort();
+  state.history = [];
+  $("#messages").innerHTML = `<div class="empty" id="empty-state"><p>${esc(note)}</p></div>`;
+}
+
 async function ask(question) {
   if (state.busy || !question.trim()) return;
   state.busy = true;
+  const chat = state.chatId;
+  const ctrl = new AbortController();
+  state.abort = ctrl;
   $("#btn-send").disabled = true;
   const empty = $("#empty-state");
   if (empty) empty.remove();
@@ -905,17 +924,19 @@ async function ask(question) {
           navigator.clipboard && navigator.clipboard.writeText(`${text}\n\n${refs}`);
           e.target.textContent = t("copied");
         });
-        state.history.push({ role: "user", content: question }, { role: "assistant", content: text });
-        state.history = state.history.slice(-12);
+        if (chat === state.chatId) {
+          state.history.push({ role: "user", content: question }, { role: "assistant", content: text });
+          state.history = state.history.slice(-12);
+        }
         break;
       }
-      case "error": status.textContent = ""; body.innerHTML = `<div class="verify warning">${t("errorPrefix")}: ${esc(ev.message)}</div>`; break;
+      case "error": el._final = true; status.textContent = ""; body.innerHTML = `<div class="verify warning">${t("errorPrefix")}: ${esc(ev.message)}</div>`; break;
       default: break;
     }
   };
 
   try {
-    const res = await api("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" },
+    const res = await api("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
       body: JSON.stringify(Object.assign({ question, history: state.history.slice(-6), stream: true }, scope())) });
     const reader = res.body.getReader();
     const dec = new TextDecoder();
@@ -933,9 +954,11 @@ async function ask(question) {
       }
     }
   } catch (e) {
+    el._final = true;  // a draft frame still queued must not replace the error
     status.textContent = "";
     body.innerHTML = `<div class="verify warning">${t("errorPrefix")}: ${esc(e.message)}</div>`;
   } finally {
+    if (state.abort === ctrl) state.abort = null;
     state.busy = false;
     $("#btn-send").disabled = false;
     scrollDown();
@@ -944,7 +967,13 @@ async function ask(question) {
 
 // ------------------------------------------------------------------ jobs / adding documents
 // Indexing runs on the server in the background; this only polls, so the window never freezes.
-async function pollJob(job, title) {
+let jobChain = Promise.resolve();
+function pollJob(job, title) {
+  const run = jobChain.then(() => followJob(job, title));
+  jobChain = run.catch(() => {});
+  return run;
+}
+async function followJob(job, title) {
   const box = $("#job-box");
   box.hidden = false;
   $("#job-title").textContent = title || t("jobIndex");
@@ -1253,7 +1282,11 @@ function openLibrary() {
 
 // ------------------------------------------------------------------ wiring
 function bind() {
-  $("#composer").addEventListener("submit", (e) => { e.preventDefault(); const q = $("#question").value.trim(); if (q) { $("#question").value = ""; ask(q); } });
+  $("#composer").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const q = $("#question").value.trim();
+    if (q && !state.busy) { $("#question").value = ""; ask(q); }  // while answering, the typed question stays
+  });
   $("#question").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("#composer").requestSubmit(); } });
   $("#messages").addEventListener("click", (e) => {
     const c = e.target.closest("button.cite");
@@ -1262,11 +1295,13 @@ function bind() {
     const s = (msg && msg._sources || []).find((x) => x.n === +c.dataset.n);
     if (s) showSource(s, msg, c.dataset.claim ? +c.dataset.claim : null);
   });
-  $("#btn-new-chat").addEventListener("click", () => { state.history = []; $("#messages").innerHTML = `<div class="empty"><p>${t("newChatStarted")}</p></div>`; });
+  $("#btn-new-chat").addEventListener("click", () => newChat(t("newChatStarted")));
+  $$("dialog [data-close]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close("cancel")));
   $$(".lang").forEach((b) => b.addEventListener("click", () => {
     LANG = b.dataset.lang;
     safeSet("techrag.lang", LANG);
     applyI18n();
+    renderInfo();
     renderCollections();
     postJSON("/api/settings", { ui: { language: LANG } }, "PUT").catch(() => {});
   }));
@@ -1281,6 +1316,13 @@ function bind() {
     try {
       const r = await postJSON("/api/library/open", { path: $("#lib-new-path").value, read_only: $("#lib-readonly").checked });
       $("#lib-status").textContent = r.error ? `${t("errorPrefix")}: ${r.error}` : t("opened");
+      if (!r.error) {  // document ids belong to a library: nothing selected or cited in the old one carries over
+        state.selected.clear();
+        state.selectedBuckets.clear();
+        newChat(t("newChatStarted"));
+        $("#tab-source").innerHTML = `<p class="muted">${esc(t("viewerEmpty"))}</p>`;
+        state.viewSeq++;
+      }
       await loadInfo();
       await loadDocs();
       $("#lib-path").textContent = state.info.library;
@@ -1297,7 +1339,12 @@ function bind() {
     catch (e) { alert(e.message); }
   });
   $("#btn-add-files").addEventListener("click", addFiles);
-  $("#add-file-input").addEventListener("change", (e) => uploadFiles([...e.target.files]));
+  $("#add-file-input").addEventListener("change", (e) => {
+    const files = [...e.target.files];
+    e.target.value = "";  // choosing the same file again (e.g. after a failed upload) must work
+    uploadFiles(files);
+  });
+  $("#lib-new-path").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("#btn-open-lib").click(); } });
   $("#btn-add-folder").addEventListener("click", addFolder);
   $("#btn-rescan").addEventListener("click", () => rescan(false));
   $("#btn-job-close").addEventListener("click", () => { $("#job-box").hidden = true; });
