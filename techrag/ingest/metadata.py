@@ -171,7 +171,14 @@ def build_metadata(registry: DomainRegistry, domain: str, filename: str, pdf_tit
 
 
 def _rev_key(rev: str) -> tuple:
-    return tuple(int(p) if p.isdigit() else p for p in re.findall(r"\d+|[a-zA-Z]+", rev or ""))
+    """Comparable in every case ("1.0" vs "C" would otherwise raise TypeError in sort)."""
+    return tuple((0, int(p), "") if p.isdigit() else (1, 0, p.lower()) for p in re.findall(r"\d+|[a-zA-Z]+", rev or ""))
+
+
+def _rev_style(rev: str) -> str:
+    """'number' (1.0, 5.0r0.9) or 'letter' (B, C): revisions written differently cannot be ordered."""
+    first = re.search(r"\d+|[a-zA-Z]+", rev or "")
+    return "number" if first and first.group(0).isdigit() else "letter"
 
 
 def doc_series(d) -> str:
@@ -195,7 +202,7 @@ def compute_supersedence(docs) -> list[tuple[int, Optional[int]]]:
             continue
         if all(m.doc_date for m in members):
             key = lambda m: (m.doc_date, _rev_key(m.revision))  # noqa: E731
-        elif all(m.revision for m in members):
+        elif all(m.revision for m in members) and len({_rev_style(m.revision) for m in members}) == 1:
             key = lambda m: _rev_key(m.revision)  # noqa: E731
         else:
             continue

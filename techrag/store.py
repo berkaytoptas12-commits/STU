@@ -283,10 +283,16 @@ def uri_for_resolved(resolved: str) -> str:
     return "file://" + quote(p, safe="/:") + "?mode=ro&immutable=1"
 
 
+def _lower(text: str) -> str:
+    """Lower-case for term matching. "İ".lower() is "i" + a combining dot, which splits a word ("İletişim" ->
+    "letişim"); the FTS index folds it to a plain "i"."""
+    return text.replace("İ", "i").lower()
+
+
 def fts_query(text: str, max_terms: int = 48) -> str:
     """Free text -> safe FTS5 OR-query of quoted terms (stopwords and 1-char tokens dropped)."""
     seen: list[str] = []
-    for tok in re.findall(r"\w+", text.lower()):
+    for tok in re.findall(r"\w+", _lower(text)):
         if len(tok) < 2 or tok in _STOPWORDS or tok in seen:
             continue
         seen.append(tok)
@@ -917,7 +923,7 @@ class Store:
                         (r["status"] if "status" in r.keys() else "") or "legacy_unchecked")
                for r in rows]
         if query:
-            terms = [t for t in re.findall(r"\w+", query.lower()) if t not in _STOPWORDS and len(t) > 1]
+            terms = [t for t in re.findall(r"\w+", _lower(query)) if t not in _STOPWORDS and len(t) > 1]
             ref = re.search(r"\b(?:table|tablo)\s*([\w.\-]+)", query, re.I)
 
             def score(t: TableRow) -> float:

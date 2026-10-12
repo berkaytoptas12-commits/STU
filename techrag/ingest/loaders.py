@@ -193,8 +193,20 @@ def _paragraph_blocks(text: str, page: int = 1) -> list[Block]:
     return out
 
 
+def read_text_file(path: Path) -> str:
+    """UTF-8 (a byte-order mark is dropped - it would hide the first Markdown heading), else Windows-1254 (Turkish
+    ANSI files saved by older editors), else UTF-8 with replacement characters."""
+    data = path.read_bytes()
+    for enc in ("utf-8-sig", "cp1254"):
+        try:
+            return data.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("utf-8", errors="replace")
+
+
 def load_text(path: Path) -> LoadedDocument:
-    return _text_document(path, path.read_text(encoding="utf-8", errors="replace"))
+    return _text_document(path, read_text_file(path))
 
 
 def _text_document(path: Path, raw: str) -> LoadedDocument:
@@ -252,7 +264,7 @@ class _HTMLText(HTMLParser):
 
 def load_html(path: Path) -> LoadedDocument:
     parser = _HTMLText()
-    parser.feed(path.read_text(encoding="utf-8", errors="replace"))
+    parser.feed(read_text_file(path))
     text = html.unescape("".join(parser.parts))
     text = re.sub(r"[ \t]+", " ", text)
     return _text_document(path, text)
@@ -281,6 +293,9 @@ def load_docx(path: Path) -> LoadedDocument:
             m = re.match(r"heading\s*(\d)", style)
             if m:
                 toc.append((int(m.group(1)), text, 1))
+                # The style says it is a heading: mark it like Markdown, so sections are assigned from the real
+                # headings and never from a body line that merely starts with a heading's words.
+                text = "#" * max(1, min(int(m.group(1)), 6)) + " " + text
             blocks.append(Block(1, text))
         elif tag == "tbl":
             rows = [[_cell(c.text) for c in row.cells] for row in Table(child, d).rows]

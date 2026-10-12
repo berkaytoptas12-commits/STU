@@ -340,3 +340,68 @@ def test_full_exit_stops_indexing_at_a_document_boundary(tree, lib, fake):
     report = ingestor().sync_root(root_id)
     assert set(report.skipped) >= set(written) and len(report.added) == 6, "the rescan resumes where it stopped"
     assert len(store.documents()) == 8
+
+
+def test_copy_of_a_file_changed_in_the_same_rescan_keeps_its_own_content(tmp_path, lib):
+    store, ingestor, _ = lib
+    root = tmp_path / "Belgeler"
+    (root / "X").mkdir(parents=True)
+    (root / "X" / "b.md").write_text("# B\n\nOld revision: tRFC is 350 ns.\n", encoding="utf-8")
+    (root / "Z.md").write_text("# Z\n\nUnrelated.\n", encoding="utf-8")
+    root_id = store.add_root(str(root))
+    ingestor().sync_root(root_id)
+    (root / "X" / "Archive").mkdir()
+    shutil.copy2(root / "X" / "b.md", root / "X" / "Archive" / "b_old.md")   # keep the old revision
+    (root / "X" / "b.md").write_text("# B\n\nNew revision: tRFC is 295 ns.\n", encoding="utf-8")
+    report = ingestor().sync_root(root_id)
+    assert not report.failed
+    docs = {d.rel_path: d for d in store.documents()}
+    from techrag.ingest.pipeline import sha256_file
+
+    old, new = docs["X/Archive/b_old.md"], docs["X/b.md"]
+    assert old.sha256 == sha256_file(root / "X" / "Archive" / "b_old.md"), "the copy is indexed with ITS content"
+    assert new.sha256 == sha256_file(root / "X" / "b.md") and old.sha256 != new.sha256
+    texts = {d: " ".join(c.text for c in store.page_chunks(docs[d].id, 1, evidence_only=False)) for d in docs}
+    assert "350" in texts["X/Archive/b_old.md"] and "295" in texts["X/b.md"]
+
+
+def test_one_unreadable_file_does_not_stop_the_folder(tmp_path):
+    from techrag.ingest.sources import plan_changes
+
+    root = tmp_path / "R"
+    (root / "A").mkdir(parents=True)
+    for n in ("a.md", "b.md"):
+        (root / "A" / n).write_text(f"# {n}\n", encoding="utf-8")
+    scan = scan_root(root)
+
+    def hash_fn(path):
+        if path.endswith("a.md"):
+            raise PermissionError("locked")
+        return "h-" + Path(path).name
+
+    items = {it.rel: it for it in plan_changes(scan, [], "fp", 1, hash_fn)}
+    assert items["A/a.md"].action == "unreachable" and "PermissionError" in items["A/a.md"].reason
+    assert items["A/b.md"].action == "new"
+
+
+def test_unreadable_file_is_unreachable_not_missing(tmp_path):
+    from types import SimpleNamespace
+
+    from techrag.ingest.sources import ScanResult, plan_changes
+
+    scan = ScanResult(root=str(tmp_path), unreadable=["A/x.pdf"])
+    doc = SimpleNamespace(id=1, rel_path="A/x.pdf", bucket="A", bucket_id="a", sha256="s", missing=False,
+                          ingest_fp="", file_size=1, file_mtime=1)
+    assert [it.action for it in plan_changes(scan, [doc], "fp", 1)] == ["unreachable"]
+
+
+def test_revisions_written_differently_do_not_break_a_rescan():
+    from types import SimpleNamespace
+
+    from techrag.ingest.metadata import compute_supersedence
+
+    docs = [SimpleNamespace(id=i, doc_key="jesd79 4", path=f"d{i}.pdf", title="DDR4", doc_type="base", domain="ddr",
+                            entities=["DDR4"], version="", revision=rev, doc_date="") for i, rev in ((1, "C"), (2, "1.0"))]
+    assert dict(compute_supersedence(docs)) == {1: None, 2: None}, "cannot be ordered: no supersedence, no error"
+    docs[1].revision = "B"
+    assert dict(compute_supersedence(docs)) == {1: None, 2: 1}

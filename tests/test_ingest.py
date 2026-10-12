@@ -101,3 +101,62 @@ def test_text_loader_form_feed_pages(tmp_path: Path):
     f.write_text("page one text\fpage two text", encoding="utf-8")
     doc = load_document(f)
     assert [b.page for b in doc.blocks] == [1, 2]
+
+
+def test_text_files_with_bom_or_turkish_ansi(tmp_path):
+    bom = tmp_path / "a.md"
+    bom.write_bytes("﻿# Isı Kontrolü\n\nSıcaklık 85 °C.\n".encode("utf-8"))
+    doc = load_document(bom)
+    assert not doc.blocks[0].text.startswith("﻿") and doc.blocks[0].text.startswith("# Isı")
+    ansi = tmp_path / "b.txt"
+    ansi.write_bytes("Çalışma sıcaklığı 85 °C'dir.".encode("cp1254"))
+    assert "Çalışma sıcaklığı" in load_document(ansi).blocks[0].text
+
+
+def test_docx_sections_come_from_styled_headings(tmp_path):
+    import docx
+
+    from techrag.ingest.structure import assign_sections
+
+    d = docx.Document()
+    d.add_heading("2 Timing", level=1)
+    d.add_paragraph("Electrical characteristics are given in clause 3.")
+    d.add_heading("2.1 Refresh", level=2)
+    d.add_paragraph("tRFC is 350 ns.")
+    d.add_heading("3 Electrical characteristics", level=1)
+    d.add_paragraph("VDD is 1.2 V.")
+    path = tmp_path / "spec.docx"
+    d.save(str(path))
+    doc = load_document(path)
+    secs = {b.text: b.section for b in assign_sections(doc, doc.blocks)}
+    assert secs["Electrical characteristics are given in clause 3."] == ("2 Timing",)
+    assert secs["tRFC is 350 ns."] == ("2 Timing", "2.1 Refresh")
+    assert secs["VDD is 1.2 V."] == ("3 Electrical characteristics",)
+    assert [t[1] for t in doc.toc] == ["2 Timing", "2.1 Refresh", "3 Electrical characteristics"]
+
+
+def test_vlm_reply_cut_off_is_reported_not_cached(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    import pytest
+
+    from techrag.ingest import vlm
+    from techrag.llm import ChatResult
+
+    monkeypatch.setattr(vlm, "render_page", lambda *a, **k: b"png")
+    reply = {"r": ChatResult(content='{"tables": [{"caption": "T1", "rows": [["a"', finish_reason="length")}
+    client = SimpleNamespace(model="m", chat=lambda *a, **k: reply["r"])
+    ex = vlm.TableExtractor(client, tmp_path / "cache")
+    with pytest.raises(ValueError, match="cut off"):
+        ex.extract_page(tmp_path / "x.pdf", "a" * 64, 3, "text")
+    assert not list((tmp_path / "cache").rglob("*.json")), "nothing cached: the next re-index asks again"
+    results, errors = ex.extract(tmp_path / "x.pdf", "a" * 64, [3], {3: "text"})
+    assert results[3] == [] and "cut off" in errors[0]
+    reply["r"] = ChatResult(content='{"tables": [{"caption": "T", "columns": ["a"], "rows": null}]}', finish_reason="stop")
+    assert ex.extract_page(tmp_path / "x.pdf", "b" * 64, 1, "text")[0].caption == "T"
+
+
+def test_fts_query_keeps_turkish_dotted_capital_i():
+    from techrag.store import fts_query
+
+    assert fts_query("İletişim İvme") == '"iletişim" OR "ivme"'

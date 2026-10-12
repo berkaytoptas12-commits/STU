@@ -22,15 +22,22 @@ from typing import Iterable, Optional, Sequence
 
 _FOLD = str.maketrans({"µ": "u", "μ": "u", "Ω": " ohm ", "−": "-", "–": "-", "—": "-", "‐": "-",
                        "ﬁ": "fi", "ﬂ": "fl", "ﬀ": "ff", "ﬃ": "ffi", "ﬄ": "ffl", " ": " "})
-_TOKEN = re.compile(r"[a-z0-9]+(?:[.,][0-9]+)*")
+# A minus sign belongs to the number it stands in front of ("-40", "(-40"), not to "DDR4-3200" or "1-5".
+_TOKEN = re.compile(r"(?:(?<![a-z0-9.,])-(?=\d))?[a-z0-9]+(?:[.,][0-9]+)*")
+_NUM_UNIT = re.compile(r"(-?\d+(?:\.\d+)*)([a-z]+)")
 
 
 def norm_tokens(text: str) -> list[str]:
-    """Lower-case alphanumeric tokens; decimal commas become points so 1,2 and 1.2 compare equal.
+    """Lower-case alphanumeric tokens; an unambiguous decimal comma becomes a point so 1,2 and 1.2 compare equal
+    ("1,200" may mean 1200 and stays as written). A leading minus is kept: -40 is not 40.
     Punctuation is ignored: '295ns' -> ['295', 'ns'], 'max(10 ns, 4 tCK)' -> ['max', '10', 'ns', '4', 'tck']."""
     out = []
     for t in _TOKEN.findall(text.translate(_FOLD).lower()):
-        out.append(t.replace(",", ".") if re.fullmatch(r"\d+,\d+", t) else t)
+        m = re.fullmatch(r"(-?)(\d+),(\d+)", t)
+        if m and (len(m.group(3)) != 3 or m.group(2).lstrip("0") == "" or len(m.group(2)) > 3):
+            t = f"{m.group(1)}{m.group(2)}.{m.group(3)}"
+        nu = _NUM_UNIT.fullmatch(t)
+        out.extend([nu.group(1), nu.group(2)] if nu else [t])
     return out
 
 

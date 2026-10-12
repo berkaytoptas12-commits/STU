@@ -28,3 +28,17 @@ def test_parse_number_ambiguity():
     assert set(parse_number("1,200")) == {1.2, 1200.0}
     assert parse_number("1.234,5") == [1.2345, 1234.5] or 1234.5 in parse_number("1.234,5")
     assert format_si(3.5e-7, "s") == "350 ns"
+
+
+def test_signs_and_separators_are_kept_apart():
+    from techrag.geometry import norm_tokens
+    from techrag.units import to_si, value_kind
+
+    assert norm_tokens("-40") == norm_tokens("(−40 °C)")[:1] == ["-40"] and norm_tokens("40") == ["40"]
+    assert norm_tokens("DDR4-3200") == ["ddr4", "3200"] and norm_tokens("1-5 ns") == ["1", "5", "ns"]
+    assert norm_tokens("295ns") == ["295", "ns"], "a unit printed next to the number"
+    assert norm_tokens("1,200") != norm_tokens("1.200"), "1,200 may mean 1200: never equal to 1.2"
+    assert norm_tokens("1,2") == norm_tokens("1.2") and norm_tokens("0,125") == ["0.125"]
+    q = find_quantities("−40 °C to 85 °C; 1–5 ns; –3.3 V")
+    assert [v for x in q for v in x.values] == [-40.0, 85.0, 1e-9, 5e-9, -3.3]
+    assert value_kind("−40") == "number" and to_si("−40", "V") == -40.0

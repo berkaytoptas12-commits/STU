@@ -341,7 +341,7 @@ def _parse(obj: Optional[dict], page: int) -> list[ExtractedTable]:
     for t in (obj or {}).get("tables", []) or []:
         if not isinstance(t, dict):
             continue
-        rows = [[_cell(c) for c in r] for r in t.get("rows", []) if isinstance(r, list)]
+        rows = [[_cell(c) for c in r] for r in t.get("rows") or [] if isinstance(r, list)]
         cols = [_cell(c) for c in t.get("columns", []) or []]
         if not rows and not cols:
             continue
@@ -383,7 +383,12 @@ class TableExtractor:
                      {"type": "text", "text": f"Page {page}. Text layer:\n<<<\n{text_layer[:12000]}\n>>>"},
                      image_part(png)]}],
                 json_mode=True, max_tokens=self.max_tokens, temperature=0.0, thinking=False)
-            obj = parse_json_object(res.content) or {"tables": [], "_unparsed": res.content[:2000]}
+            obj = parse_json_object(res.content)
+            if res.finish_reason == "length" or not isinstance(obj, dict) or not isinstance(obj.get("tables"), list):
+                # A cut-off or unreadable reply is not "no tables on this page": report it, cache nothing.
+                why = "the reply was cut off (raise vision.max_tokens)" if res.finish_reason == "length" \
+                    else "the reply is not the expected JSON"
+                raise ValueError(f"page {page}: {why}; re-index the document to retry")
             if not read_only_cache:
                 write_text_atomic(cache, json.dumps(obj, ensure_ascii=False))
         geoms = geoms or {}

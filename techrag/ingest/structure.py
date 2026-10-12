@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 from techrag.ingest.loaders import TABLE_KIND, Block, LoadedDocument
@@ -152,6 +153,8 @@ def _sections_from_headings(blocks: list[Block]) -> list[SectionedBlock]:
 
 def assign_sections(doc: LoadedDocument, blocks: list[Block]) -> list[SectionedBlock]:
     toc = doc.toc
+    if Path(doc.path).suffix.lower() == ".docx":
+        return _sections_from_headings(blocks)  # its headings are marked from the paragraph styles
     # A chapter-only outline on a long document is too coarse; numbered headings do better then.
     if len(toc) >= 3 and (max(t[0] for t in toc) >= 2 or len(toc) >= doc.n_pages / 10):
         return _sections_from_toc(blocks, toc)

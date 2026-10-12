@@ -62,7 +62,7 @@ def _close(a: float, b: float, rel: float) -> bool:
 
 def parse_number(s: str) -> list[float]:
     """All plausible readings of a number string: '1,2' -> 1.2 (TR decimal); '1,200' -> 1200 or 1.2."""
-    s = s.replace("±", "").replace("+", "").strip()
+    s = normalize_signs(s).replace("±", "").replace("+", "").strip()
     neg = s.startswith("-")
     s = s.lstrip("-")
     out: list[float] = []
@@ -101,8 +101,16 @@ def unit_info(unit: str) -> Optional[tuple[str, float]]:
     return None
 
 
+def normalize_signs(text: str) -> str:
+    """U+2212 (−), common in PDF text layers, is a minus; so is an en/em dash directly in front of a number that
+    does not follow another number ("–40 °C", but "1–5 ns" stays a range). Same length as the input."""
+    text = text.replace("\u2212", "-")
+    return re.sub(r"(?<![\w.,])[–—](?=\d)", "-", text)
+
+
 def find_quantities(text: str) -> list[Quantity]:
     out: list[Quantity] = []
+    text = normalize_signs(text)
     for m in _QTY.finditer(text):
         info = unit_info(m.group("u"))
         if not info:
@@ -133,7 +141,7 @@ def is_unit_token(text: str) -> bool:
 def value_kind(value: str) -> str:
     """empty | number | range | expression. 'max(10 ns, 4 tCK)' or '0.5 x VDD' are expressions: they are
     kept verbatim and never reduced to a single number."""
-    v = (value or "").strip()
+    v = normalize_signs((value or "").strip())
     if v.lower() in _EMPTY_VALUES:
         return "empty"
     if _PLAIN_NUMBER.match(v):

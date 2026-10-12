@@ -422,11 +422,14 @@ class Ingestor:
                     continue
                 if it.action == "duplicate":
                     src_doc = self.store.document(it.from_doc)
-                    with self.gate.write():
-                        self.store.clone_document(it.from_doc, key, dict(source, ingest_fp=src_doc.ingest_fp))
-                    report.reused.append(key)
-                    self.progress(f"[{n}/{total}] {it.rel}: same content as '{src_doc.path}', index reused")
-                    continue
+                    # The original may have been re-indexed earlier in this run (its file changed): only
+                    # content that is still exactly this file's may be copied; otherwise index this file.
+                    if src_doc is not None and src_doc.sha256 == it.sha256 and not src_doc.missing:
+                        with self.gate.write():
+                            self.store.clone_document(it.from_doc, key, dict(source, ingest_fp=src_doc.ingest_fp))
+                        report.reused.append(key)
+                        self.progress(f"[{n}/{total}] {it.rel}: same content as '{src_doc.path}', index reused")
+                        continue
                 self.progress(f"[{n}/{total}] {it.bucket + ' / ' if it.bucket else ''}{it.rel}"
                               + (f" ({it.reason})" if it.reason else ""))
                 digest = it.sha256 or sha256_file(f.path)

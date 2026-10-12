@@ -90,6 +90,10 @@ class ScanResult:
     def unreadable_prefixes(self) -> list[str]:
         return [u.rstrip("/") + "/" if u not in ("", ".") else "" for u in self.unreadable]
 
+    def is_unreadable(self, rel: str) -> bool:
+        """The path itself (an unreadable file) or a folder above it could not be read."""
+        return rel in self.unreadable or any(p == "" or rel.startswith(p) for p in self.unreadable_prefixes())
+
 
 def _is_link(entry: os.DirEntry) -> bool:
     """Symbolic link, or a Windows junction / other reparse point."""
@@ -219,19 +223,28 @@ def plan_changes(scan: ScanResult, docs: list, fingerprint: str, root_id: Option
         return [PlanItem("unreachable", d.rel_path, d.bucket, d.bucket_id, doc_id=d.id, reason=scan.error)
                 for d in docs]
     gone = [d for d in docs if d.rel_path not in found]
-    prefixes = scan.unreadable_prefixes()
     gone_by_sha: dict[str, list] = {}
     for d in gone:
         gone_by_sha.setdefault(d.sha256, []).append(d)
     all_by_sha: dict[str, object] = {d.sha256: d for d in docs if not d.missing}
     reused: set[int] = set()
+
+    def digest(it: PlanItem) -> bool:
+        """Hash the file; a file that cannot be read (locked, permissions) is left as it is - one such file
+        never stops the folder."""
+        try:
+            it.sha256 = hash_fn(it.file.path)
+            return True
+        except OSError as exc:
+            it.action, it.reason = "unreachable", f"cannot read the file: {exc.__class__.__name__}"
+            return False
+
     for f in scan.files:
         d = by_rel.get(f.rel)
         it = PlanItem("unchanged", f.rel, f.bucket, f.bucket_id, f, d.id if d else None)
         if d is None:
             it.action = "new"
-            if hash_fn:
-                it.sha256 = hash_fn(f.path)
+            if hash_fn and digest(it):
                 prev = next((g for g in gone_by_sha.get(it.sha256, []) if g.id not in reused), None)
                 if prev is not None and _fp_ok(prev, fingerprint) and not rebuild:
                     it.action, it.from_doc = "moved", prev.id
@@ -245,10 +258,13 @@ def plan_changes(scan: ScanResult, docs: list, fingerprint: str, root_id: Option
             it.action, it.reason = "changed", "full re-index requested"
         elif not same_stat:
             if hash_fn:
-                it.sha256 = hash_fn(f.path)
-                it.action = "touched" if it.sha256 == d.sha256 else "changed"
+                if digest(it):
+                    it.action = "touched" if it.sha256 == d.sha256 else "changed"
             else:
                 it.action = "changed"   # preview: may turn out identical when hashed
+        if it.action == "unreachable":
+            items.append(it)
+            continue
         if it.action in ("unchanged", "touched") and not _fp_ok(d, fingerprint):
             it.action, it.reason = "settings", "parsing / table-extraction settings changed"
         elif it.action == "unchanged" and d.missing:
@@ -257,7 +273,7 @@ def plan_changes(scan: ScanResult, docs: list, fingerprint: str, root_id: Option
     for d in gone:
         if d.id in reused:
             continue
-        if any(p == "" or d.rel_path.startswith(p) for p in prefixes):
+        if scan.is_unreadable(d.rel_path):
             items.append(PlanItem("unreachable", d.rel_path, d.bucket, d.bucket_id, doc_id=d.id,
                                   reason="its folder could not be read"))
         else:
