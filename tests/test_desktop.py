@@ -178,6 +178,7 @@ def _run(gui, scenario):
         gui.seen["start"] = kw
         w = gui.seen["windows"][0]
         w.events.shown.set()
+        w.events.loaded.set()
 
         def play():
             try:
@@ -219,7 +220,7 @@ def test_icon_first_then_click_opens_the_one_chat_window(gui):
     assert gui.seen["api"].pick_folder() == "C:/picked"
     assert w.calls[-2:] == ["hide", "destroy"]
     icon_calls = FakeLauncher.instances[0].calls
-    assert icon_calls[:2] == ["start", "hide"] and icon_calls[-1] == "close", "icon hidden at once, then closed"
+    assert icon_calls[:2] == ["start", "close"], "the icon goes at once: a new start then waits for this one to end"
     assert [x[0] for x in FakeGuard.log] == ["acquire", "release"]
 
 
@@ -272,10 +273,34 @@ def test_session_end_lets_the_window_close(gui):
     def scenario(w, icon, desk):
         icon.click()
         assert desk.idle()
-        desk.session_end(False)
+        desk.session_end(None)            # Windows asks to log off
         assert w.user_closes() is True, "Windows logging off is never blocked"
 
     assert _run(gui, scenario) == 0
+
+
+def test_cancelled_logoff_leaves_the_app_working(gui):
+    def scenario(w, icon, desk):
+        desk.session_end(None)
+        desk.session_end(False)           # the user cancelled logging off
+        assert not desk.quitting
+        icon.click()
+        assert desk.idle() and w.visible, "the icon still opens the chat"
+        assert w.user_closes() is False and desk.idle() and not w.visible, "close still only hides"
+        icon.menu(L.IDM_QUIT)
+
+    assert _run(gui, scenario) == 0
+
+
+def test_close_request_from_another_program_quits(gui):
+    def scenario(w, icon, desk):
+        job = desk.jobs.create("ingest")
+        job["status"] = "running"
+        desk.request_quit(confirm=False)  # what the launcher reports for a foreign WM_CLOSE
+        assert w.destroyed.wait(10) and desk.jobs.gate.stop.is_set()
+
+    assert _run(gui, scenario) == 0
+    assert not gui.answers, "no confirmation asked"
 
 
 def test_second_start_hands_over_without_a_backend(gui, monkeypatch):

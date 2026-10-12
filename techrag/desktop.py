@@ -137,7 +137,7 @@ SMOKE_JS = """(function () {
 
 
 class DesktopApp:
-    """the exe while it runs: one backend, one chat window and one launcher icon for the whole session.
+    """The desktop app while it runs: one backend, one chat window and one launcher icon for the whole session.
 
     The chat window is created once and from then on only shown and hidden: the conversation, the selected buckets,
     the open PDF page and the panel sizes stay exactly as they were, and indexing (a backend thread) goes on while it
@@ -157,12 +157,15 @@ class DesktopApp:
         self.confirm = confirm or L.ask_yes_no
         self.launcher = None
         self.quitting = False
+        self.session_ending = False   # Windows asked to log off / shut down (may still be cancelled)
         self.visible = not hide_on_close
         self.stats = {"opened": 0, "hidden": 0, "activations": 0, "hints": 0}
         self._shutdown_lock = threading.Lock()
         self._shutdown_done = False
         self._q: queue.Queue = queue.Queue()
+        self._page_q: queue.Queue = queue.Queue()
         threading.Thread(target=self._loop, name="desktop", daemon=True).start()
+        threading.Thread(target=self._page_loop, name="page-calls", daemon=True).start()
 
     # ------------------------------------------------------------ called from the launcher / pywebview threads
     def lang(self) -> str:
@@ -187,7 +190,7 @@ class DesktopApp:
             self.request_quit()
 
     def activate(self) -> None:
-        """A second the exe was started: it exits, this one shows its chat window."""
+        """The exe was started a second time: that one exits, this one shows its chat window."""
         self.stats["activations"] += 1
         self.open_chat()
 
@@ -197,30 +200,41 @@ class DesktopApp:
     def request_quit(self, confirm: bool = True) -> None:
         self._post(self._quit, confirm)
 
-    def session_end(self, final: bool) -> None:
-        """Windows is logging off / shutting down: let the chat window close; when it is final, stop indexing at a
-        safe point right away (Windows ends the process soon after)."""
-        self.quitting = True
-        if final:
+    def session_end(self, final: Optional[bool]) -> None:
+        """Windows logging off / shutting down. None: it asks (the chat window may then close); True: it happens
+        now - stop indexing at a safe point right away (Windows ends the process soon after); False: the user
+        cancelled it (e.g. to save a file elsewhere) - everything goes on as before."""
+        if final is None:
+            self.session_ending = True
+        elif final:
+            self.session_ending = True
+            self.quitting = True
             self.shutdown(timeout=5)
+        else:
+            self.session_ending = False
 
     def on_chat_closing(self) -> bool:
         """pywebview `closing` handler (GUI thread). Returning False cancels the close: the window is hidden."""
-        if self.quitting or not self.hide_on_close or self._L.session_ending():
-            self.quitting = True
-            return True
+        if self.quitting or not self.hide_on_close or self.session_ending or self._L.session_ending():
+            return True  # never block Windows logging off
         self._post(self._hide, True)
         return False
 
     def idle(self, timeout: float = 10.0) -> bool:
-        """Wait until everything queued so far is done (tests)."""
-        done = threading.Event()
+        """Wait until everything queued so far - window actions, then page calls - is done (tests)."""
+        done, page = threading.Event(), threading.Event()
         self._post(done.set)
-        return done.wait(timeout)
+        if not done.wait(timeout):
+            return False
+        self._page_q.put(page)
+        return page.wait(timeout)
 
     def shutdown(self, timeout: float) -> None:
-        """Stop background indexing at a safe point (see Jobs.shutdown); idempotent."""
-        with self._shutdown_lock:
+        """Stop background indexing at a safe point (see Jobs.shutdown); idempotent. Waits at most `timeout`,
+        also when another thread is already shutting down (Windows logging off must not wait for a Quit)."""
+        if not self._shutdown_lock.acquire(timeout=timeout):
+            return
+        try:
             if self._shutdown_done:
                 return
             t0 = time.time()
@@ -228,6 +242,8 @@ class DesktopApp:
             self._shutdown_done = True
             log.info("background jobs stopped (%s) in %.1f s", "index writes complete" if ok else
                      "a write did not finish in time; SQLite rolls it back", time.time() - t0)
+        finally:
+            self._shutdown_lock.release()
 
     def finish(self) -> None:
         """The GUI loop has ended (quit, Windows logging off or a failure)."""
@@ -236,6 +252,7 @@ class DesktopApp:
         if self.launcher is not None:
             self.launcher.close()
         self._q.put((None, ()))
+        self._page_q.put(None)
 
     # ------------------------------------------------------------ desktop thread
     def _post(self, fn, *args) -> None:
@@ -263,12 +280,12 @@ class DesktopApp:
         if not self.chat.events.shown.wait(120):  # clicked while the window was still being created
             log.error("the chat window was not created")
             return
-        self.chat.show()
         hwnd = self.chat_hwnd()
+        if hwnd and self.launcher is not None:
+            self.launcher.set_companion(hwnd)  # before it becomes active: the icon then steps behind it
+        self.chat.show()
         if hwnd and os.name == "nt":
             self._L.bring_to_front(hwnd)  # also restores a minimized window
-            if self.launcher is not None:
-                self.launcher.set_companion(hwnd)
         self.visible = True
         self.stats["opened"] += 1
         self._page("window.techragHost && window.techragHost.setVisible(true)")
@@ -290,14 +307,23 @@ class DesktopApp:
                              name="hint", daemon=True).start()
 
     def _page(self, script: str) -> None:
-        """Tell the page (never blocks this thread: evaluate_js waits for the page to be ready)."""
-        def run():
+        """Tell the page, in order (setVisible(false) must never overtake a later setVisible(true)), on a thread of
+        its own: evaluate_js waits until the page is ready, which must not hold up the window actions."""
+        self._page_q.put(script)
+
+    def _page_loop(self) -> None:
+        while True:
+            script = self._page_q.get()
+            if script is None:
+                return
+            if isinstance(script, threading.Event):  # idle() marker
+                script.set()
+                continue
             try:
-                self.chat.evaluate_js(script)
+                if self.chat.events.loaded.wait(120):
+                    self.chat.evaluate_js(script)
             except Exception as exc:
                 log.warning("page call failed: %s", exc)
-
-        threading.Thread(target=run, name="page-call", daemon=True).start()
 
     def _quit(self, confirm: bool) -> None:
         if self._shutdown_done and self.quitting:
@@ -309,16 +335,21 @@ class DesktopApp:
         log.info("quit requested")
         self.quitting = True
         if self.launcher is not None:
-            self.launcher.hide()
+            # Gone at once (not just hidden): a new start of the exe then waits for this process to end and
+            # starts afresh, instead of handing over to an app that is shutting down.
+            self.launcher.close()
         if self.visible:
             try:
                 self.chat.hide()
             except Exception:
                 pass
         self.shutdown(timeout=60)
-        if self.launcher is not None:
-            self.launcher.close()
-        self.chat.destroy()  # ends webview.start() in the main thread
+        self.chat.events.shown.wait(120)  # Quit right after start: the window must exist before it is closed
+        try:
+            self.chat.destroy()  # ends webview.start() in the main thread
+        except Exception:
+            log.exception("the chat window could not be closed: ending the process")
+            _hard_exit(0)
 
 
 def _setup_logging(install_hooks: bool) -> Path:
@@ -515,25 +546,27 @@ def _set_process_dpi_aware() -> None:
         pass
 
 
-def _chat_size() -> tuple[int, int, int, int]:
-    """Chat window (width, height, min width, min height) in logical pixels: 1480 x 940 leaves room for the PDF panel;
-    smaller when the screen is."""
-    w, h = 1480, 940
+def _chat_geometry(state) -> tuple[int, int, int, int, Optional[int], Optional[int]]:
+    """Chat window (width, height, min width, min height, x, y) in logical pixels. 1480 x 940 leaves room for the
+    PDF panel; smaller when the screen is. On Windows it is centred on the work area of the monitor that shows the
+    launcher icon - the size and the position come from the same monitor (by default Windows would centre it on
+    the monitor under the mouse, which may be a smaller one)."""
+    w, h, x, y = 1480, 940, None, None
     if os.name == "nt":
         try:
-            import ctypes
-            from ctypes import wintypes
+            from techrag.launcher import list_monitors, primary_monitor, system_dpi
 
-            user32 = ctypes.WinDLL("user32")
-            r = wintypes.RECT()
-            if user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(r), 0):  # SPI_GETWORKAREA (primary)
-                dpi = user32.GetDpiForSystem() if hasattr(user32, "GetDpiForSystem") else 96
-                scale = max(int(dpi or 96), 48) / 96
-                w = min(w, int((r.right - r.left) / scale * 0.94))
-                h = min(h, int((r.bottom - r.top) / scale * 0.92))
+            mons = list_monitors()  # this thread is system DPI aware, like the chat window
+            name = (state.get("launcher") or {}).get("monitor")
+            mon = next((m for m in mons if name and m.name == name), None) or primary_monitor(mons)
+            scale = max(system_dpi(), 48) / 96
+            left, top, right, bottom = mon.work
+            ww, wh = (right - left) / scale, (bottom - top) / scale
+            w, h = min(w, int(ww * 0.94)), min(h, int(wh * 0.92))
+            x, y = int(left / scale + (ww - w) / 2), int(top / scale + (wh - h) / 2)
         except Exception:
-            pass
-    return w, h, min(960, w), min(620, h)
+            log.exception("could not size the chat window for its monitor")
+    return w, h, min(960, w), min(620, h), x, y
 
 
 def _launcher_supported() -> bool:
@@ -544,7 +577,8 @@ def _make_launcher(key: str, desk: DesktopApp, state):
     from techrag.launcher import Launcher
 
     return Launcher(key, state.get("launcher"), desk.lang, on_click=desk.open_chat, on_command=desk.command,
-                    on_activate=desk.activate, on_moved=desk.icon_moved, on_session_end=desk.session_end)
+                    on_activate=desk.activate, on_moved=desk.icon_moved, on_session_end=desk.session_end,
+                    on_close_request=lambda: desk.request_quit(confirm=False))
 
 
 def run_gui() -> int:
@@ -563,7 +597,7 @@ def run_gui() -> int:
         _set_process_dpi_aware()
     key = instance_key(settings_path())
     guard = SingleInstance(key)
-    deadline = time.monotonic() + 20
+    deadline = time.monotonic() + 90  # longer than a Quit may take to stop indexing
     while not guard.acquire():  # another instance runs (or is still starting / just closing)
         if guard.notify_running(timeout=0.5):
             log.info("already running in this session: asked it to open its chat window")
@@ -615,9 +649,9 @@ def _run_gui(key: str, log_path: Path) -> int:
     use_launcher = _launcher_supported()
     state = DesktopState(log_path.parent / "desktop.json")
     api = JsApi()
-    width, height, min_w, min_h = _chat_size()
+    width, height, min_w, min_h, x, y = _chat_geometry(state)
     chat = webview.create_window(APP_TITLE, f"http://127.0.0.1:{port}/?token={token}", js_api=api,
-                                 width=width, height=height, min_size=(min_w, min_h), text_select=True,
+                                 width=width, height=height, x=x, y=y, min_size=(min_w, min_h), text_select=True,
                                  hidden=use_launcher)  # created once, in the background: the icon shows it
     api._window = chat
     desk = DesktopApp(chat, app.state.jobs, lambda: app.state.state["cfg"].ui.language, state,
@@ -683,7 +717,26 @@ def main(argv=None) -> int:
         from techrag.cli import main as cli_main
 
         return cli_main(argv)
-    return run_gui()
+    code = run_gui()
+    _hard_exit(code)
+    return code
+
+
+def _hard_exit(code: int) -> None:
+    """End the GUI process now. A normal interpreter exit waits until every worker of the indexing thread pools
+    (VLM page extraction, embedding batches) has finished its queued model calls - possibly long after the user
+    chose Quit, with the icon gone but the process still running. Index writes are already stopped at that point
+    (Jobs.shutdown); the log is flushed first."""
+    import logging as _logging
+
+    try:
+        _logging.shutdown()
+        for stream in (sys.stdout, sys.stderr):
+            if stream:
+                stream.flush()
+    except Exception:
+        pass
+    os._exit(code)
 
 
 if __name__ == "__main__":

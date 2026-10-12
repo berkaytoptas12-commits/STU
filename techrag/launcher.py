@@ -282,7 +282,7 @@ WM_NULL, WM_DESTROY, WM_CLOSE, WM_QUERYENDSESSION, WM_ENDSESSION = 0x0000, 0x000
 WM_SETTINGCHANGE, WM_MOUSEACTIVATE, WM_CONTEXTMENU, WM_DISPLAYCHANGE = 0x001A, 0x0021, 0x007B, 0x007E
 WM_COMMAND, WM_MOUSEMOVE, WM_LBUTTONDOWN, WM_LBUTTONUP = 0x0111, 0x0200, 0x0201, 0x0202
 WM_CAPTURECHANGED, WM_MOUSELEAVE, WM_DPICHANGED = 0x0215, 0x02A3, 0x02E0
-WM_APP_HIDE, WM_APP_SHOW = 0x8000 + 1, 0x8000 + 2
+WM_APP_HIDE, WM_APP_SHOW, WM_APP_ZORDER = 0x8000 + 1, 0x8000 + 2, 0x8000 + 3
 MK_LBUTTON, MA_NOACTIVATE, SPI_SETWORKAREA = 0x0001, 3, 0x002F
 WS_POPUP = 0x80000000
 WS_EX_TOPMOST, WS_EX_TOOLWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE = 0x00000008, 0x00000080, 0x00080000, 0x08000000
@@ -475,6 +475,43 @@ def bring_to_front(hwnd) -> None:
     a.SetForegroundWindow(hwnd)
 
 
+def system_dpi() -> int:
+    a = win32()
+    hdc = a.GetDC(None)
+    try:
+        return int(a.GetDeviceCaps(hdc, LOGPIXELSX)) or 96
+    finally:
+        a.ReleaseDC(None, hdc)
+
+
+def list_monitors() -> list[Monitor]:
+    """All monitors with their work areas, in the coordinates of the calling thread's DPI awareness."""
+    a = win32()
+    ctypes = a.ctypes
+    found: list[Monitor] = []
+
+    def each(hmon, hdc, rect, data):
+        info = a.MONITORINFOEXW()
+        info.cbSize = ctypes.sizeof(info)
+        if a.GetMonitorInfoW(hmon, ctypes.byref(info)):
+            dpi = 0
+            if a.GetDpiForMonitor is not None:
+                dx, dy = a.W.UINT(), a.W.UINT()
+                if a.GetDpiForMonitor(hmon, 0, ctypes.byref(dx), ctypes.byref(dy)) == 0:
+                    dpi = int(dx.value)
+            r, w = info.rcMonitor, info.rcWork
+            found.append(Monitor(info.szDevice, (r.left, r.top, r.right, r.bottom),
+                                 (w.left, w.top, w.right, w.bottom), dpi or system_dpi(), bool(info.dwFlags & 1)))
+        return True
+
+    proc = a.MONITORENUMPROC(each)
+    a.EnumDisplayMonitors(None, None, proc, 0)
+    if not found:
+        w, h = a.GetSystemMetrics(0), a.GetSystemMetrics(1)
+        found.append(Monitor("", (0, 0, w, h), (0, 0, w, h), system_dpi(), True))
+    return found
+
+
 class SingleInstance:
     """One instance per Windows session and settings location, guarded by a named mutex (Windows releases it even if
     the process dies). A second start of the exe does not start another backend: it asks the running one, through its
@@ -540,18 +577,22 @@ class Launcher:
     on_command(IDM_*)        - a context-menu choice
     on_activate()            - the exe was started a second time
     on_moved(anchor)         - the icon was dragged somewhere else (anchor: see anchor_for)
-    on_session_end(final)    - Windows is logging off / shutting down (final=True: it really happens now)
+    on_session_end(final)    - Windows logging off / shutting down: None = asked, True = happening now,
+                               False = cancelled by the user
+    on_close_request()       - another program asked the app to close (taskkill without /F, an installer)
     """
 
     def __init__(self, key: str, anchor: Optional[dict], lang: Callable[[], str], on_click: Callable[[], None],
                  on_command: Callable[[int], None], on_activate: Callable[[], None],
-                 on_moved: Callable[[dict], None], on_session_end: Optional[Callable[[bool], None]] = None,
-                 title: str = APP_TITLE):
+                 on_moved: Callable[[dict], None], on_session_end: Optional[Callable[[Optional[bool]], None]] = None,
+                 on_close_request: Optional[Callable[[], None]] = None, title: str = APP_TITLE):
         self.key, self.title = key, title
         self.anchor = dict(anchor) if isinstance(anchor, dict) else default_anchor()
         self.lang = lang
         self.on_click, self.on_command, self.on_activate = on_click, on_command, on_activate
         self.on_moved, self.on_session_end = on_moved, on_session_end or (lambda final: None)
+        self.on_close_request = on_close_request or (lambda: on_command(IDM_QUIT))
+        self._closing = False
         self.hwnd = None
         self.companion = None     # chat window: while it is the active window the icon goes behind it
         self.placed: dict = {}
@@ -588,11 +629,13 @@ class Launcher:
         self.post(WM_APP_SHOW)
 
     def close(self, wait: float = 5.0) -> None:
+        self._closing = True  # our own close; a WM_CLOSE from elsewhere is a request to quit the whole app
         if self.post(WM_CLOSE):
             self.closed.wait(wait)
 
     def set_companion(self, hwnd) -> None:
         self.companion = int(hwnd) if hwnd else None
+        self.post(WM_APP_ZORDER)  # re-check now: the chat window may already be the active one
 
     def info(self) -> dict:
         """Placement and window styles (call from a thread made per-monitor aware with use_physical_pixels())."""
@@ -725,11 +768,14 @@ class Launcher:
                 self._place()
             return 0
         if msg == WM_QUERYENDSESSION:
-            self._call(self.on_session_end, False)
-            return 1
+            self._call(self.on_session_end, None)
+            return 1                                     # never block logging off
         if msg == WM_ENDSESSION:
-            if wp:
-                self._call(self.on_session_end, True)
+            self._call(self.on_session_end, bool(wp))   # False: the user cancelled logging off
+            return 0
+        if msg == WM_APP_ZORDER:
+            self._below = None                           # force the decision
+            self._on_foreground(None, 0, a.GetForegroundWindow(), 0, 0, 0, 0)
             return 0
         if msg == WM_APP_HIDE:
             a.ShowWindow(hwnd, SW_HIDE)
@@ -739,7 +785,10 @@ class Launcher:
             a.SetWindowPos(hwnd, a.HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
             return 0
         if msg == WM_CLOSE:
-            a.DestroyWindow(hwnd)
+            if self._closing:
+                a.DestroyWindow(hwnd)
+            else:  # not the app closing its icon: another program wants the app to end - quit it properly
+                self._call(self.on_close_request)
             return 0
         if msg == WM_DESTROY:
             a.PostQuitMessage(0)
@@ -801,6 +850,12 @@ class Launcher:
         self.placed = {"monitor": mon.name, "work": list(mon.work), "dpi": mon.dpi, "x": x, "y": y, "size": size,
                        "size_dip": round(size * 96 / max(mon.dpi, 48), 1), "anchor": dict(self.anchor)}
 
+    def _system_dpi(self) -> int:
+        return system_dpi()
+
+    def _monitors(self) -> list[Monitor]:
+        return list_monitors()
+
     def _window_dpi(self) -> int:
         a = win32()
         if self.hwnd and a.GetDpiForWindow is not None:
@@ -808,41 +863,6 @@ class Launcher:
             if d:
                 return int(d)
         return self._system_dpi()
-
-    def _system_dpi(self) -> int:
-        a = win32()
-        hdc = a.GetDC(None)
-        try:
-            return int(a.GetDeviceCaps(hdc, LOGPIXELSX)) or 96
-        finally:
-            a.ReleaseDC(None, hdc)
-
-    def _monitors(self) -> list[Monitor]:
-        a = win32()
-        ctypes = a.ctypes
-        found: list[Monitor] = []
-
-        def each(hmon, hdc, rect, data):
-            info = a.MONITORINFOEXW()
-            info.cbSize = ctypes.sizeof(info)
-            if a.GetMonitorInfoW(hmon, ctypes.byref(info)):
-                dpi = 0
-                if a.GetDpiForMonitor is not None:
-                    dx, dy = a.W.UINT(), a.W.UINT()
-                    if a.GetDpiForMonitor(hmon, 0, ctypes.byref(dx), ctypes.byref(dy)) == 0:
-                        dpi = int(dx.value)
-                r, w = info.rcMonitor, info.rcWork
-                found.append(Monitor(info.szDevice, (r.left, r.top, r.right, r.bottom),
-                                     (w.left, w.top, w.right, w.bottom), dpi or self._system_dpi(),
-                                     bool(info.dwFlags & 1)))
-            return True
-
-        proc = a.MONITORENUMPROC(each)
-        a.EnumDisplayMonitors(None, None, proc, 0)
-        if not found:
-            w, h = a.GetSystemMetrics(0), a.GetSystemMetrics(1)
-            found.append(Monitor("", (0, 0, w, h), (0, 0, w, h), self._system_dpi(), True))
-        return found
 
     def _render(self, x: Optional[int] = None, y: Optional[int] = None, size: Optional[int] = None) -> None:
         """Draw the icon (per-pixel alpha); with x/y/size also move/resize the window in the same step."""

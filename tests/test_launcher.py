@@ -142,7 +142,7 @@ def _wait(pred, timeout=10.0):
 
 @pytest.fixture
 def real_launcher():
-    events = {"click": 0, "commands": [], "activate": 0, "moved": []}
+    events = {"click": 0, "commands": [], "activate": 0, "moved": [], "session": [], "close_request": 0}
     lock = threading.Lock()
 
     def bump(k):
@@ -152,7 +152,9 @@ def real_launcher():
     key = f"test{os.getpid()}"
     ln = L.Launcher(key, None, lambda: "tr", on_click=lambda: bump("click"),
                     on_command=lambda c: events["commands"].append(c), on_activate=lambda: bump("activate"),
-                    on_moved=lambda a: events["moved"].append(a))
+                    on_moved=lambda a: events["moved"].append(a),
+                    on_session_end=lambda final: events["session"].append(final),
+                    on_close_request=lambda: bump("close_request"))
     assert ln.start(), ln.error
     L.use_physical_pixels()
     yield ln, events, key
@@ -213,3 +215,15 @@ def test_real_icon_closes_cleanly():
     hwnd = ln.hwnd
     ln.close()
     assert ln.closed.is_set() and ln.hwnd is None and not L.win32().IsWindow(hwnd)
+
+
+@win
+def test_real_icon_reports_foreign_close_and_logoff(real_launcher):
+    ln, events, key = real_launcher
+    a = L.win32()
+    a.PostMessageW(ln.hwnd, L.WM_CLOSE, 0, 0)          # e.g. taskkill without /F
+    assert _wait(lambda: events["close_request"] == 1)
+    assert a.IsWindow(ln.hwnd), "the icon is not destroyed by someone else's WM_CLOSE: the app quits properly"
+    a.PostMessageW(ln.hwnd, L.WM_QUERYENDSESSION, 0, 0)
+    a.PostMessageW(ln.hwnd, L.WM_ENDSESSION, 0, 0)     # logging off cancelled
+    assert _wait(lambda: events["session"] == [None, False])
