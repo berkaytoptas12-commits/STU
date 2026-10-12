@@ -1,4 +1,4 @@
-"""TechRAG.exe's round launcher icon and single-instance handling (Windows).
+"""The round launcher icon of the desktop app and its single-instance handling (Windows).
 
 The app starts as a small round icon in the bottom-right corner of the screen. A click opens the chat window, a drag
 moves the icon (its place is remembered), and the right-click menu offers "Open chat", "Settings" and "Quit". The icon
@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
-from techrag.config import write_text_atomic
+from techrag.config import APP_TITLE, write_text_atomic
 
 log = logging.getLogger("techrag.launcher")
 
@@ -34,32 +34,33 @@ SIZE_DIP = 60        # icon window edge in device-independent pixels (disc + sof
 MARGIN_DIP = 16      # default distance from the work-area edges (bottom-right corner)
 DRAG_DIP = 4         # a press that moves farther than this is a drag, not a click
 IDM_OPEN, IDM_SETTINGS, IDM_QUIT = 1001, 1002, 1003
+# Internal names keep the former "TechRAG" prefix on purpose: an older build still running is detected as the same app.
 ACTIVATE_MESSAGE = "TechRAG.Launcher.Activate"
 
 TEXTS = {
     "tr": {
         "open": "Sohbeti aç", "settings": "Ayarlar", "quit": "Uygulamadan çık",
-        "hint_title": "TechRAG çalışmaya devam ediyor",
-        "hint": ("Pencere gizlendi; TechRAG ekrandaki yuvarlak simge olarak çalışmaya devam ediyor. Sohbet, seçili "
-                 "kovalar, açık PDF ve süren indeksleme olduğu gibi korunur.\n\nSohbeti yeniden açmak için simgeye "
-                 "tıklayın. Uygulamadan tamamen çıkmak için simgeye sağ tıklayıp “Uygulamadan çık” "
+        "hint_title": f"{APP_TITLE} çalışmaya devam ediyor",
+        "hint": (f"Pencere gizlendi; {APP_TITLE} ekrandaki yuvarlak simge olarak çalışmaya devam ediyor. Sohbet, "
+                 "seçili bucket'lar, açık PDF ve süren indeksleme olduğu gibi korunur.\n\nSohbeti yeniden açmak için "
+                 "simgeye tıklayın. Uygulamadan tamamen çıkmak için simgeye sağ tıklayıp \u201cUygulamadan çık\u201d "
                  "seçeneğini kullanın."),
         "busy_title": "İndeksleme sürüyor",
         "busy": ("Belge indeksleme devam ediyor. Şimdi çıkarsanız o an yazılmakta olan kayıt tamamlanır; işlenmekte "
                  "olan ve kalan belgeler bir sonraki taramada işlenir. İndeks bozulmaz.\n\nUygulamadan çıkılsın mı?"),
-        "running": "TechRAG zaten çalışıyor fakat yanıt vermiyor. Biraz bekleyip yeniden deneyin.",
+        "running": f"{APP_TITLE} zaten çalışıyor fakat yanıt vermiyor. Biraz bekleyip yeniden deneyin.",
     },
     "en": {
-        "open": "Open chat", "settings": "Settings", "quit": "Quit TechRAG",
-        "hint_title": "TechRAG keeps running",
-        "hint": ("The window was hidden; TechRAG keeps running as the round icon on your screen. The chat, the selected "
-                 "buckets, the open PDF and any indexing in progress are kept as they are.\n\nClick the icon to open "
-                 "the chat again. To quit completely, right-click the icon and choose “Quit TechRAG”."),
+        "open": "Open chat", "settings": "Settings", "quit": "Quit",
+        "hint_title": f"{APP_TITLE} keeps running",
+        "hint": (f"The window was hidden; {APP_TITLE} keeps running as the round icon on your screen. The chat, the "
+                 "selected buckets, the open PDF and any indexing in progress are kept as they are.\n\nClick the icon "
+                 "to open the chat again. To quit completely, right-click the icon and choose \u201cQuit\u201d."),
         "busy_title": "Indexing in progress",
         "busy": ("Documents are still being indexed. If you quit now, the record being written is completed; the "
                  "document in progress and the remaining ones are processed by the next rescan. The index stays "
-                 "consistent.\n\nQuit TechRAG?"),
-        "running": "TechRAG is already running but does not respond. Please wait a moment and try again.",
+                 "consistent.\n\nQuit now?"),
+        "running": f"{APP_TITLE} is already running but does not respond. Please wait a moment and try again.",
     },
 }
 
@@ -246,7 +247,7 @@ def render_icon(size: int, hover: bool = False) -> bytes:
 
 # ------------------------------------------------------------------------------------------- state
 class DesktopState:
-    """%APPDATA%\\TechRAG\\desktop.json: where the launcher icon sits and which one-time hints were shown. (The chat,
+    """desktop.json next to settings.json: where the launcher icon sits and which one-time hints were shown. (The chat,
     panel sizes and selections live in the page; nothing here touches the index.)"""
 
     def __init__(self, path: str | Path):
@@ -271,7 +272,7 @@ class DesktopState:
 
 
 def instance_key(settings_file: str | Path) -> str:
-    """One running TechRAG per Windows session and settings location."""
+    """One running instance per Windows session and settings location."""
     p = os.path.normcase(os.path.abspath(str(settings_file)))
     return hashlib.sha1(p.encode("utf-8")).hexdigest()[:12]
 
@@ -475,8 +476,8 @@ def bring_to_front(hwnd) -> None:
 
 
 class SingleInstance:
-    """One TechRAG per Windows session and settings location, guarded by a named mutex (Windows releases it even if
-    the process dies). A second TechRAG.exe does not start another backend: it asks the running one, through its
+    """One instance per Windows session and settings location, guarded by a named mutex (Windows releases it even if
+    the process dies). A second start of the exe does not start another backend: it asks the running one, through its
     launcher icon, to open the chat window, and exits."""
 
     def __init__(self, key: str):
@@ -537,7 +538,7 @@ class Launcher:
 
     on_click()               - a click (not a drag): open the chat
     on_command(IDM_*)        - a context-menu choice
-    on_activate()            - a second TechRAG.exe was started
+    on_activate()            - the exe was started a second time
     on_moved(anchor)         - the icon was dragged somewhere else (anchor: see anchor_for)
     on_session_end(final)    - Windows is logging off / shutting down (final=True: it really happens now)
     """
@@ -545,7 +546,7 @@ class Launcher:
     def __init__(self, key: str, anchor: Optional[dict], lang: Callable[[], str], on_click: Callable[[], None],
                  on_command: Callable[[int], None], on_activate: Callable[[], None],
                  on_moved: Callable[[dict], None], on_session_end: Optional[Callable[[bool], None]] = None,
-                 title: str = "TechRAG"):
+                 title: str = APP_TITLE):
         self.key, self.title = key, title
         self.anchor = dict(anchor) if isinstance(anchor, dict) else default_anchor()
         self.lang = lang

@@ -1,4 +1,5 @@
-"""Per-user settings written by the desktop Settings dialog (%APPDATA%/TechRAG/settings.json).
+"""Per-user settings written by the desktop Settings dialog (%APPDATA%/SayisalTasarimUzmani/settings.json; an existing %APPDATA%/TechRAG folder
+from before the rename keeps being used).
 
 API keys are encrypted with Windows DPAPI (bound to the Windows user account) when available; on
 other platforms the file is created with owner-only permissions.

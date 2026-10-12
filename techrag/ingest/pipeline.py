@@ -63,7 +63,7 @@ class WriteGate:
 
     def check(self) -> None:
         if self.stop.is_set():
-            raise IngestStopped("TechRAG is closing")
+            raise IngestStopped("the application is closing")
 
     @contextmanager
     def write(self):

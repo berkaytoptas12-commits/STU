@@ -1,4 +1,4 @@
-"""Command line: techrag <command> ...   (the desktop exe accepts the same commands: TechRAG.exe ingest ...)"""
+"""Command line: techrag <command> ...   (the desktop exe accepts the same commands: SayisalTasarimUzmani.exe ingest ...)"""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from techrag.config import Config, load_config
+from techrag.config import APP_TITLE, Config, load_config
 
 
 def _print(msg: str = "") -> None:
@@ -418,7 +418,8 @@ def cmd_eval(cfg: Config, args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="techrag", description="Source-grounded assistant for interface and design standards")
+    p = argparse.ArgumentParser(prog="techrag", description=f"{APP_TITLE}: source-grounded assistant for interface and "
+                                                             "design standards")
     p.add_argument("-c", "--config", help="YAML config (default: ./config/config.yaml if present)")
     p.add_argument("--library", help="library folder (overrides settings)")
     sub = p.add_subparsers(dest="cmd", required=True)

@@ -1,4 +1,4 @@
-# TechRAG — Arayüz ve Tasarım Standartları için Doğrulamalı Asistan
+# Sayısal Tasarım Uzmanı — Arayüz ve Tasarım Standartları için Doğrulamalı Asistan
 
 Kullanıcının arayüz/standart sorularını (ARINC, JEDEC DDR, PCIe, Ethernet, DisplayPort, USB, RS-422, I²C,
 genel tasarım standartları …) **yalnızca yüklü dokümanlardan** cevaplayan, her ifadeyi **[n] atfıyla kaynağına**
@@ -9,7 +9,7 @@ cümleyi / tablo hücresini **PDF sayfası üzerinde vurgulayan** bir masaüstü
 göstermez. Bu, hatasızlık garantisi değildir — denetimler yanlışların bir kısmını yakalar, bir kısmı kaçabilir
 (bkz. "Bilinen sınırlar"). Doğruluk ancak kendi dokümanlarınızla, uzman onaylı bir soru setiyle ölçülebilir (§5).
 
-* Windows için tek `TechRAG.exe` (tarayıcı açılmaz; yerel pencere — Microsoft Edge WebView2).
+* Windows için tek `SayisalTasarimUzmani.exe` (tarayıcı açılmaz; yerel pencere — Microsoft Edge WebView2).
 * Tüm modeller kurum içindeki **vLLM / SGLang** sunucularından (OpenAI uyumlu API) kullanılır:
   sohbet modeli, görsel model, embedding ve reranker ayrı ayrı ayarlanır. Yerelde ağır hiçbir şey çalışmaz.
 * Arayüz Türkçe / İngilizce (tek tıkla değişir). Cevap, sorunun dilinde verilir; teknik terimler İngilizce kalır.
@@ -85,13 +85,13 @@ değilse veya kapsam soruluyorsa cevap modeli hiç çağrılmaz.
 
 ### 2.1 Exe'yi almak
 
-GitHub Actions her push'ta Windows derlemesi yapar (**Actions → Build Windows exe → Artifacts → TechRAG-windows**):
+GitHub Actions her push'ta Windows derlemesi yapar (**Actions → Build Windows exe → Artifacts → SayisalTasarimUzmani-windows**):
 
-* `TechRAG-portable.exe` — tek dosya, kopyala-çalıştır.
-* `TechRAG-win64.zip` — klasör sürümü (daha hızlı açılır; `TechRAG.exe` içinde).
+* `SayisalTasarimUzmani-portable.exe` — tek dosya, kopyala-çalıştır.
+* `SayisalTasarimUzmani-win64.zip` — klasör sürümü (daha hızlı açılır; `SayisalTasarimUzmani.exe` içinde).
 
 `v*` etiketi atılırsa (ör. `git tag v1.0.0 && git push --tags`) dosyalar GitHub Release'e de eklenir.
-Derleme, dondurulmuş exe üzerinde `TechRAG.exe selftest` çalıştırarak PDF ayrıştırma, indeksleme, arama,
+Derleme, dondurulmuş exe üzerinde `SayisalTasarimUzmani.exe selftest` çalıştırarak PDF ayrıştırma, indeksleme, arama,
 gömülü arayüz ve pywebview'in pakete girdiğini doğrular. Exe'yi kapalı ağa normal dosya olarak taşıyın.
 
 **Gereksinim:** Microsoft Edge **WebView2 Runtime** (Windows 11'de hazır; Windows 10'da yoksa Microsoft'un
@@ -121,8 +121,13 @@ Sunucu araç çağrısını desteklemiyorsa uygulama bunu fark eder ve araçsız
   `chat_template` (Qwen `enable_thinking`) veya `reasoning_effort`.
 * Doğrulanamayan iddialar: **Kaldır** (varsayılan) veya **İşaretle**.
 
-Ayarlar `%APPDATA%\TechRAG\settings.json` dosyasına yazılır; API anahtarları **Windows DPAPI** ile kullanıcı
+Ayarlar `%APPDATA%\SayisalTasarimUzmani\settings.json` dosyasına yazılır; API anahtarları **Windows DPAPI** ile kullanıcı
 hesabına bağlı şifrelenir.
+
+**Eski adla (TechRAG) kurulmuş bir bilgisayarda** `%APPDATA%\TechRAG` (ayarlar, API anahtarları, günlük, pencere
+durumu) ve `%USERPROFILE%\TechRAG\library` (varsayılan kütüphane) klasörleri varsa olduğu gibi kullanılmaya devam
+eder; hiçbir şey taşınmaz veya silinmez. Yeni kurulumlar `SayisalTasarimUzmani` adlı klasörleri kullanır. Python
+paketi (`techrag`), komut satırı adı ve `TECHRAG_*` ortam değişkenleri uyumluluk için teknik ad olarak kaldı.
 
 ---
 
@@ -186,7 +191,7 @@ bekleme (`max_retries`, `max_retry_wait`). Eşzamanlılık sınırlıdır (`embe
 └── cache\vlm\        (VLM ve meta veri sonuçları; aynı sayfa ikinci kez ücretlendirilmez)
 ```
 
-* Varsayılan konum `%USERPROFILE%\TechRAG\library`; **Kütüphane** penceresinden değiştirilir.
+* Varsayılan konum `%USERPROFILE%\SayisalTasarimUzmani\library`; **Kütüphane** penceresinden değiştirilir.
 * **Doküman ekle** (sol panelin altında): koleksiyon adı + dosyalar → `sources\<koleksiyon>` içine kopyalanır ve
   indekslenir. Aynı adlı farklı bir dosya varsa `Ad (2).pdf` olarak kaydedilir.
 * Dosya adına standart ve sürümü yazmak etiketlemeyi kesinleştirir (`JESD79-5B_DDR5.pdf`, `PCIe_Base_5.0.pdf`).
@@ -200,7 +205,7 @@ bekleme (`max_retries`, `max_retry_wait`). Eşzamanlılık sınırlıdır (`embe
 **Eski sürümle indekslenmiş kütüphane (0.1.x):** açılışta şema yerinde güncellenir; eski sürümün sayfa
 düzeyi kontrolle "doğrulanmış" saydığı parametre satırları ve VLM tabloları güvenilmez kabul edilir (cevapta
 kullanılmaz). Arayüzde uyarı çıkar. **Kütüphane → "Konum verisini oluştur (hızlı geçiş)"** (veya
-`TechRAG.exe migrate`) kaynak PDF'lerden sayfa geometrisini çıkarır ve önbellekteki VLM tablolarını hücre
+`SayisalTasarimUzmani.exe migrate`) kaynak PDF'lerden sayfa geometrisini çıkarır ve önbellekteki VLM tablolarını hücre
 düzeyinde yeniden doğrular — **yeniden embedding ve VLM çağrısı yapmaz**. Eski sürüm, doğrulanan VLM tablosunun
 orijinal PDF metnini indekse koymuyordu; hücre düzeyinde doğrulanamayan bu tür tablolar için geçiş raporu tam
 yeniden indeksleme önerir (`ingest --rebuild`: VLM sonuçları önbellekten gelir, yalnızca embedding yeniden
@@ -220,7 +225,7 @@ kullanıcıların onu açması önerilir (açıkken üzerine yazmayın).
 
 ### Açılış: sohbet simgesi
 
-* `TechRAG.exe` açılınca önce ekranın sağ alt köşesinde (görev çubuğunun üstünde) küçük, yuvarlak bir **sohbet
+* `SayisalTasarimUzmani.exe` açılınca önce ekranın sağ alt köşesinde (görev çubuğunun üstünde) küçük, yuvarlak bir **sohbet
   simgesi** belirir. Simge normal pencerelerin üzerinde kalır ama klavye odağını almaz; yazdığınız uygulama
   odakta kalır. Ayrı bir tarayıcı açılmaz.
 * **Tıklayınca** sohbet penceresi açılır (sohbet, bucket seçimi, kaynak/PDF paneli, vurgu — hepsi aynı arayüz).
@@ -235,9 +240,9 @@ kullanıcıların onu açması önerilir (açıkken üzerine yazmayın).
   arka planda devam eder. Gizliyken arayüz ilerleme sorgulamaz.
 * **Tamamen çıkmak** için simgeye sağ tıklayıp "Uygulamadan çık". İndeksleme sürüyorsa onay istenir; o an
   yazılan belge kaydı tamamlanır, sonraki belgeler bir sonraki "Yeniden tara"da işlenir (indeks yarım kalmaz).
-* `TechRAG.exe` ikinci kez çalıştırılırsa yeni bir arka uç başlatılmaz; çalışan uygulamanın sohbet penceresi öne
+* `SayisalTasarimUzmani.exe` ikinci kez çalıştırılırsa yeni bir arka uç başlatılmaz; çalışan uygulamanın sohbet penceresi öne
   gelir. Uygulama Windows başlangıcına eklenmez.
-* Simgenin yeri ve tek seferlik bilgiler `%APPDATA%\TechRAG\desktop.json` dosyasındadır (silinirse simge
+* Simgenin yeri ve tek seferlik bilgiler `%APPDATA%\SayisalTasarimUzmani\desktop.json` dosyasındadır (silinirse simge
   varsayılan köşeye döner).
 
 ### Sohbet penceresi
@@ -290,20 +295,20 @@ hem ekran (0–1, döndürme/CropBox uygulanmış) hem PDF kullanıcı uzayı ko
 ### Komut satırı (aynı exe)
 
 ```bat
-TechRAG.exe doctor                    :: uç noktalar, modeller, indeks kontrolü
-TechRAG.exe models                    :: her uç noktanın sunduğu modeller
-TechRAG.exe ingest                    :: artımlı indeksleme (VLM tablo çıkarımı dahil)
-TechRAG.exe ingest --rebuild          :: embedding modeli değişince / eski indeksin tam yenilenmesi
-TechRAG.exe migrate                   :: eski (0.1.x) indeksi yerinde güncelle (embedding/VLM çağrısı yok)
-TechRAG.exe add-folder D:\Teknik_Belgeler --preview   :: bucket'ları ve sayıları göster
-TechRAG.exe add-folder D:\Teknik_Belgeler             :: belge klasörünü ekle ve indeksle (yerinde okunur)
-TechRAG.exe rescan                    :: kütüphaneyi ve tüm belge klasörlerini yeniden tara
-TechRAG.exe purge-missing             :: kaynağı silinmiş belgeleri indeksten kaldır
-TechRAG.exe inspect dosya.pdf --table-pages   :: parçalama ve VLM'e gidecek sayfalar
-TechRAG.exe search "DDR5 tRFC 16Gb"   :: yalnızca arama (kapsam, pasajlar, parametre satırları)
-TechRAG.exe ask "PCIe 5.0 LTSSM Polling alt durumları?"
-TechRAG.exe publish \\sunucu\paylasim\techrag-2026-10
-TechRAG.exe eval eval\questions.yaml  :: değerlendirme
+SayisalTasarimUzmani.exe doctor                    :: uç noktalar, modeller, indeks kontrolü
+SayisalTasarimUzmani.exe models                    :: her uç noktanın sunduğu modeller
+SayisalTasarimUzmani.exe ingest                    :: artımlı indeksleme (VLM tablo çıkarımı dahil)
+SayisalTasarimUzmani.exe ingest --rebuild          :: embedding modeli değişince / eski indeksin tam yenilenmesi
+SayisalTasarimUzmani.exe migrate                   :: eski (0.1.x) indeksi yerinde güncelle (embedding/VLM çağrısı yok)
+SayisalTasarimUzmani.exe add-folder D:\Teknik_Belgeler --preview   :: bucket'ları ve sayıları göster
+SayisalTasarimUzmani.exe add-folder D:\Teknik_Belgeler             :: belge klasörünü ekle ve indeksle (yerinde okunur)
+SayisalTasarimUzmani.exe rescan                    :: kütüphaneyi ve tüm belge klasörlerini yeniden tara
+SayisalTasarimUzmani.exe purge-missing             :: kaynağı silinmiş belgeleri indeksten kaldır
+SayisalTasarimUzmani.exe inspect dosya.pdf --table-pages   :: parçalama ve VLM'e gidecek sayfalar
+SayisalTasarimUzmani.exe search "DDR5 tRFC 16Gb"   :: yalnızca arama (kapsam, pasajlar, parametre satırları)
+SayisalTasarimUzmani.exe ask "PCIe 5.0 LTSSM Polling alt durumları?"
+SayisalTasarimUzmani.exe publish \\sunucu\paylasim\kutuphane-2026-10
+SayisalTasarimUzmani.exe eval eval\questions.yaml  :: değerlendirme
 ```
 
 Kaynak koddan: `pip install -r requirements-desktop.txt` → `python -m techrag.desktop` (pencere) veya
@@ -314,8 +319,8 @@ Kaynak koddan: `pip install -r requirements-desktop.txt` → `python -m techrag.
 ## 5. Doğruluğu ölçme
 
 ```bat
-TechRAG.exe eval --retrieval-only     :: LLM'siz: recall@1/3/5/8, MRR (doğru doküman/sayfa geldi mi?)
-TechRAG.exe eval                      :: + cevap metrikleri
+SayisalTasarimUzmani.exe eval --retrieval-only     :: LLM'siz: recall@1/3/5/8, MRR (doğru doküman/sayfa geldi mi?)
+SayisalTasarimUzmani.exe eval                      :: + cevap metrikleri
 ```
 
 Soru şeması (`eval/questions.yaml`, ayrıntı `techrag/evaluation.py`): doküman, revizyon, fiziksel sayfa ve
@@ -335,7 +340,7 @@ kamuya açık bilgilerdir ama sizin doküman revizyonlarınıza karşı kontrol 
 uzman tarafından kontrol edilmiş (`status: expert_verified`) birkaç yüz soruluk bir set hazırlayın; önce
 **recall@k** (ayrıştırma, parçalama, VLM sayfa eşiği `vision.min_page_score`, rerank aday sayısı), sonra
 hatalı cevap ve cevap vermeme oranlarını izleyin. Yanlış cevapların kökü çoğunlukla ayrıştırma veya
-standart/sürüm etiketlemesindedir: `TechRAG.exe docs` ve `inspect` ile kontrol edin.
+standart/sürüm etiketlemesindedir: `SayisalTasarimUzmani.exe docs` ve `inspect` ile kontrol edin.
 
 Testler (`tests/`) sentetik PDF'ler ve sahte bir OpenAI uyumlu sunucuyla çalışır: mekanizmaları (kapsam,
 doğrulama, hücre eşleştirme, konum, geçiş) sınar, gerçek bir modelin doğruluğunu **ölçmez**.
@@ -344,21 +349,21 @@ doğrulama, hücre eşleştirme, konum, geçiş) sınar, gerçek bir modelin do�
 
 | Belirti | Çözüm |
 |---|---|
-| Pencere açılmıyor | WebView2 Runtime kurulu mu? Günlük: `%APPDATA%\TechRAG\techrag.log` |
-| Simge görünmüyor / tıklayınca bir şey olmuyor | Uygulama zaten çalışıyor olabilir: `TechRAG.exe`'yi yeniden çalıştırmak sohbeti öne getirir. Simgenin yerini sıfırlamak için uygulamadan çıkıp `%APPDATA%\TechRAG\desktop.json` dosyasını silin. Simge oluşturulamazsa sohbet penceresi doğrudan açılır (günlükte nedeni yazar). |
+| Pencere açılmıyor | WebView2 Runtime kurulu mu? Günlük: `%APPDATA%\SayisalTasarimUzmani\SayisalTasarimUzmani.log` |
+| Simge görünmüyor / tıklayınca bir şey olmuyor | Uygulama zaten çalışıyor olabilir: `SayisalTasarimUzmani.exe`'yi yeniden çalıştırmak sohbeti öne getirir. Simgenin yerini sıfırlamak için uygulamadan çıkıp `%APPDATA%\SayisalTasarimUzmani\desktop.json` dosyasını silin. Simge oluşturulamazsa sohbet penceresi doğrudan açılır (günlükte nedeni yazar). |
 | Kapat düğmesi uygulamayı kapatmıyor | Bilerek böyle: pencere gizlenir. Çıkış: simgeye sağ tık → "Uygulamadan çık". |
-| "no chat/embedding model configured" | Ayarlar → model seçin; `TechRAG.exe doctor` |
+| "no chat/embedding model configured" | Ayarlar → model seçin; `SayisalTasarimUzmani.exe doctor` |
 | "indexed with embedding model …" | Embedding modeli değişti: Kütüphane → "Tamamen yeniden oluştur" veya `ingest --rebuild` |
 | Araç kullanılmıyor | vLLM'i `--enable-auto-tool-choice --tool-call-parser …` ile başlatın |
 | Cevapta `<think>` / düşünme metni | vLLM'de `--reasoning-parser` kullanın veya Ayarlar → Düşünme `off` |
 | Tablolar/parametreler "doğrulanmadı" | Görsel model tanımlı mı, sayfada metin katmanı var mı (OCR)? Doküman uyarılarında hangi hücrenin neden eşleşmediği yazar (yanlış sütun, birim, satır koşulu). `inspect --table-pages` |
 | "Kaynak sayfası bulundu, kesin konum eşleştirilemedi" | Kaynak metni sayfada tek bir yere eşlenemedi (tekrarlanan metin, metin katmanı farklı). Sayfa yine de doğrudur; ifadenin doğruluğu "Doğrulama" durumundadır. |
-| "Eski indeks" uyarısı / vurgu yok | Kütüphane → "Konum verisini oluştur" veya `TechRAG.exe migrate` |
+| "Eski indeks" uyarısı / vurgu yok | Kütüphane → "Konum verisini oluştur" veya `SayisalTasarimUzmani.exe migrate` |
 | "Doğrulama tamamlanamadı" | Denetçi (sohbet modeli) hata verdi veya geçerli karar döndürmedi; sunucuyu/`techrag.log`'u kontrol edin. Bu durumda ifadeler bilerek gösterilmez. |
 | Belge "kaynak yok" görünüyor | Dosya silinmiş/taşınmış ya da klasör yeniden adlandırılmış. Dosya geri gelirse yeniden taramada otomatik düzelir; gerçekten silindiyse sol paneldeki uyarıdan "İndeksten kaldır". |
 | Yeniden tarama "erişilemeyen" diyor | Ağ paylaşımı bağlı mı / klasör yetkisi var mı? Belgeler bu durumda silinmiş sayılmaz. |
 | Sürekli kapsam sorusu | Soruya standart/sürümü yazın ya da soldan doküman seçin; istenmiyorsa `retrieval.clarify_ambiguous: false` |
-| Soru yanlış standarda gidiyor / "yüklü değil" | `TechRAG.exe docs` ile doküman etiketlerini kontrol edin; etiketsiz dokümanlar adı geçen standarda dahil edilmez. Dosya adına standart/sürüm yazın veya `domains.yaml` desenlerini genişletin |
+| Soru yanlış standarda gidiyor / "yüklü değil" | `SayisalTasarimUzmani.exe docs` ile doküman etiketlerini kontrol edin; etiketsiz dokümanlar adı geçen standarda dahil edilmez. Dosya adına standart/sürüm yazın veya `domains.yaml` desenlerini genişletin |
 | `SSL: CERTIFICATE_VERIFY_FAILED` | Aşağıdaki "HTTPS sertifika hataları" bölümü |
 
 ### HTTPS sertifika hataları (`SSL: CERTIFICATE_VERIFY_FAILED`)
@@ -375,7 +380,7 @@ türünü ayrıca söyler:
 | Süresi dolmuş / henüz geçerli değil | Sunucu sertifikasını yenileyin; bilgisayarın saatini kontrol edin. |
 | TLS el sıkışması başarısız | Sunucu düz HTTP konuşuyor: adresi `http://` ile yazın. |
 
-Komut satırından aynı teşhis: `TechRAG.exe cert https://vllm.sirket.local:8000/v1` (zinciri, parmak izini
+Komut satırından aynı teşhis: `SayisalTasarimUzmani.exe cert https://vllm.sirket.local:8000/v1` (zinciri, parmak izini
 ve mevcut ayarlarla doğrulama sonucunu gösterir); `--trust` ile onaylayıp güvenilenlere ekler.
 Son çare (yalnızca test): servis kartındaki **"SSL doğrulamasını kapat"**. Şirket proxy'si TLS'i araya
 girerek açıyorsa model sunucuları için **"Sistem proxy ayarlarını kullan"** kapalı kalmalı (varsayılan).
@@ -394,7 +399,7 @@ girerek açıyorsa model sunucuları için **"Sistem proxy ayarlarını kullan"*
 * Denetçi aynı (veya ayarlanan) LLM'dir; deterministik kontroller sayı/birim/atıf hatalarını yakalar ama
   anlamsal hataların yakalanması denetçi modelinin kalitesine bağlıdır.
 * Standart/sürüm etiketleme `domains.yaml` desenleri + LLM meta verisiyle yapılır; olağan dışı dosya adları
-  yanlış/eksik etiketlenebilir (`TechRAG.exe docs` ile kontrol edin).
+  yanlış/eksik etiketlenebilir (`SayisalTasarimUzmani.exe docs` ile kontrol edin).
 * Errata'nın maddeye bağlanması, errata metninde "Section 4.2.6.3" gibi açık madde numarası varsa yapılır.
 * Belge klasörleri yerel diskte ve sentetik ağaçlarla test edildi (iç içe klasör, Türkçe/boşluklu adlar, aynı adlı
   dosyalar, bağlantı döngüsü, okunamayan alt klasör, klasörün geçici olarak kaybolması). Gerçek bir SMB/DFS

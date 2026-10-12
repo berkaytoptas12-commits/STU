@@ -91,7 +91,7 @@ class FolderRequest(BaseModel):
     path: str = Field(min_length=1, max_length=4000)
 
 
-STOPPED_MESSAGE = "stopped: TechRAG is closing (remaining documents are processed by the next rescan)"
+STOPPED_MESSAGE = "stopped: the application is closing (remaining documents are processed by the next rescan)"
 
 
 class Jobs:
@@ -111,7 +111,7 @@ class Jobs:
 
     def create(self, kind: str) -> dict:
         if self.gate.stop.is_set():
-            raise HTTPException(503, "TechRAG is closing")
+            raise HTTPException(503, "the application is closing")
         job = {"id": uuid.uuid4().hex[:12], "kind": kind, "status": "queued", "messages": [], "report": None,
                "progress": {}, "created": time.time()}
         self.items[job["id"]] = job
@@ -177,6 +177,15 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
 
     guard = [Depends(auth)]
     app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
+
+    @app.middleware("http")
+    async def revalidate_ui(request: Request, call_next):
+        """The desktop window keeps the same origin across restarts (stable port), so its HTTP cache outlives an
+        update: the page and its scripts must be revalidated (ETag) instead of being reused from the cache."""
+        response = await call_next(request)
+        if request.url.path == "/" or request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
 
     @app.get("/", include_in_schema=False)
     def index():
@@ -360,15 +369,21 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 "geometry": g is not None, "legacy": d.legacy, "sha256": d.sha256}
 
     @app.get("/api/documents/{doc_id}/page/{page}.png", dependencies=guard)
-    def page_image(doc_id: int, page: int, dpi: int = 110):
+    def page_image(request: Request, doc_id: int, page: int, dpi: int = 110):
         e = eng()
         d = e.store.document(doc_id)
         if not d or not (1 <= page <= max(d.n_pages, 1)):
             raise HTTPException(404, "page not found")
-        png = e.render_page(doc_id, page, max(60, min(dpi, 220)))
+        dpi = max(60, min(dpi, 220))
+        # Document ids can be reused (a deleted document's id goes to the next one), so the cache key is the
+        # content: a cached image is only reused after the browser revalidated it against the document's hash.
+        headers = {"Cache-Control": "private, no-cache", "ETag": f'"{d.sha256[:24]}-{page}-{dpi}"'}
+        if request.headers.get("if-none-match") == headers["ETag"]:
+            return Response(status_code=304, headers=headers)
+        png = e.render_page(doc_id, page, dpi)
         if png is None:
             raise HTTPException(404, "page cannot be rendered (file missing or not a PDF)")
-        return Response(png, media_type="image/png", headers={"Cache-Control": "max-age=3600"})
+        return Response(png, media_type="image/png", headers=headers)
 
     @app.get("/api/documents/{doc_id}/file", dependencies=guard)
     def document_file(doc_id: int):

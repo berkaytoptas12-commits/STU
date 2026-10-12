@@ -1,5 +1,5 @@
 "use strict";
-// TechRAG desktop UI. Offline: no external libraries, no requests except to this app's own /api.
+// Sayısal Tasarım Uzmanı - desktop UI. Offline: no external libraries, no requests except to this app's own /api.
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -235,7 +235,7 @@ function safeGet(k) { try { return localStorage.getItem(k); } catch { return nul
 function safeSet(k, v) { try { localStorage.setItem(k, v); } catch { /* unavailable */ } }
 const desk = () => (window.pywebview && window.pywebview.api) || null;
 
-// TechRAG.exe hides this window instead of closing it: the page, the chat and running jobs stay as they are. While
+// The desktop app hides this window instead of closing it: the page, the chat and running jobs stay as they are. While
 // it is hidden nothing is polled (indexing goes on in the backend); progress is fetched again once it is shown.
 const host = { hidden: false, waiters: [] };
 const pageHidden = () => host.hidden || document.hidden;

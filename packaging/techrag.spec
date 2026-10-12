@@ -1,7 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Build:  pyinstaller packaging/techrag.spec --noconfirm              -> dist/TechRAG/TechRAG.exe (one folder)
-#         set TECHRAG_ONEFILE=1 && pyinstaller packaging/techrag.spec  -> dist/TechRAG-portable.exe (single file)
+# Build:  pyinstaller packaging/techrag.spec --noconfirm   -> dist/SayisalTasarimUzmani/SayisalTasarimUzmani.exe
+#         set TECHRAG_ONEFILE=1 && pyinstaller packaging/techrag.spec  -> dist/SayisalTasarimUzmani-portable.exe
+# File names are ASCII (safe in paths, zip archives and GitHub release assets); Windows shows the product name
+# "Sayısal Tasarım Uzmanı" from the version resource (Task Manager, file properties).
 import os
+import re
 
 from PyInstaller.utils.hooks import collect_submodules
 
@@ -36,9 +39,33 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+NAME = "SayisalTasarimUzmani"
+TITLE = "Sayısal Tasarım Uzmanı"
+with open(os.path.join(ROOT, "techrag", "__init__.py"), encoding="utf-8") as fh:
+    VERSION = re.search(r'__version__ = "([^"]+)"', fh.read()).group(1)
+nums = tuple(int(x) for x in re.findall(r"\d+", VERSION)[:4]) + (0,) * 4
+VERSION_FILE = os.path.join(ROOT, "build", "version_info.txt")
+os.makedirs(os.path.dirname(VERSION_FILE), exist_ok=True)
+with open(VERSION_FILE, "w", encoding="utf-8-sig") as fh:  # BOM: PyInstaller honours it
+    fh.write(f"""VSVersionInfo(
+  ffi=FixedFileInfo(filevers={nums[:4]}, prodvers={nums[:4]}, mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1,
+                    subtype=0x0, date=(0, 0)),
+  kids=[
+    StringFileInfo([StringTable('041f04b0', [
+      StringStruct('FileDescription', '{TITLE}'),
+      StringStruct('ProductName', '{TITLE}'),
+      StringStruct('FileVersion', '{VERSION}'),
+      StringStruct('ProductVersion', '{VERSION}'),
+      StringStruct('InternalName', '{NAME}'),
+      StringStruct('OriginalFilename', '{NAME}.exe')])]),
+    VarFileInfo([VarStruct('Translation', [0x041f, 1200])])
+  ]
+)
+""")
+
 if ONEFILE:
-    exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name="TechRAG-portable", console=CONSOLE,
-              upx=False, runtime_tmpdir=None)
+    exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name=f"{NAME}-portable", console=CONSOLE,
+              upx=False, runtime_tmpdir=None, version=VERSION_FILE)
 else:
-    exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="TechRAG", console=CONSOLE, upx=False)
-    coll = COLLECT(exe, a.binaries, a.datas, name="TechRAG", upx=False)
+    exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name=NAME, console=CONSOLE, upx=False, version=VERSION_FILE)
+    coll = COLLECT(exe, a.binaries, a.datas, name=NAME, upx=False)

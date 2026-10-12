@@ -1,4 +1,4 @@
-"""Self-test for packaged builds (`TechRAG.exe selftest result.json`): exercises PDF parsing, indexing,
+"""Self-test for packaged builds (`SayisalTasarimUzmani.exe selftest result.json`): exercises PDF parsing, indexing,
 retrieval, the bundled web UI/resources and the API without any model server."""
 
 from __future__ import annotations
@@ -8,6 +8,8 @@ import sys
 import tempfile
 import traceback
 from pathlib import Path
+
+from techrag.config import APP_TITLE
 
 
 def _make_pdf(path: Path) -> None:
@@ -67,7 +69,7 @@ def run() -> dict:
         checks["retrieval_scope"] = res.scope.reason
         assert res.passages and "350" in res.passages[0].text
         with TestClient(create_app(cfg, engine, warmup=False)) as client:
-            assert "TechRAG" in client.get("/").text
+            assert APP_TITLE in client.get("/").text
             assert client.get("/static/app.js").status_code == 200
             info = client.get("/api/info").json()
             checks["documents"] = info["stats"]["documents"]

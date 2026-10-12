@@ -17,7 +17,9 @@ def client(cfg, engine, tmp_path, monkeypatch):
 
 def test_ui_info_and_documents(client):
     r = client.get("/")
-    assert r.status_code == 200 and "TechRAG" in r.text
+    assert r.status_code == 200 and "Sayısal Tasarım Uzmanı" in r.text and "TechRAG" not in r.text
+    assert r.headers["cache-control"] == "no-cache", "the page is revalidated after an update"
+    assert client.get("/static/app.js").headers["cache-control"] == "no-cache"
     info = client.get("/api/info").json()
     assert info["stats"]["documents"] == 3 and info["stats"]["parameters"] == 4
     assert {"ddr", "i2c"} <= {d["key"] for d in info["domains"] if d["documents"]}
@@ -32,6 +34,12 @@ def test_page_image(client):
     r = client.get(f"/api/documents/{d['id']}/page/1.png")
     assert r.status_code == 200 and r.content[:8] == b"\x89PNG\r\n\x1a\n"
     assert client.get(f"/api/documents/{d['id']}/page/999.png").status_code == 404
+    etag = r.headers["etag"]
+    assert d["sha256"][:24] in etag and "no-cache" in r.headers["cache-control"], "keyed by content, not by id"
+    again = client.get(f"/api/documents/{d['id']}/page/1.png", headers={"If-None-Match": etag})
+    assert again.status_code == 304 and not again.content
+    other = client.get(f"/api/documents/{d['id']}/page/1.png", headers={"If-None-Match": '"0000-1-110"'})
+    assert other.status_code == 200, "a reused id with other content is sent again"
 
 
 def test_ask_stream_events(client):

@@ -33,9 +33,10 @@ code { font-family: var(--mono); font-size: 12.5px; }
 .pill { font-size: 11px; padding: 1px 6px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); }
 
 .topbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; border-bottom: 1px solid var(--border); background: var(--panel); gap: 10px; }
-.brand { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brand { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1 1 auto; min-width: 0; }
 .brand .muted { font-weight: 400; margin-left: 8px; }
-.top-actions { display: flex; gap: 6px; align-items: center; }
+.top-actions { display: flex; gap: 6px; align-items: center; flex: 0 0 auto; }
+.top-actions button { white-space: nowrap; }
 .lang-toggle { display: flex; }
 .lang-toggle .lang { border-radius: 0; padding: 5px 9px; }
 .lang-toggle .lang:first-child { border-radius: 8px 0 0 8px; }

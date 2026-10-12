@@ -1,5 +1,5 @@
-# techrag example configuration (optional).
-# The desktop app stores its settings in %APPDATA%\TechRAG\settings.json (Settings dialog); this file is
+# Sayısal Tasarım Uzmanı (techrag) example configuration (optional).
+# The desktop app stores its settings in %APPDATA%\SayisalTasarimUzmani\settings.json (Settings dialog); this file is
 # for CLI / server use. Layering: defaults -> this file -> settings.json -> TECHRAG_<SECTION>__<KEY> env vars.
 # All models are reached over OpenAI-compatible HTTP endpoints (vLLM / SGLang). base_url ends with /v1.
 

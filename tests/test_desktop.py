@@ -364,3 +364,28 @@ def test_js_api_bridge_does_not_descend_into_the_window():
 
     with pytest.raises(RecursionError):
         _pywebview_walk(Old())
+
+
+def test_backend_port_is_the_same_at_every_start():
+    """The page's browser storage (panel layout, language, open buckets) belongs to its origin, port included."""
+    key = L.instance_key("/somewhere/settings.json")
+    first = desktop._backend_socket(key)
+    port = first.getsockname()[1]
+    first.close()
+    second = desktop._backend_socket(key)
+    assert second.getsockname()[1] == port, "same origin after a restart"
+    taken = desktop._backend_socket(key)
+    assert taken.getsockname()[1] != port, "another free port while it is in use"
+    second.close()
+    taken.close()
+
+
+def test_former_app_folders_keep_being_used(tmp_path):
+    from techrag.config import app_dir
+
+    assert app_dir(tmp_path).name == "SayisalTasarimUzmani", "new installations"
+    (tmp_path / "TechRAG").mkdir()
+    assert app_dir(tmp_path).name == "TechRAG", "settings, keys and library stay where they were"
+    (tmp_path / "SayisalTasarimUzmani").mkdir()
+    assert app_dir(tmp_path).name == "SayisalTasarimUzmani"
+    assert app_dir(tmp_path, lower=True).name == "sayisaltasarimuzmani"

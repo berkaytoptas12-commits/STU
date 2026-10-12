@@ -1,10 +1,12 @@
-"""Desktop entry point (TechRAG.exe).
+"""Desktop entry point (SayisalTasarimUzmani.exe - "Sayısal Tasarım Uzmanı").
 
-* No arguments: start the FastAPI backend in-process on a random localhost port with a per-launch token. On Windows
-  the app then shows a small round launcher icon (techrag.launcher); a click on it opens the chat window - the same
-  UI in a native window (Microsoft Edge WebView2 through pywebview). No browser is opened. A second TechRAG.exe
-  brings the running one forward instead of starting another backend.
-* With arguments: behave exactly like the `techrag` CLI (e.g. `TechRAG.exe ingest`, `TechRAG.exe doctor`).
+* No arguments: start the FastAPI backend in-process on localhost with a per-launch token. On Windows the app then
+  shows a small round launcher icon (techrag.launcher); a click on it opens the chat window - the same UI in a native
+  window (Microsoft Edge WebView2 through pywebview). No browser is opened. A second start of the exe brings the
+  running one forward instead of starting another backend.
+* With arguments: behave exactly like the `techrag` CLI (e.g. `SayisalTasarimUzmani.exe ingest`, `... doctor`).
+
+(`techrag` stays the name of the Python package, CLI and TECHRAG_* variables; users see APP_TITLE.)
 """
 
 from __future__ import annotations
@@ -21,6 +23,8 @@ import threading
 import time
 from pathlib import Path
 from typing import Callable, Optional
+
+from techrag.config import APP_NAME, APP_TITLE
 
 log = logging.getLogger("techrag.desktop")
 
@@ -41,12 +45,13 @@ def _attach_console() -> None:
 
 
 def _log_file() -> Path:
-    """techrag.log next to settings.json (%APPDATA%\\TechRAG by default)."""
+    """SayisalTasarimUzmani.log next to settings.json (%APPDATA%\\SayisalTasarimUzmani, or the existing
+    %APPDATA%\\TechRAG folder of an installation from before the rename)."""
     from techrag.settings import settings_path
 
     d = settings_path().parent
     d.mkdir(parents=True, exist_ok=True)
-    return d / "techrag.log"
+    return d / f"{APP_NAME}.log"
 
 
 def _webview_version(webview) -> str:
@@ -68,10 +73,24 @@ def _message_box(title: str, text: str) -> None:
         print(f"{title}: {text}", file=sys.stderr)
 
 
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+def _backend_socket(key: str) -> socket.socket:
+    """The bound localhost socket the backend serves on. Its port is the same at every start (derived from the
+    settings location): the page's browser storage - panel layout, language, open buckets - belongs to the page's
+    origin, which includes the port, so a new random port at each start forgot all of it. Falls back to any free
+    port when that one is taken. Handing uvicorn the bound socket leaves no window for another process to grab it."""
+    preferred = 20000 + int(key, 16) % 20000
+    for port in (preferred, 0):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):  # Windows: no other socket may bind the same port
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        try:
+            s.bind(("127.0.0.1", port))
+            return s
+        except OSError:
+            s.close()
+            if port == 0:
+                raise
+    raise OSError("no free port")
 
 
 def _dialog(kind: str):
@@ -118,7 +137,7 @@ SMOKE_JS = """(function () {
 
 
 class DesktopApp:
-    """TechRAG.exe while it runs: one backend, one chat window and one launcher icon for the whole session.
+    """the exe while it runs: one backend, one chat window and one launcher icon for the whole session.
 
     The chat window is created once and from then on only shown and hidden: the conversation, the selected buckets,
     the open PDF page and the panel sizes stay exactly as they were, and indexing (a backend thread) goes on while it
@@ -168,7 +187,7 @@ class DesktopApp:
             self.request_quit()
 
     def activate(self) -> None:
-        """A second TechRAG.exe was started: it exits, this one shows its chat window."""
+        """A second the exe was started: it exits, this one shows its chat window."""
         self.stats["activations"] += 1
         self.open_chat()
 
@@ -303,7 +322,7 @@ class DesktopApp:
 
 
 def _setup_logging(install_hooks: bool) -> Path:
-    """Everything (our stages, uvicorn, pywebview, native faults) goes to %APPDATA%\\TechRAG\\techrag.log."""
+    """Everything (our stages, uvicorn, pywebview, native faults) goes to the log file next to settings.json."""
     import faulthandler
     import logging
 
@@ -327,7 +346,7 @@ def _setup_logging(install_hooks: bool) -> Path:
 
         def excepthook(exc_type, exc, tb):
             log.critical("uncaught exception", exc_info=(exc_type, exc, tb))
-            _message_box("TechRAG", f"{exc_type.__name__}: {exc}\n\nDetails: {path}")
+            _message_box(APP_TITLE, f"{exc_type.__name__}: {exc}\n\nDetails: {path}")
 
         def thread_hook(args):
             log.error("thread %s crashed", getattr(args.thread, "name", "?"),
@@ -372,7 +391,7 @@ def _wait(pred: Callable[[], object], timeout: float, step: float = 0.2):
 def _smoke(desk: DesktopApp, result_path: str) -> None:
     """CI check of the packaged app with real windows: the launcher icon comes first; a drag moves it without opening
     the chat; a click opens the chat (UI, JS<->Python bridge, no notes UI); the close button only hides it and the
-    page is kept; a second TechRAG.exe hands over instead of starting a backend; the icon's menu opens the settings and
+    page is kept; a second the exe hands over instead of starting a backend; the icon's menu opens the settings and
     finally quits the app (the CI step checks that the process then ends by itself)."""
     chat = desk.chat
     r: dict = {"ok": False, "checks": {}}
@@ -393,7 +412,7 @@ def _smoke(desk: DesktopApp, result_path: str) -> None:
         if os.name != "nt" or lw is None:  # no launcher on this platform: the window opened directly
             check("loaded", chat.events.loaded.wait(120))
             r["page"] = pg = page()
-            check("chat_ui", pg.get("bridge") and "TechRAG" in str(pg.get("brand", "")))
+            check("chat_ui", pg.get("bridge") and APP_TITLE in str(pg.get("brand", "")))
             check("notes_removed", pg.get("notes") is False)
         else:
             from techrag import launcher as L
@@ -438,7 +457,7 @@ def _smoke(desk: DesktopApp, result_path: str) -> None:
             click()
             check("click_opens_chat", _wait(lambda: L.window_state(hwnd)["visible"], 30))
             r["page"] = pg = page()
-            check("chat_ui", pg.get("bridge") and "TechRAG" in str(pg.get("brand", "")) and pg.get("host"))
+            check("chat_ui", pg.get("bridge") and APP_TITLE in str(pg.get("brand", "")) and pg.get("host"))
             check("notes_removed", pg.get("notes") is False)
             chat.evaluate_js("window.__smoke = 'kept'; document.querySelector('#question').value = 'draft'; 1")
             a.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE: the window's close button
@@ -534,7 +553,7 @@ def run_gui() -> int:
     from techrag.settings import settings_path
 
     log_path = _setup_logging(install_hooks=getattr(sys, "frozen", False))
-    log.info("=== TechRAG %s starting (frozen=%s, python=%s, exe=%s)", __version__, getattr(sys, "frozen", False),
+    log.info("=== %s %s starting (frozen=%s, python=%s, exe=%s)", APP_TITLE, __version__, getattr(sys, "frozen", False),
              sys.version.split()[0], sys.executable)
     try:
         log.info("mark-of-the-web removed from %d bundled file(s)", _unblock_bundle())
@@ -545,14 +564,14 @@ def run_gui() -> int:
     key = instance_key(settings_path())
     guard = SingleInstance(key)
     deadline = time.monotonic() + 20
-    while not guard.acquire():  # another TechRAG runs (or is still starting / just closing)
+    while not guard.acquire():  # another instance runs (or is still starting / just closing)
         if guard.notify_running(timeout=0.5):
-            log.info("TechRAG is already running in this session: asked it to open its chat window")
+            log.info("already running in this session: asked it to open its chat window")
             return 0
         if time.monotonic() > deadline:
             from techrag.launcher import text
 
-            _message_box("TechRAG", text("tr", "running") + "\n\n" + text("en", "running"))
+            _message_box(APP_TITLE, text("tr", "running") + "\n\n" + text("en", "running"))
             return 0
     try:
         return _run_gui(key, log_path)
@@ -571,32 +590,33 @@ def _run_gui(key: str, log_path: Path) -> int:
     log.info("library: %s", cfg.library_dir)
     token = secrets.token_urlsafe(24)
     cfg.server.api_token = token
-    port = _free_port()
+    sock = _backend_socket(key)
+    port = sock.getsockname()[1]
     app = create_app(cfg, desktop=True)
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning",
                                            log_config=None, access_log=False))
-    backend = threading.Thread(target=server.run, name="backend", daemon=True)
+    backend = threading.Thread(target=server.run, kwargs={"sockets": [sock]}, name="backend", daemon=True)
     backend.start()
     deadline = time.time() + 30
     while not server.started and time.time() < deadline:
         time.sleep(0.05)
     if not server.started:
         log.error("backend did not start")
-        _message_box("TechRAG", f"The local backend did not start. See {log_path}")
+        _message_box(APP_TITLE, f"The local backend did not start. See {log_path}")
         return 1
     log.info("backend listening on 127.0.0.1:%d", port)
 
     try:
         import webview
     except ImportError:
-        _message_box("TechRAG", "pywebview is missing from this build.")
+        _message_box(APP_TITLE, "pywebview is missing from this build.")
         return 1
     log.info("pywebview %s", _webview_version(webview))
     use_launcher = _launcher_supported()
     state = DesktopState(log_path.parent / "desktop.json")
     api = JsApi()
     width, height, min_w, min_h = _chat_size()
-    chat = webview.create_window("TechRAG", f"http://127.0.0.1:{port}/?token={token}", js_api=api,
+    chat = webview.create_window(APP_TITLE, f"http://127.0.0.1:{port}/?token={token}", js_api=api,
                                  width=width, height=height, min_size=(min_w, min_h), text_select=True,
                                  hidden=use_launcher)  # created once, in the background: the icon shows it
     api._window = chat
@@ -637,7 +657,7 @@ def _run_gui(key: str, log_path: Path) -> int:
         clean = True
     except Exception as exc:
         log.exception("GUI failed")
-        _message_box("TechRAG", "Could not open the window. On Windows the Microsoft Edge WebView2 Runtime is "
+        _message_box(APP_TITLE, "Could not open the window. On Windows the Microsoft Edge WebView2 Runtime is "
                                 "required (offline installer: 'Evergreen Standalone Installer').\n\n"
                                 f"{exc.__class__.__name__}: {exc}\n\nLog: {log_path}")
         return 1

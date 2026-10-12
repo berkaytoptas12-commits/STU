@@ -1,4 +1,12 @@
-## TechRAG — Windows masaüstü uygulaması
+## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
+
+### 0.5.0 — yeni ad: Sayısal Tasarım Uzmanı
+- Uygulamanın adı **Sayısal Tasarım Uzmanı** oldu (pencere başlığı, simge menüsü, iletiler, belgeler). Dosyalar:
+  `SayisalTasarimUzmani-portable.exe` ve `SayisalTasarimUzmani-win64.zip` (içinde `SayisalTasarimUzmani.exe`);
+  Görev Yöneticisi ve dosya özellikleri uygulamayı "Sayısal Tasarım Uzmanı" olarak gösterir.
+- Önceki sürümden yükseltme: `%APPDATA%\TechRAG` ve `%USERPROFILE%\TechRAG\library` klasörleri varsa aynen
+  kullanılır — ayarlar, API anahtarları ve kütüphane yerinde kalır. Yeni kurulumlar `SayisalTasarimUzmani`
+  klasörlerini kullanır.
 
 ### 0.4.0 — sohbet simgesiyle açılış, Notlar kaldırıldı
 - **Yuvarlak sohbet simgesi**: uygulama ekranın sağ alt köşesinde küçük bir simge olarak açılır (normal

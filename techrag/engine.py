@@ -113,8 +113,7 @@ class RAGEngine:
             return cache.read_bytes()
         png = _render(path, page, dpi)
         try:
-            cache.parent.mkdir(parents=True, exist_ok=True)
-            cache.write_bytes(png)
+            write_text_atomic(cache, png)  # never a truncated image in the cache
         except OSError:
             pass
         return png

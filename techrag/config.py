@@ -14,6 +14,7 @@ from __future__ import annotations
 import copy
 import os
 import sys
+import threading
 from dataclasses import asdict, dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -21,16 +22,29 @@ from typing import Any, Optional
 import yaml
 
 DEFAULT_CONFIG_PATH = Path("config/config.yaml")
-APP_NAME = "TechRAG"
+APP_TITLE = "Sayısal Tasarım Uzmanı"   # the product name shown to users
+APP_NAME = "SayisalTasarimUzmani"      # file and folder names (ASCII: safe in paths, archives and release assets)
+LEGACY_APP_NAME = "TechRAG"           # the former name: folders created under it keep being used
 
 
-def write_text_atomic(path: Path, text: str) -> None:
+def write_text_atomic(path: Path, text: str | bytes) -> None:
     """Write a cache file so that it is either complete or absent (never truncated by an exit mid-write)."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
-    tmp.write_text(text, encoding="utf-8")
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    if isinstance(text, bytes):
+        tmp.write_bytes(text)
+    else:
+        tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, path)
+
+
+def app_dir(base: Path, lower: bool = False) -> Path:
+    """<base>/<app folder>. A folder made before the rename (TechRAG) is used as long as it exists and no new one
+    does, so settings, API keys, the library and the window state are found exactly where they were."""
+    new = Path(base) / (APP_NAME.lower() if lower else APP_NAME)
+    old = Path(base) / (LEGACY_APP_NAME.lower() if lower else LEGACY_APP_NAME)
+    return old if old.is_dir() and not new.exists() else new
 
 
 def resource_path(*parts: str) -> Path:
@@ -44,14 +58,14 @@ def resource_path(*parts: str) -> Path:
 
 def user_config_dir() -> Path:
     if os.name == "nt":
-        return Path(os.environ.get("APPDATA", Path.home())) / APP_NAME
-    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / APP_NAME.lower()
+        return app_dir(Path(os.environ.get("APPDATA", Path.home())))
+    return app_dir(Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")), lower=True)
 
 
 def user_cache_dir() -> Path:
     if os.name == "nt":
-        return Path(os.environ.get("LOCALAPPDATA", Path.home())) / APP_NAME / "cache"
-    return Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / APP_NAME.lower()
+        return app_dir(Path(os.environ.get("LOCALAPPDATA", Path.home()))) / "cache"
+    return app_dir(Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")), lower=True)
 
 
 # ----------------------------------------------------------------------------- sections
@@ -127,7 +141,7 @@ class RerankerConfig(ServiceConfig):
 def _default_library() -> str:
     # The packaged desktop app may start from any working directory; keep its library in the user's home.
     if getattr(sys, "frozen", False):
-        return str(Path.home() / APP_NAME / "library")
+        return str(app_dir(Path.home()) / "library")
     return "data/library"
 
 
