@@ -7,6 +7,31 @@
 - Önceki sürümden yükseltme: `%APPDATA%\TechRAG` ve `%USERPROFILE%\TechRAG\library` klasörleri varsa aynen
   kullanılır — ayarlar, API anahtarları ve kütüphane yerinde kalır. Yeni kurulumlar `SayisalTasarimUzmani`
   klasörlerini kullanır.
+- **Proje genelinde gözden geçirme ve düzeltmeler**:
+  - *Doğrulama*: "bulunamadı" cümlesi, selamlama/giriş ifadesi ("Tabii, …", "Kısaca: …"), başlık veya kalın
+    satır ve tablo başlığı/kısa tablo satırı içindeki ifadeler artık denetimden kaçamıyor. Sayfa/bölüm numarası
+    değer kanıtı sayılmıyor. Hesap etiketi kanıt değil; kaynaktan hiç girdi almayan hesap ve sorudaki değerle
+    yapılan hesap belgelenmiş değer gibi onaylanmıyor. Denetçi uzun kaynakta ifadenin dayandığı satırları görüyor.
+  - *Kapsam*: sorudaki standart belge seçiminin içinde de uygulanıyor (yalnız DDR4 seçiliyken DDR5 sorusu
+    DDR4'ten cevaplanmıyor); bir revizyonun adı yalnızca kendi standardını sabitliyor ("PCIe 4.0 vs PCIe 5.0
+    r0.9" artık PCIe 4.0'ı yüklü değil saymıyor); araç çağrıları kapsamı genişletmiyor.
+  - *İndeksleme*: aynı taramada değişen bir dosyanın kopyası yanlış içerikle indekslenmiyor; eksi işareti (−40)
+    ve "1,200"/"1.200" ayrımı tablo doğrulamasında korunuyor; tek okunamayan dosya klasörü durdurmuyor; kesik VLM
+    cevabı "tablo yok" diye önbelleğe yazılmıyor; BOM'lu/Windows-1254 metin, Türkçe "İ" araması ve DOCX bölümleri
+    düzeldi; farklı yazılmış revizyonlar taramayı çökertmiyor.
+  - *Sunucu ve ayarlar*: salt-okunur kütüphaneye dosya yazılmıyor; ayar kaydetmek komut satırı/ortam ayarlarını
+    geri almıyor; kütüphanenin içine/kendisine yayımlama engellendi; BOM'lu veya bozuk settings.json sessizce
+    silinmiyor (yedeklenir); çözülemeyen API anahtarı üzerine yazılmıyor, şifrelenemeyen anahtar düz metin
+    kaydedilmiyor; kayıtlı anahtar yalnızca kendi sunucusuna gönderiliyor; belge açma yalnız belge türleri için;
+    aynı klasör iki kez eklenmiyor; `serve` her zaman erişim anahtarıyla açılıyor.
+  - *Masaüstü*: "Uygulamadan çık" süreci gerçekten sonlandırıyor (arka planda süren model çağrıları beklenmiyor);
+    iptal edilen oturum kapatma uygulamayı bozmuyor; başka bir programın kapatma isteği uygulamayı düzgün
+    kapatıyor; sohbet penceresi simgenin bulunduğu monitöre göre boyutlanıyor.
+  - *Arayüz*: panel düzeni, dil ve açık bucket'lar yeniden açılışta korunuyor (her açılışta değişen port bunları
+    siliyordu); hata mesajı taslakla örtülmüyor; cevap beklenirken yazılan soru kaybolmuyor; "Yeni sohbet" eski
+    cevabı yeni sohbete taşımıyor; diyalogda Enter "İptal" sayılmıyor; atıf düğmeleri doğru ifadeye bağlanıyor;
+    başka kütüphane açılınca eski seçim/sohbet temizleniyor; güncellemeden sonra eski arayüz dosyası veya silinmiş
+    belgenin sayfa görüntüsü önbellekten gösterilmiyor.
 
 ### 0.4.0 — sohbet simgesiyle açılış, Notlar kaldırıldı
 - **Yuvarlak sohbet simgesi**: uygulama ekranın sağ alt köşesinde küçük bir simge olarak açılır (normal

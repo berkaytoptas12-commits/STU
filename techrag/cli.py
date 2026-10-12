@@ -106,6 +106,9 @@ def cmd_rescan(cfg: Config, args) -> int:
 def cmd_purge_missing(cfg: Config, args) -> int:
     from techrag.store import Store
 
+    if cfg.read_only:
+        _print("the library is opened read-only: nothing removed")
+        return 1
     for p in Store(cfg.db_path).purge_missing():
         _print(f"removed from index: {p}")
     return 0
@@ -272,7 +275,11 @@ def cmd_migrate(cfg: Config, args) -> int:
 def cmd_publish(cfg: Config, args) -> int:
     from techrag.store import Store
 
-    target = Store(cfg.db_path, read_only=cfg.read_only).publish(args.dest, cfg.sources_dir, cfg.vlm_cache_dir)
+    try:
+        target = Store(cfg.db_path, read_only=cfg.read_only).publish(args.dest, cfg.sources_dir, cfg.vlm_cache_dir)
+    except ValueError as exc:
+        _print(f"not published: {exc}")
+        return 1
     _print(f"published to {target.parent}")
     return 0
 
@@ -396,8 +403,14 @@ def cmd_serve(cfg: Config, args) -> int:
 
     from techrag.server import create_app
 
+    import secrets
+
     host, port = args.host or cfg.server.host, args.port or cfg.server.port
-    _print(f"techrag API + UI: http://{host}:{port}")
+    if not cfg.server.api_token:
+        # Without a token any web page open in a browser on this machine (or anyone on the network, with a
+        # non-local --host) could call the API: rescan, delete from the index, upload.
+        cfg.server.api_token = secrets.token_urlsafe(18)
+    _print(f"{APP_TITLE} API + UI: http://{host}:{port}/?token={cfg.server.api_token}")
     uvicorn.run(create_app(cfg), host=host, port=port, log_level="info")
     return 0
 

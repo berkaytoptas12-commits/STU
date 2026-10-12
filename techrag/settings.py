@@ -1,5 +1,5 @@
-"""Per-user settings written by the desktop Settings dialog (%APPDATA%/SayisalTasarimUzmani/settings.json; an existing %APPDATA%/TechRAG folder
-from before the rename keeps being used).
+"""Per-user settings written by the desktop Settings dialog (%APPDATA%/SayisalTasarimUzmani/settings.json; an
+existing %APPDATA%/TechRAG folder from before the rename keeps being used).
 
 API keys are encrypted with Windows DPAPI (bound to the Windows user account) when available; on
 other platforms the file is created with owner-only permissions.
@@ -9,11 +9,15 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
+import shutil
 from pathlib import Path
 from typing import Any
 
-from techrag.config import Config, apply_dict, user_config_dir
+from techrag.config import Config, _apply_env, apply_dict, user_config_dir
+
+log = logging.getLogger("techrag.settings")
 
 SECRET_KEYS = ("api_key",)
 SECTIONS = ("llm", "vision", "embedding", "reranker", "paths", "ui", "answer", "retrieval", "tls")
@@ -53,16 +57,24 @@ def encrypt_secret(value: str) -> Any:
     if os.name == "nt":
         try:
             return {"dpapi": base64.b64encode(_dpapi(value.encode("utf-8"), True)).decode("ascii")}
-        except Exception:
-            pass
+        except Exception as exc:  # never fall back to writing the key in plain text
+            raise RuntimeError("the API key could not be encrypted with Windows DPAPI and was not saved") from exc
     return value
 
 
-def decrypt_secret(value: Any) -> str:
+# Keys that could not be decrypted (another Windows account, a reset password): kept as stored, so that saving
+# any other setting does not overwrite them with "".
+_UNREADABLE: dict[tuple[str, str], Any] = {}
+
+
+def decrypt_secret(value: Any, where: tuple[str, str] = ("", "")) -> str:
     if isinstance(value, dict) and "dpapi" in value:
         try:
             return _dpapi(base64.b64decode(value["dpapi"]), False).decode("utf-8")
         except Exception:
+            _UNREADABLE[where] = value
+            log.warning("the stored %s key cannot be decrypted by this Windows account; it is kept unchanged",
+                        where[0] or "API")
             return ""
     return value if isinstance(value, str) else ""
 
@@ -71,17 +83,28 @@ def decrypt_secret(value: Any) -> str:
 
 def load_user_settings() -> dict:
     path = settings_path()
+    _UNREADABLE.clear()  # describes the file as read now
     if not path.exists():
         return {}
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))  # Notepad / PowerShell 5 write a BOM
+        if not isinstance(raw, dict):
+            raise ValueError("not a JSON object")
+    except Exception as exc:
+        # Keep a copy before the next save replaces it - it holds the endpoints and keys.
+        backup = path.with_name(path.name + ".unreadable")
+        try:
+            shutil.copy2(path, backup)
+        except OSError:
+            pass
+        log.warning("settings file %s cannot be read (%s); a copy is kept as %s", path, exc.__class__.__name__,
+                    backup.name)
         return {}
-    for section in raw.values():
+    for name, section in raw.items():
         if isinstance(section, dict):
             for k in SECRET_KEYS:
                 if k in section:
-                    section[k] = decrypt_secret(section[k])
+                    section[k] = decrypt_secret(section[k], (name, k))
     return raw
 
 
@@ -89,11 +112,12 @@ def save_user_settings(data: dict) -> Path:
     path = settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     out = json.loads(json.dumps(data))
-    for section in out.values():
+    for name, section in out.items():
         if isinstance(section, dict):
             for k in SECRET_KEYS:
                 if k in section:
-                    section[k] = encrypt_secret(section[k])
+                    kept = _UNREADABLE.get((name, k))
+                    section[k] = kept if (kept is not None and not section[k]) else encrypt_secret(section[k])
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     if os.name != "nt":
@@ -116,18 +140,24 @@ def update_settings(cfg: Config, patch: dict) -> Config:
     """Merge a settings patch from the UI into the stored user settings and return a new Config.
     A masked or missing api_key keeps the stored one."""
     stored = load_user_settings()
+    applied: dict = {}
     for section, values in (patch or {}).items():
         if section == "read_only":
-            stored["read_only"] = bool(values)
+            stored["read_only"] = applied["read_only"] = bool(values)
             continue
         if section not in SECTIONS or not isinstance(values, dict):
             continue
-        dest = stored.setdefault(section, {})
+        dest, now = stored.setdefault(section, {}), applied.setdefault(section, {})
         for k, v in values.items():
             if k in SECRET_KEYS and (v == MASK or v is None):
                 continue
-            dest[k] = v
+            dest[k] = now[k] = v
+            if k in SECRET_KEYS:
+                _UNREADABLE.pop((section, k), None)  # explicitly replaced (or cleared) by the user
+    # Only what changed goes into the running config: environment variables and command-line options (e.g.
+    # --library, TECHRAG_READ_ONLY) keep winning, as they did at start-up.
     probe = cfg.copy()
-    apply_dict(probe, stored, strict=False)  # validates types before persisting
+    apply_dict(probe, applied, strict=False)  # validates types before persisting
+    _apply_env(probe)
     save_user_settings(stored)
     return probe

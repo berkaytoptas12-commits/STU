@@ -12,6 +12,7 @@ embeddings and rerank can each point at a different server. Nothing heavy runs l
 from __future__ import annotations
 
 import copy
+import logging
 import os
 import sys
 import threading
@@ -25,6 +26,8 @@ DEFAULT_CONFIG_PATH = Path("config/config.yaml")
 APP_TITLE = "Sayısal Tasarım Uzmanı"   # the product name shown to users
 APP_NAME = "SayisalTasarimUzmani"      # file and folder names (ASCII: safe in paths, archives and release assets)
 LEGACY_APP_NAME = "TechRAG"           # the former name: folders created under it keep being used
+
+log = logging.getLogger("techrag.config")
 
 
 def write_text_atomic(path: Path, text: str | bytes) -> None:
@@ -45,6 +48,14 @@ def app_dir(base: Path, lower: bool = False) -> Path:
     new = Path(base) / (APP_NAME.lower() if lower else APP_NAME)
     old = Path(base) / (LEGACY_APP_NAME.lower() if lower else LEGACY_APP_NAME)
     return old if old.is_dir() and not new.exists() else new
+
+
+def same_path(a: str | Path, b: str | Path) -> bool:
+    """Whether two paths name the same folder/file (case-insensitive on Windows, symlinks and '..' resolved)."""
+    try:
+        return os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))
+    except (OSError, ValueError):
+        return str(a) == str(b)
 
 
 def resource_path(*parts: str) -> Path:
@@ -313,19 +324,24 @@ def apply_dict(obj: Any, data: dict, where: str = "", strict: bool = True) -> No
 
 
 def _apply_env(cfg: Config) -> None:
+    """TECHRAG_<SECTION>__<KEY> / TECHRAG_<KEY> overrides. Only config fields are set (never properties such as
+    library_dir, methods or whole sections); other TECHRAG_* variables are ignored."""
     prefix = "TECHRAG_"
     for name, value in os.environ.items():
         if not name.startswith(prefix) or name in ("TECHRAG_CONFIG", "TECHRAG_DEBUG", "TECHRAG_NO_USER_SETTINGS"):
             continue
-        parts = name[len(prefix):].lower().split("__")
+        *sections, key = name[len(prefix):].lower().split("__")
         target: Any = cfg
-        for part in parts[:-1]:
-            target = getattr(target, part, None)
-            if target is None:
-                break
-        if target is None or not is_dataclass(target) or not hasattr(target, parts[-1]):
+        for part in sections:
+            target = getattr(target, part) if part in _field_names(target) else None
+        if key not in _field_names(target) or is_dataclass(getattr(target, key)):
+            log.debug("ignoring environment variable %s: not a config setting", name)
             continue
-        setattr(target, parts[-1], _coerce(value, getattr(target, parts[-1])))
+        setattr(target, key, _coerce(value, getattr(target, key)))
+
+
+def _field_names(obj: Any) -> set[str]:
+    return {f.name for f in fields(obj)} if is_dataclass(obj) else set()
 
 
 def load_config(path: Optional[str | Path] = None, user_settings: Optional[bool] = None) -> Config:

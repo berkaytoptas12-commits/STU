@@ -312,7 +312,8 @@ SayisalTasarimUzmani.exe eval eval\questions.yaml  :: değerlendirme
 ```
 
 Kaynak koddan: `pip install -r requirements-desktop.txt` → `python -m techrag.desktop` (pencere) veya
-`python -m techrag <komut>`; tarayıcıda geliştirme için `python -m techrag serve`.
+`python -m techrag <komut>`; tarayıcıda geliştirme için `python -m techrag serve` (adres erişim
+anahtarıyla, `?token=…` ile yazdırılır; anahtarsız istekler reddedilir).
 
 ---
 

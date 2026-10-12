@@ -1018,6 +1018,13 @@ class Store:
         and the copied index points at those copies, so the package works on any machine. The original files
         are only read. A summary is left in self.last_publish."""
         dest = Path(dest_dir)
+        lib = self.db_path.parent.resolve()
+        d = dest.resolve()
+        if d == lib or lib in d.parents or d in lib.parents:
+            # Into the library itself the live index would be deleted first; inside it, copying its sources
+            # would copy into itself; around it, the package would overwrite the library's own files.
+            raise ValueError("publish to a folder outside the current library (not the library, a folder inside "
+                             "it or a folder containing it)")
         dest.mkdir(parents=True, exist_ok=True)
         target = dest / "index.sqlite"
         if target.exists():

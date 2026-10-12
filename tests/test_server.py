@@ -175,3 +175,111 @@ def test_single_files_with_the_same_name_do_not_overwrite(client, tmp_path):
     assert r1["copied"][0] != r2["copied"][0] and r2["copied"][0].endswith("Spec (2).md")
     names = {d["rel_path"] for d in client.get("/api/documents").json() if d["bucket"] == "Arayüz Notları"}
     assert names == {"Arayüz Notları/Spec.md", "Arayüz Notları/Spec (2).md"}
+
+
+# ------------------------------------------------------------------ review findings (server / settings)
+
+def test_nothing_is_written_into_a_read_only_library(cfg, engine, tmp_path, monkeypatch):
+    monkeypatch.setenv("TECHRAG_SETTINGS", str(tmp_path / "settings.json"))
+    src = tmp_path / "x.md"
+    src.write_text("# X\n", encoding="utf-8")
+    before = sorted(p.name for p in cfg.sources_dir.rglob("*"))
+    cfg.read_only = True
+    with TestClient(create_app(cfg, engine, warmup=False, desktop=True)) as c:
+        assert c.post("/api/upload", files={"file": ("y.md", b"# Y\n")}).status_code == 403
+        assert c.post("/api/sources/add", json={"paths": [str(src)], "collection": "new"}).status_code == 403
+    cfg.read_only, cfg.server.allow_upload = False, False
+    with TestClient(create_app(cfg, engine, warmup=False, desktop=True)) as c:
+        assert c.post("/api/upload", files={"file": ("y.md", b"# Y\n")}).status_code == 403
+    assert sorted(p.name for p in cfg.sources_dir.rglob("*")) == before, "no file, no folder created"
+
+
+def test_saving_a_setting_keeps_command_line_and_environment_overrides(cfg, engine, tmp_path, monkeypatch):
+    settings = tmp_path / "settings.json"
+    monkeypatch.setenv("TECHRAG_SETTINGS", str(settings))
+    settings.write_text(json.dumps({"paths": {"library_dir": str(tmp_path / "other")}, "llm": {"temperature": 0.9}}),
+                        encoding="utf-8")
+    monkeypatch.setenv("TECHRAG_LLM__TEMPERATURE", "0.3")
+    lib = str(cfg.library_dir.resolve())  # as given on the command line (--library)
+    with TestClient(create_app(cfg, engine, warmup=False, desktop=True)) as c:
+        c.put("/api/settings", json={"ui": {"language": "en"}})
+        info = c.get("/api/info").json()
+        assert info["library"] == lib and c.app.state.state["cfg"].llm.temperature == 0.3
+    stored = json.loads(settings.read_text(encoding="utf-8"))
+    assert stored["ui"]["language"] == "en" and stored["llm"]["temperature"] == 0.9, "the file keeps its values"
+
+
+def test_publishing_never_touches_the_live_library(client, cfg, engine, tmp_path):
+    import pytest
+
+    for dest in (cfg.library_dir, cfg.sources_dir / "export", cfg.library_dir.parent):
+        r = client.post("/api/library/publish", json={"dest": str(dest)})
+        assert r.status_code == 400 and "outside the current library" in r.json()["detail"]
+        with pytest.raises(ValueError):
+            engine.store.publish(dest, cfg.sources_dir)
+    assert engine.store.stats()["documents"] == 3 and not (cfg.sources_dir / "export").exists()
+
+
+def test_purge_missing_respects_read_only(cfg):
+    from techrag.cli import cmd_purge_missing
+
+    cfg.read_only = True
+    assert cmd_purge_missing(cfg, None) == 1
+
+
+def test_stored_key_only_goes_to_its_own_server(client, monkeypatch):
+    from techrag import server
+
+    seen = []
+
+    class Capture:
+        def __init__(self, svc):
+            seen.append((svc.base_url, svc.api_key))
+
+        def list_models(self):
+            return []
+
+    monkeypatch.setattr(server, "APIClient", Capture)
+    c = client.app.state.state["cfg"]
+    c.llm.base_url, c.llm.api_key = "http://llm.local:8000/v1", "stored-secret"
+    c.vision.base_url, c.vision.api_key = "", ""        # vision uses the chat model's server and key
+    client.post("/api/settings/models", json={"service": "llm", "base_url": "http://llm.local:8000/v1", "api_key": MASK})
+    client.post("/api/settings/models", json={"service": "llm", "base_url": "http://evil.example:9/v1", "api_key": MASK})
+    client.post("/api/settings/models", json={"service": "vision", "base_url": "http://llm.local:8000/v1", "api_key": ""})
+    assert seen == [("http://llm.local:8000/v1", "stored-secret"), ("http://evil.example:9/v1", ""),
+                    ("http://llm.local:8000/v1", "stored-secret")]
+
+
+def test_document_files_are_only_document_types(client, engine, tmp_path, monkeypatch):
+    exe = tmp_path / "tool.exe"
+    exe.write_bytes(b"MZ")
+    html = tmp_path / "page.html"
+    html.write_text("<script>alert(location.search)</script>", encoding="utf-8")
+    d = client.get("/api/documents").json()[0]
+    monkeypatch.setattr(engine, "document_path", lambda doc_id: exe)
+    assert client.get(f"/api/documents/{d['id']}/file").status_code == 403
+    assert client.post(f"/api/documents/{d['id']}/open").status_code == 403, "never started"
+    monkeypatch.setattr(engine, "document_path", lambda doc_id: html)
+    r = client.get(f"/api/documents/{d['id']}/file")
+    assert r.status_code == 200 and r.headers["content-security-policy"] == "sandbox"
+    assert r.headers["content-disposition"].startswith("attachment")
+
+
+def test_same_folder_is_registered_once(client, tmp_path):
+    root = tmp_path / "Belgeler"
+    root.mkdir()
+    (root / "a.md").write_text("# A\n\nText.\n", encoding="utf-8")
+    first = client.post("/api/folders", json={"path": str(root)}).json()["root_id"]
+    again = client.post("/api/folders", json={"path": str(root / ".." / "Belgeler")}).json()["root_id"]
+    assert first == again and len(client.get("/api/folders").json()) == 1
+
+
+def test_serve_always_protects_the_api_with_a_token(cfg, monkeypatch, capsys):
+    import uvicorn
+
+    from techrag.cli import cmd_serve
+
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **k: None)
+    cfg.server.api_token = ""
+    cmd_serve(cfg, type("A", (), {"host": None, "port": None})())
+    assert len(cfg.server.api_token) > 16 and f"?token={cfg.server.api_token}" in capsys.readouterr().out

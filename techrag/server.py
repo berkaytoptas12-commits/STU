@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 
 from techrag import __version__, tls
 from techrag.api import APIClient, check_service, configure_tls, current_tls, normalize_base_url
-from techrag.config import Config, ServiceConfig, resource_path
+from techrag.config import Config, ServiceConfig, resource_path, same_path
 from techrag.engine import RAGEngine
 from techrag.ingest.loaders import SUPPORTED_SUFFIXES
 from techrag.ingest.pipeline import IngestStopped, WriteGate
@@ -116,6 +116,14 @@ class Jobs:
                "progress": {}, "created": time.time()}
         self.items[job["id"]] = job
         return job
+
+
+def _same_server(a: str, b: str) -> bool:
+    """Same scheme, host and port (a stored API key may only go back to the server it was entered for)."""
+    try:
+        return bool(a and b) and tls.host_port(normalize_base_url(a)) == tls.host_port(normalize_base_url(b))
+    except Exception:
+        return False
 
 
 def _safe_filename(name: str) -> str:
@@ -241,9 +249,12 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             raise HTTPException(400, f"unknown service '{p.service}'")
         c: Config = state["cfg"]
         saved = c.vision_service() if p.service == "vision" else getattr(c, p.service)
-        key = saved.api_key if (p.api_key in (None, MASK)) else p.api_key
-        return ServiceConfig(base_url=p.base_url if p.base_url is not None else saved.base_url,
-                             api_key=key or "", model=p.model if p.model is not None else saved.model,
+        url = p.base_url if p.base_url is not None else saved.base_url
+        # The stored key is only reused for the server it belongs to - never sent to another URL given in the
+        # request. The vision service shows "" when it uses the chat model's key (as at run time).
+        reuse = p.api_key in (None, MASK) or (p.service == "vision" and p.api_key == "")
+        key = (saved.api_key if _same_server(url, saved.base_url) else "") if reuse else p.api_key
+        return ServiceConfig(base_url=url, api_key=key or "", model=p.model if p.model is not None else saved.model,
                              timeout=30.0, verify_ssl=saved.verify_ssl if p.verify_ssl is None else p.verify_ssl)
 
     @app.post("/api/settings/models", dependencies=guard)
@@ -338,10 +349,11 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
     def library_publish(req: PublishRequest):
         c: Config = state["cfg"]
         dest = Path(req.dest).expanduser()
-        if dest.resolve() == c.library_dir.resolve():
-            raise HTTPException(400, "destination is the current library")
         store = eng().store
-        target = store.publish(dest, c.sources_dir, c.vlm_cache_dir)
+        try:
+            target = store.publish(dest, c.sources_dir, c.vlm_cache_dir)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
         return {"ok": True, "path": str(target.parent), "report": getattr(store, "last_publish", {})}
 
     # ------------------------------------------------------------- documents
@@ -387,20 +399,29 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
 
     @app.get("/api/documents/{doc_id}/file", dependencies=guard)
     def document_file(doc_id: int):
-        path = eng().document_path(doc_id)
-        if not path or not path.exists():
-            raise HTTPException(404, "file not found")
+        path = document_source(doc_id)
         media = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        if path.suffix.lower() in (".html", ".htm"):  # never rendered on this origin (it could read the token)
+            return FileResponse(path, media_type=media, filename=path.name, content_disposition_type="attachment",
+                                headers={"Content-Security-Policy": "sandbox"})
         return FileResponse(path, media_type=media, filename=path.name, content_disposition_type="inline")
+
+    def document_source(doc_id: int) -> Path:
+        """The original file of an indexed document - only a document type the app indexes (an index from a shared
+        drive could have been edited to point at a program)."""
+        path = eng().document_path(doc_id)
+        if not path or not path.is_file():
+            raise HTTPException(404, "file not found")
+        if path.suffix.lower() not in SUPPORTED_SUFFIXES:
+            raise HTTPException(403, "not a document type this app indexes")
+        return path
 
     @app.post("/api/documents/{doc_id}/open", dependencies=guard)
     def document_open(doc_id: int):
         """Desktop only: open the original file in the system's default viewer (not a browser tab)."""
         if not desktop:
             raise HTTPException(400, "only available in the desktop app")
-        path = eng().document_path(doc_id)
-        if not path or not path.exists():
-            raise HTTPException(404, "file not found")
+        path = document_source(doc_id)
         if sys.platform.startswith("win"):
             os.startfile(str(path))  # type: ignore[attr-defined]
         else:
@@ -494,7 +515,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         Only reads the folder."""
         path = Path(req.path).expanduser()
         e = eng()
-        known = next((r for r in e.store.roots() if Path(r["path"]) == path), None)
+        known = next((r for r in e.store.roots() if same_path(r["path"], path)), None)
         out = _plan(str(path), known["id"] if known else None)
         out["known"] = bool(known)
         return out
@@ -513,7 +534,10 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 raise HTTPException(400, "pick a folder outside the library folder")
         except OSError:
             pass
-        root_id = eng().store.add_root(str(path))
+        store = eng().store
+        # "c:\docs" and "C:\Docs" are the same folder on Windows: never register (and index) it twice.
+        known = next((r for r in store.roots() if same_path(r["path"], path)), None)
+        root_id = known["id"] if known else store.add_root(str(path))
         return {"root_id": root_id, "job": start_job("folder", root_id=root_id)["id"]}
 
     @app.get("/api/folders", dependencies=guard)
@@ -565,8 +589,18 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             n += 1
         return dest
 
+    def check_can_add() -> None:
+        """Before anything is copied or written into the library's sources folder."""
+        c: Config = state["cfg"]
+        if c.read_only:
+            raise HTTPException(403, "the library is opened read-only")
+        if not c.server.allow_upload:
+            raise HTTPException(403, "adding documents is switched off on this server (server.allow_upload)")
+        eng()
+
     @app.post("/api/sources/add", dependencies=guard)
     def sources_add(req: PathsRequest):
+        check_can_add()
         dest_dir = collection_dir(req.collection)
         copied = []
         for p in req.paths:
@@ -583,6 +617,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
 
     @app.post("/api/upload", dependencies=guard)
     async def upload(file: UploadFile = File(...), domain: str = Form("general")):
+        check_can_add()
         name = _safe_filename(file.filename or "upload")
         if Path(name).suffix.lower() not in SUPPORTED_SUFFIXES:
             raise HTTPException(400, f"unsupported file type; allowed: {', '.join(sorted(SUPPORTED_SUFFIXES))}")
