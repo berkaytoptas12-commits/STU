@@ -164,8 +164,8 @@ kaynaklara bağlı, cevabı göstermeden önce doğrulayan asistan. Modeller kur
 ### İndirme
 | Dosya | Ne zaman |
 |---|---|
-| `TechRAG-portable.exe` | Tek dosya, kopyala-çalıştır (ilk açılış birkaç saniye sürer) |
-| `TechRAG-win64.zip` | Klasör sürümü, daha hızlı açılır — zip'i açıp `TechRAG\TechRAG.exe` çalıştırın |
+| `SayisalTasarimUzmani-portable.exe` | Tek dosya, kopyala-çalıştır (ilk açılış birkaç saniye sürer) |
+| `SayisalTasarimUzmani-win64.zip` | Klasör sürümü, daha hızlı açılır — zip'i açıp `SayisalTasarimUzmani\SayisalTasarimUzmani.exe` çalıştırın |
 
 ### Gereksinimler
 - Windows 10/11 x64, **Microsoft Edge WebView2 Runtime** (Windows 11'de hazır; Windows 10'da yoksa
@@ -173,16 +173,21 @@ kaynaklara bağlı, cevabı göstermeden önce doğrulayan asistan. Modeller kur
 - Erişilebilir vLLM uç noktaları: sohbet (tool calling açık), isteğe bağlı ayrı görsel model, embedding, reranker.
 
 ### İlk adımlar
-1. `TechRAG.exe` → **Ayarlar**: her servis için API adresi (`http://sunucu:8000/v1`), API anahtarı, modeli
-   açılır listeden seçin, **Test et**.
-2. **Doküman ekle**: koleksiyonu (ör. `ddr`, `pcie`) seçip PDF'leri ekleyin; indeksleme ilerlemesi görünür.
-3. Soru sorun. Komut satırı da aynı exe ile çalışır: `TechRAG.exe doctor`, `TechRAG.exe ingest`, `TechRAG.exe docs`.
+1. `SayisalTasarimUzmani.exe` açılınca ekranın sağ altında mikroçip simgesi belirir; tıklayınca sohbet penceresi
+   açılır. **Ayarlar**: her servis için API adresi (`http://sunucu:8000/v1`), API anahtarı, modeli açılır
+   listeden seçin, **Test et**.
+2. **Belge klasörü ekle**: belgelerinizin ana klasörünü seçin; alt klasörler bucket olur, belgeler yerinde okunur.
+   İndeksleme sonucu 📋 kalite raporunda görünür.
+3. Soru sorun. Komut satırı da aynı exe ile çalışır: `SayisalTasarimUzmani.exe doctor`, `... rescan`,
+   `... quality`, `... docs`.
 
-Kütüphane varsayılan olarak `%USERPROFILE%\TechRAG\library` altındadır; ayarlar `%APPDATA%\TechRAG\settings.json`.
+Kütüphane varsayılan olarak `%USERPROFILE%\SayisalTasarimUzmani\library` altındadır; ayarlar
+`%APPDATA%\SayisalTasarimUzmani\settings.json` (eski `TechRAG` klasörleri varsa onlar kullanılır).
 Ayrıntılar: depodaki `README.md`.
 
 ### Bilinen sınırlamalar
-- Bu sürüm gerçek model sunucularına ve gerçek standart PDF'lerine karşı henüz denenmedi; testler sahte bir
-  OpenAI uyumlu sunucu ve üretilmiş PDF'lerle yapıldı. VLM tablo eşiği ve rerank ayarlarının kendi
-  dokümanlarınızla `TechRAG.exe eval --retrieval-only` kullanılarak ayarlanması gerekir.
+- Testler sahte bir OpenAI uyumlu sunucu ve üretilmiş PDF'lerle yapıldı; gerçek model sunucularına ve gerçek
+  standart PDF'lerine karşı doğruluk ölçülmedi. VLM tablo eşiği ve rerank ayarlarının kendi dokümanlarınızla
+  `SayisalTasarimUzmani.exe eval --retrieval-only` kullanılarak ayarlanması gerekir. Kaynaklara bağlı doğruluk
+  garanti edilmez; doğrulama yanlışların bir kısmını yakalar.
 - Exe imzasızdır; Windows SmartScreen ilk açılışta uyarı verebilir ("Daha fazla bilgi → Yine de çalıştır").
