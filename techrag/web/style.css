@@ -84,7 +84,7 @@ body.narrow .viewer { position: fixed; z-index: 21; right: 8px; top: 52px; botto
 .hint { font-size: 12.5px; color: var(--muted); margin: 6px 0 10px; }
 
 .sources { display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
-.src-actions { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
+.src-actions { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; }
 #btn-rescan { font-size: 15px; padding: 2px 9px; }
 .src-actions button { font-size: 12.5px; padding: 4px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .doc-filter { width: 100%; font-size: 12.5px; padding: 4px 8px; }
@@ -254,3 +254,27 @@ dialog::backdrop { background: rgba(0, 0, 0, .35); }
 .cert-panel dt { color: var(--muted); }
 .cert-panel dd { margin: 0; overflow-wrap: anywhere; }
 .cert-panel code { font-size: 11.5px; }
+
+/* Indexing quality report */
+.q-run, .q-retry { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+.q-run h3, .q-retry h3 { margin: 0 0 6px; font-size: 14px; }
+.q-run p, .q-retry p { margin: 3px 0; }
+.q-runs { margin-top: 6px; }
+.q-runs li { font-size: 12px; color: var(--muted); }
+.q-retry[hidden] { display: none; }
+.q-filter { justify-content: space-between; align-items: center; }
+.q-docs { display: flex; flex-direction: column; gap: 8px; }
+.q-doc { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+.q-doc.failed { border-color: var(--bad); }
+.q-doc.partial { border-color: var(--warn); }
+.q-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.q-head b { overflow-wrap: anywhere; }
+.q-st { font-size: 11px; padding: 1px 7px; border-radius: 10px; white-space: nowrap; }
+.q-st.ok { background: var(--ok-soft); color: var(--ok); }
+.q-st.partial { background: var(--warn-soft); color: var(--warn); }
+.q-st.failed { background: var(--bad-soft); color: var(--bad); }
+.q-st.none { background: var(--code); color: var(--muted); }
+.q-doc ul { margin: 4px 0 0 18px; padding: 0; }
+.q-doc li { margin: 2px 0; }
+.q-act { color: var(--muted); }
+.q-doc .goto { margin-left: 6px; padding: 0 6px; font-size: 11.5px; }

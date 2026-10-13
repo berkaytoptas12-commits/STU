@@ -21,7 +21,7 @@ from typing import Iterable, Iterator, Optional, Sequence
 
 import numpy as np
 
-SCHEMA_VERSION = "4"
+SCHEMA_VERSION = "5"
 # Documents ingested with this format carry metadata["index_format"]; older ones lack page geometry and
 # cell-level table grounding (see Store.legacy_documents / `techrag migrate`).
 INDEX_FORMAT = 3
@@ -128,6 +128,25 @@ CREATE TABLE IF NOT EXISTS pages (
 CREATE VIRTUAL TABLE IF NOT EXISTS params_fts USING fts5(
     parameter, symbol, conditions, notes, caption, section, title,
     tokenize = 'porter unicode61 remove_diacritics 2'
+);
+CREATE TABLE IF NOT EXISTS ingest_runs (
+    id INTEGER PRIMARY KEY,
+    kind TEXT,
+    started_at TEXT,
+    finished_at TEXT,
+    status TEXT,
+    summary TEXT
+);
+CREATE TABLE IF NOT EXISTS doc_quality (
+    path TEXT PRIMARY KEY,
+    run_id INTEGER,
+    status TEXT,
+    stage TEXT DEFAULT '',
+    processed_at TEXT,
+    last_ok_at TEXT DEFAULT '',
+    index_kept INTEGER DEFAULT 0,
+    needs_reprocess INTEGER DEFAULT 0,
+    data TEXT
 );
 """
 
@@ -349,6 +368,8 @@ class Store:
                 con.executescript(SCHEMA)
                 if not con.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone():
                     con.execute("INSERT INTO meta VALUES('schema_version', ?)", (SCHEMA_VERSION,))
+                # a run still 'running' when the library is opened was cut off (the app was closed meanwhile)
+                con.execute("UPDATE ingest_runs SET status='interrupted' WHERE status='running'")
         with self.connect() as con:
             self.columns = {t: {r[1] for r in con.execute(f"PRAGMA table_info({t})")}
                             for t in ("chunks", "tables", "parameters", "pages", "documents", "roots")}
@@ -453,7 +474,8 @@ class Store:
     def reset(self, embedding_name: str, dim: int) -> None:
         self._writable()
         with self.connect() as con:
-            for t in ("params_fts", "parameters", "tables", "pages", "chunks_fts", "chunks", "documents"):
+            for t in ("params_fts", "parameters", "tables", "pages", "chunks_fts", "chunks", "documents",
+                      "doc_quality"):
                 con.execute(f"DELETE FROM {t}")
             self.set_meta("embedding_model", embedding_name, con)
             self.set_meta("embedding_dim", str(dim), con)
@@ -511,6 +533,8 @@ class Store:
             c.execute("DELETE FROM pages WHERE doc_id=?", (doc_id,))
             c.execute("DELETE FROM chunks WHERE doc_id=?", (doc_id,))
             c.execute("UPDATE documents SET superseded_by=NULL WHERE superseded_by=?", (doc_id,))
+            if self._has_quality(c):
+                c.execute("DELETE FROM doc_quality WHERE path IN (SELECT path FROM documents WHERE id=?)", (doc_id,))
             c.execute("DELETE FROM documents WHERE id=?", (doc_id,))
             self._bump_version(c)
 
@@ -524,7 +548,8 @@ class Store:
                          toc: list, metadata: dict, warnings: list, chunks: Sequence[dict],
                          embeddings: np.ndarray, entities: Sequence[str] = (), doc_type: str = "base",
                          revision: str = "", doc_date: str = "", tables: Sequence[dict] = (),
-                         pages: Sequence[tuple] = (), source: Optional[dict] = None) -> int:
+                         pages: Sequence[tuple] = (), source: Optional[dict] = None,
+                         quality: Optional[dict] = None) -> int:
         """Atomically (re)write a document with chunks, FTS rows, embeddings, tables, parameters and page
         geometry.
 
@@ -535,6 +560,7 @@ class Store:
                   "value_kind"}]}]
         pages:  [(page, label, geom_json, words_blob)]
         source: {"root_id", "rel_path", "bucket", "bucket_id", "subpath", "file_size", "file_mtime", "ingest_fp"}
+        quality: the indexing quality record of this processing (see set_quality), written in the same transaction
         """
         self._writable()
         if len(chunks) != len(embeddings):
@@ -593,9 +619,98 @@ class Store:
             for page, label, geom_json, blob in pages:
                 con.execute("INSERT INTO pages(doc_id, page, label, geom, words) VALUES(?,?,?,?,?)",
                             (doc_id, page, label, geom_json, blob))
+            if quality is not None:
+                self._put_quality(con, path, quality)
             self._bump_version(con)
         self._geom_cache.clear()
         return doc_id
+
+    # ------------------------------------------------------------ indexing quality
+    @staticmethod
+    def _has_quality(con: sqlite3.Connection) -> bool:
+        return con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='doc_quality'").fetchone() \
+            is not None
+
+    @staticmethod
+    def _put_quality(con: sqlite3.Connection, path: str, q: dict) -> None:
+        con.execute(
+            "INSERT INTO doc_quality(path, run_id, status, stage, processed_at, last_ok_at, index_kept, "
+            "needs_reprocess, data) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET "
+            "run_id=excluded.run_id, status=excluded.status, stage=excluded.stage, processed_at=excluded.processed_at,"
+            " last_ok_at=excluded.last_ok_at, index_kept=excluded.index_kept, needs_reprocess=excluded.needs_reprocess,"
+            " data=excluded.data",
+            (path, q.get("run_id"), q.get("status", ""), q.get("stage", ""),
+             q.get("processed_at") or datetime.now(timezone.utc).isoformat(timespec="seconds"),
+             q.get("last_ok_at", ""), 1 if q.get("index_kept") else 0, 1 if q.get("needs_reprocess") else 0,
+             json.dumps(q.get("data") or {}, ensure_ascii=False)))
+
+    def set_quality(self, path: str, quality: dict) -> None:
+        """The quality record of a processing that did not write the document (a failure): the document's index
+        rows - if any - are left exactly as they were."""
+        self._writable()
+        with self.connect() as con:
+            if self._has_quality(con):
+                self._put_quality(con, path, quality)
+
+    def quality(self) -> Optional[dict[str, dict]]:
+        """path -> quality record; None for an index without quality tables (an older, read-only library)."""
+        with self.connect() as con:
+            if not self._has_quality(con):
+                return None
+            rows = con.execute("SELECT * FROM doc_quality").fetchall()
+        out = {}
+        for r in rows:
+            d = dict(r)
+            try:
+                d["data"] = json.loads(d.get("data") or "{}")
+            except ValueError:
+                d["data"] = {}
+            d["index_kept"], d["needs_reprocess"] = bool(d["index_kept"]), bool(d["needs_reprocess"])
+            out[d["path"]] = d
+        return out
+
+    def start_ingest_run(self, kind: str) -> Optional[int]:
+        self._writable()
+        with self.connect() as con:
+            if not self._has_quality(con):
+                return None
+            cur = con.execute("INSERT INTO ingest_runs(kind, started_at, finished_at, status, summary) "
+                              "VALUES(?,?,'','running','{}')",
+                              (kind, datetime.now(timezone.utc).isoformat(timespec="seconds")))
+            con.execute("DELETE FROM ingest_runs WHERE id <= ?", (cur.lastrowid - 50,))  # the last 50 are kept
+            return cur.lastrowid
+
+    def finish_ingest_run(self, run_id: Optional[int], status: str, summary: dict) -> None:
+        if run_id is None:
+            return
+        self._writable()
+        with self.connect() as con:
+            con.execute("UPDATE ingest_runs SET finished_at=?, status=?, summary=? WHERE id=?",
+                        (datetime.now(timezone.utc).isoformat(timespec="seconds"), status,
+                         json.dumps(summary, ensure_ascii=False), run_id))
+
+    def ingest_runs(self, limit: int = 10) -> list[dict]:
+        with self.connect() as con:
+            if not self._has_quality(con):
+                return []
+            rows = con.execute("SELECT * FROM ingest_runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["summary"] = json.loads(d.get("summary") or "{}")
+            except ValueError:
+                d["summary"] = {}
+            out.append(d)
+        return out
+
+    def chunk_embeddings(self, doc_id: int) -> dict[tuple, np.ndarray]:
+        """(section, kind, text) -> stored embedding of a document's chunks (re-processing reuses them for chunks
+        that did not change instead of embedding them again)."""
+        with self.connect() as con:
+            rows = con.execute("SELECT section, kind, text, embedding FROM chunks WHERE doc_id=?", (doc_id,)).fetchall()
+        return {(r["section"] or "", r["kind"] or "", r["text"]): np.frombuffer(r["embedding"], dtype=np.float16)
+                for r in rows if r["embedding"]}
 
     _SOURCE_FIELDS = ("root_id", "rel_path", "bucket", "bucket_id", "subpath", "file_size", "file_mtime",
                       "ingest_fp")
@@ -668,6 +783,11 @@ class Store:
         path = fields.pop("path", None)
         with self.connect() as con:
             if path is not None:
+                if self._has_quality(con):
+                    old = con.execute("SELECT path FROM documents WHERE id=?", (doc_id,)).fetchone()
+                    if old and old["path"] != path:
+                        con.execute("DELETE FROM doc_quality WHERE path=?", (path,))
+                        con.execute("UPDATE doc_quality SET path=? WHERE path=?", (path, old["path"]))
                 con.execute("UPDATE documents SET path=? WHERE id=?", (path, doc_id))
             self._set_source(con, doc_id, path or "", fields)
             self._bump_version(con)
@@ -711,6 +831,11 @@ class Store:
                                      f["caption"], f["section"], f["title"]))
             con.execute("INSERT INTO pages(doc_id, page, label, geom, words) SELECT ?, page, label, geom, words "
                         "FROM pages WHERE doc_id=?", (new, src_id))
+            if self._has_quality(con):  # same content, same processing result
+                con.execute("INSERT OR REPLACE INTO doc_quality(path, run_id, status, stage, processed_at, last_ok_at,"
+                            " index_kept, needs_reprocess, data) SELECT ?, run_id, status, stage, processed_at,"
+                            " last_ok_at, index_kept, needs_reprocess, data FROM doc_quality WHERE path ="
+                            " (SELECT path FROM documents WHERE id=?)", (path, src_id))
             self._bump_version(con)
         self._geom_cache.clear()
         return new

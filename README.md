@@ -32,7 +32,7 @@ flowchart TB
     end
     subgraph Ask["Soru"]
         Q["Soru + sohbet geçmişi"] --> PL["Planlayıcı (LLM): bağımsız soru, İngilizce terminoloji, parametreler"]
-        PL --> R["Kapsam: soruda adı geçen standart/sürüme KESİN filtre; yüklü değilse açıkça söylenir;<br/>belirsiz kapsamda kullanıcıya soru sorulur"]
+        PL --> R["Kapsam: soruda adı geçen standart/sürüme KESİN filtre; yüklü değilse açıkça söylenir;<br/>cevabı değiştiren eksik koşul varsa (sürüm, hız sınıfı, çalışma koşulu, uyumlulukta<br/>gerilim / TX-RX / sonlandırma) netleştirici soru sorulur"]
         R --> S["BM25 + vektör -> RRF -> rerank (API) -> bölüme genişletme;<br/>karşılaştırmalarda her standart için ayrı kanıt"]
         F --> S
         P --> S
@@ -47,7 +47,7 @@ flowchart TB
 
 | Hata kaynağı | Önlem |
 |---|---|
-| Yanlış standart / sürüm (DDR4 değeri DDR5 cevabında) | Dokümanlar standart+sürüm varlığıyla etiketlenir. Soruda adı geçen standart aramayı **kesin** olarak o etiketi taşıyan dokümanlara daraltır; **etiketsiz dokümanlar kesin eşleşme sayılmaz**. İstenen standart/sürüm yüklü değilse kapsam **genişletilmez**: cevap "yüklü dokümanlarda yok" der ve ilgili yüklü dokümanları listeler. Araçlar (arama, parametre, tablo, sayfa görüntüsü) aynı kapsamı ve kullanıcının doküman/koleksiyon seçimini uygular; başka bir sürüme kaçamaz. Karşılaştırmalarda her standardın kanıtı ayrı toplanır. Standart adı verilmemişse ve kanıt kardeş sürümlerden (DDR4/DDR5 …) geliyorsa sistem cevap yerine **hangi sürümü kastettiğinizi sorar**. |
+| Yanlış standart / sürüm (DDR4 değeri DDR5 cevabında) | Dokümanlar standart+sürüm varlığıyla etiketlenir. Soruda adı geçen standart aramayı **kesin** olarak o etiketi taşıyan dokümanlara daraltır; **etiketsiz dokümanlar kesin eşleşme sayılmaz**. İstenen standart/sürüm yüklü değilse kapsam **genişletilmez**: cevap "yüklü dokümanlarda yok" der ve ilgili yüklü dokümanları listeler. Araçlar (arama, parametre, tablo, sayfa görüntüsü) aynı kapsamı ve kullanıcının doküman/koleksiyon seçimini uygular; başka bir sürüme kaçamaz. Karşılaştırmalarda her standardın kanıtı ayrı toplanır. Standart adı verilmemişse ve kanıt kardeş sürümlerden (DDR4/DDR5 …) geliyorsa sistem cevap yerine **hangi sürümü kastettiğinizi sorar**; bir parametrenin doğrulanmış tablo satırları hız sınıfına / yoğunluğa / sıcaklığa göre farklı değer veriyorsa ve soru bunu söylemiyorsa o koşulu sorar (bkz. "Netleştirici sorular"). |
 | Revizyon / belge türü karışması | Kimlik alanları ayrıdır: standart, doküman serisi (JESD79-5, "PCI Express Base", "PCI Express CEM"), sürüm, revizyon, tür. Yalnızca **aynı serinin aynı sürümünün** eski revizyonu yenisiyle geçersiz olur; Base ile CEM veya bir tasarım kılavuzu birbirinin revizyonu sayılmaz. Guide/appnote "bilgilendirici, spesifikasyonu geçersiz kılmaz" diye işaretlenir. Errata/ECN yalnızca ilgili serinin ilgili sürümüne bağlanır ve mümkünse maddeye (§4.2.6.3) bağlanır. Eski bir revizyonu soruda açıkça adlandırırsanız (ör. "JESD79-4B") o revizyon kullanılır. Kaynaklar farklı değer veriyorsa model çelişkiyi iki atıfla belirtmek zorundadır. |
 | Tablo hücresinin yanlış okunması (min/max yer değişimi, yanlış birim, yanlış satır) | VLM yalnızca yapı önerir. Her değer, PDF metin katmanında **parametre satırı ile sütun başlığının (ve çok seviyeli başlıkta grup başlığının) kesiştiği tek hücrede** bulunmalı; birim satırda/başlıkta yazmalı; koşullar (8 Gb, DDR4-3200 …) sayfada ve gerekiyorsa aynı satırda olmalı. Sayfada başka yerde geçen aynı sayı kabul edilmez; iki eşit aday varsa belirsizdir. Doğrulanamayan satır **cevapta kullanılmaz** (araçla da geri alınamaz). `max(10 ns, 4 tCK)` gibi ifadeler tek sayıya indirgenmez; bilinmeyen birimler ve "1,200" gibi belirsiz sayı biçimleri SI değerine çevrilmez. |
 | VLM birleştirmesinde veri kaybı | Birleştirme **tablo bazındadır**: yalnızca doğrulanmış ve içerik + konum + başlıkla güvenilir eşleşen PDF tablosu değiştirilir. Doğrulanmayan VLM tablosu hiçbir şeyin yerine geçmez; orijinal PDF metni kanıt olarak kalır, VLM sürümü yalnızca aramada kullanılır. |
@@ -60,7 +60,8 @@ flowchart TB
 
 Her ifade için: **destekleniyor** · **desteklenmiyor** · **doğrulanamadı** (kontrol tamamlanamadı, ör. denetçi
 hata verdi) · **uygulanmadı** (doğrulama veya denetçi Ayarlar'da kapalı). Cevap düzeyinde: tümü doğrulandı /
-bazıları çıkarıldı / bulunamadı / doğrulama tamamlanamadı / uygulanmadı / kapsam soruldu. "Denetçi çağrıldı" ile
+bazıları çıkarıldı / bulunamadı / doğrulama tamamlanamadı / uygulanmadı / **netleştirme gerekiyor** (cevap,
+belirtilmemiş bir koşula bağlı; "kaynakta bulunamadı" sonucundan ayrıdır). "Denetçi çağrıldı" ile
 "denetçi başarıyla tamamlandı" ayrı alanlardır; arayüz yalnızca kontrol denendi diye "doğrulandı" demez.
 Akış sırasında yazılan taslak yalnızca ilerleme olarak (katlanmış, "doğrulanmamış" etiketiyle) gösterilir.
 
@@ -77,7 +78,7 @@ yapılmaz; konumlar indekslemede bir kez çıkarılır.
 **Soru başına LLM çağrısı (doğruluk öncelikli mod):** planlayıcı 1 + cevap 1 (+ araç turları, en fazla 4) +
 denetçi 1–2 (paralel; geçerli karar gelmeyen iddialar için en fazla 1 tekrar) + gerekirse yeniden üretim 1 +
 yeniden denetim. Embedding 1, rerank 1 istek (karşılaştırma sorularında standart başına 1). Standart yüklü
-değilse veya kapsam soruluyorsa cevap modeli hiç çağrılmaz.
+değilse veya netleştirici soru soruluyorsa cevap modeli hiç çağrılmaz.
 
 ---
 
@@ -182,7 +183,42 @@ takılırsa (HTTP 429/503) `Retry-After` beklemesine uyulur; servis başına en 
 bekleme (`max_retries`, `max_retry_wait`). Eşzamanlılık sınırlıdır (`embedding.concurrency`,
 `vision.concurrency`, varsayılan 4).
 
-### 3.3 Kütüphane klasörü ve tek dosya ekleme
+### 3.3 İndeksleme kalite raporu
+
+Sol paneldeki **📋** düğmesi (veya indeksleme bittiğinde iş kutusundaki "Kalite raporu") raporu açar. Rapor
+indekste kalıcıdır (yeniden açılışta kaybolmaz) ve **indekslemenin ne yaptığını** anlatır; cevap doğruluğu ölçüsü
+değildir.
+
+* **Son çalıştırma özeti:** işlenen (yeni/güncellenen), değişmediği için atlanan, yeniden kullanılan (taşınmış/kopya),
+  kısmen işlenen, başarısız, erişilemeyen ve kaynağı olmayan belge sayıları; VLM için incelenen sayfa (kaçı
+  önbellekten), tablo bulunan sayfa, **incelenip tablo bulunmayan** sayfa, **VLM'in başarısız olduğu** sayfa,
+  tablo filtresinin altında kalan (incelenmeyen) ve sayfa sınırı yüzünden incelenmeyen sayfalar; çıkarılan,
+  PDF metniyle hücre hücre eşleşen ve eşleşmeyen tablolar; doğrulanan/doğrulanamayan parametre satırları (oran
+  her zaman paydasıyla: "4/4 doğrulandı (%100) — payda: VLM'in çıkardığı satırlar"); embedding ve indeks yazma
+  hataları. VLM kapalıysa bu açıkça yazılır ("tablolar yalnızca PDF metninden okundu").
+* **Belge ayrıntıları:** belge adı, bucket, son işlem zamanı, yeniden işleme gerekip gerekmediği; her sorun için
+  aşama (okuma / ayrıştırma / belge bilgisi / VLM / embedding / indeks yazımı), PDF sayfası, varsa tablo adı,
+  anlaşılır neden ve önerilen işlem. Kaynak PDF mevcutsa **"Sayfaya git"** o sayfayı sağ panelde açar.
+  Başarısız bir belgenin önceki indeksi varsa "önceki indeks korunuyor ve cevaplarda kullanılıyor" yazar.
+* Doğrulanmamış tablo satırları raporda görünse de **cevaplarda kullanılmaz** (kurallar değişmedi).
+* Bu sürümden önce indekslenmiş belgeler için "kalite bilgisi mevcut değil" yazar; tahmin yapılmaz. Bilgi, belge
+  bir sonraki işlenişinde oluşur.
+* Rapora API anahtarı, sunucu adresi, IP veya erişim anahtarı yazılmaz: hata ayrıntılarından bunlar silinir.
+
+**Başarısız işlemleri yeniden dene:** önce kapsamı gösterir, sonra uygular.
+
+| Ne başarısız oldu | Yeniden denemede ne yapılır |
+|---|---|
+| Bazı sayfalarda VLM (belge kısmen işlendi) | Yalnızca başarısız sayfalar VLM'e gider; başarılı sayfalar önbellekten gelir, değişmeyen parçalar mevcut embedding'ini korur |
+| Belge bilgisi (LLM) | Belge yeniden işlenir; VLM sayfaları önbellekten |
+| Okuma / ayrıştırma / embedding / indeks yazımı | Belge düzeyinde yeniden işlenir (kapsam raporda "belge düzeyinde" olarak gösterilir) |
+| Erişilemeyen belge klasörü | Klasör yeniden taranır |
+
+Her belge tek bir SQLite işleminde (kalite kaydıyla birlikte) yazılır. **Başarısız bir deneme mevcut indeksi
+silmez**; daha fazla başarısız sayfayla biten bir deneme de yazılmaz ("sonuç daha iyi değil, mevcut indeks
+korundu"). Komut satırı: `quality` ve `retry`.
+
+### 3.4 Kütüphane klasörü ve tek dosya ekleme
 
 ```
 <kütüphane>\
@@ -201,6 +237,10 @@ bekleme (`max_retries`, `max_retry_wait`). Eşzamanlılık sınırlıdır (`embe
 * Taranmış PDF'ler önce OCR'dan geçirilmeli (`ocrmypdf`); metin katmanı olmayan sayfalarda ne tablo
   değerleri doğrulanabilir ne de kanıt konumu gösterilebilir (uygulama sahte konum üretmez).
 * Orijinal PDF'ler değiştirilmez: vurgular yalnızca arayüz katmanında çizilir, PDF'e annotation yazılmaz.
+
+**0.5 ve öncesiyle oluşturulmuş kütüphane:** açılışta indeks şeması 5'e yükseltilir — yalnızca iki yeni tablo
+(kalite raporu) eklenir; belgeler, parçalar, embedding'ler, tablolar ve ayarlar değişmez. Salt-okunur açılan eski
+kütüphanede rapor "mevcut değil" der.
 
 **Eski sürümle indekslenmiş kütüphane (0.1.x):** açılışta şema yerinde güncellenir; eski sürümün sayfa
 düzeyi kontrolle "doğrulanmış" saydığı parametre satırları ve VLM tabloları güvenilmez kabul edilir (cevapta
@@ -225,19 +265,23 @@ kullanıcıların onu açması önerilir (açıkken üzerine yazmayın).
 
 ### Açılış: sohbet simgesi
 
-* `SayisalTasarimUzmani.exe` açılınca önce ekranın sağ alt köşesinde (görev çubuğunun üstünde) küçük, yuvarlak bir **sohbet
-  simgesi** belirir. Simge normal pencerelerin üzerinde kalır ama klavye odağını almaz; yazdığınız uygulama
-  odakta kalır. Ayrı bir tarayıcı açılmaz.
-* **Tıklayınca** sohbet penceresi açılır (sohbet, bucket seçimi, kaynak/PDF paneli, vurgu — hepsi aynı arayüz).
-  Pencere normal bir penceredir: boyutlandırılabilir, ekranı kaplayabilir, üstte sabit kalmaz. Sohbet penceresi
-  etkinken simge onun arkasına geçer, böylece pencerenin düğmelerini örtmez.
+* `SayisalTasarimUzmani.exe` açılınca önce ekranın sağ alt köşesinde (görev çubuğunun üstünde) küçük bir
+  **mikroçip simgesi** belirir (uygulamanın içinde çizilir; internetten bir şey indirilmez, her monitörün
+  ölçeğinde keskin görünür, köşeleri saydamdır). Simge normal pencerelerin üzerinde kalır ama klavye odağını
+  almaz; yazdığınız uygulama odakta kalır. Ayrı bir tarayıcı açılmaz.
+* **Sol tık sohbet penceresini açar/gizler:** pencere gizliyse gösterilip öne alınır; görünür ve öndeyse
+  gizlenir; simge durumuna küçültülmüş veya başka pencerelerin arkasındaysa gizlenmez, geri yüklenip öne
+  getirilir. Çift tık pencereyi açık bırakır (ikinci tık kapatmaz); hızlı ardışık tıklamalar sırayla işlenir,
+  ikinci bir pencere açılmaz. Gizlemek uygulamadan çıkmak değildir. Pencere normal bir penceredir:
+  boyutlandırılabilir, ekranı kaplayabilir, üstte sabit kalmaz. Sohbet penceresi etkinken simge onun arkasına
+  geçer, böylece pencerenin düğmelerini örtmez.
 * **Sürükleyerek** simge taşınır (sürükleme sohbeti açmaz); yeri, bulunduğu monitör ve en yakın köşeye uzaklığıyla
   hatırlanır. Çözünürlük, ölçek (DPI) veya görev çubuğu değişince, monitör çıkarılınca simge görünür alana geri
   alınır; her monitörde o monitörün ölçeğinde çizilir.
 * **Sağ tık menüsü:** "Sohbeti aç", "Ayarlar", "Uygulamadan çık" (arayüz dili TR/EN).
-* Sohbet penceresinin **kapat (✕)** düğmesi uygulamadan çıkmaz, pencereyi gizler (ilk seferde kısa bir bilgi
-  gösterilir). Sohbet geçmişi, seçili bucket, açık PDF sayfası ve panel genişlikleri korunur; süren indeksleme
-  arka planda devam eder. Gizliyken arayüz ilerleme sorgulamaz.
+* Sohbet penceresinin **kapat (✕)** düğmesi de uygulamadan çıkmaz, pencereyi gizler (ilk seferde kısa bir bilgi
+  gösterilir). Simgeyle veya ✕ ile gizlerken sohbet geçmişi, seçili bucket, açık PDF sayfası ve panel
+  genişlikleri korunur; süren indeksleme arka planda devam eder. Gizliyken arayüz ilerleme sorgulamaz.
 * **Tamamen çıkmak** için simgeye sağ tıklayıp "Uygulamadan çık". İndeksleme sürüyorsa onay istenir; o an
   yazılan belge kaydı tamamlanır, sonraki belgeler bir sonraki "Yeniden tara"da işlenir (indeks yarım kalmaz).
 * `SayisalTasarimUzmani.exe` ikinci kez çalıştırılırsa yeni bir arka uç başlatılmaz; çalışan uygulamanın sohbet penceresi öne
@@ -265,7 +309,25 @@ kullanıcıların onu açması önerilir (açıkken üzerine yazmayın).
   taşmak yerine kayan çekmeceye dönüşür. PDF sayfası panel genişliğine uyar; vurgu koordinatları sayfaya oranla
   tutulduğu için genişlik ve yakınlaştırma değişse de hizalı kalır.
 * **Soru:** Sorunuzu yazın. Soruda geçen standart/sürüm kapsamı belirler ("kapsam: DDR5"). Standart yüklü
-  değilse "yüklü değil: DDR5" görünür ve cevap uydurulmaz. Kapsam belirsizse seçenek düğmeleri çıkar.
+  değilse "yüklü değil: DDR5" görünür ve cevap uydurulmaz. Sohbette daha önce adı geçen standart, standart
+  belirtmeyen değer sorularında ("Peki tREFI?") korunur ("sohbetten: DDR4").
+* **Netleştirici sorular:** cevap, soruda belirtilmeyen bir koşula göre gerçekten değişiyorsa sistem cevap yerine
+  en fazla üç kısa soru sorar: kanıt birden çok standart/sürümden geliyorsa sürüm; bir parametrenin doğrulanmış
+  tablo satırları hız sınıfına, yoğunluğa veya sıcaklığa göre farklıysa o koşul; elektriksel uyumluluk
+  sorularında gerilim seviyeleri, TX/RX rolleri ve sonlandırma. Genel sorular ("DDR arayüzü nedir?") doğrudan
+  cevaplanır; soruda, sohbette veya açıkça seçilen belgelerde zaten olan bilgi yeniden sorulmaz (seçili bir
+  **bucket** sürüm seçimi sayılmaz). Seçenekler yalnızca kütüphanede bulunanlardan (yüklü standartlar, doğrulanmış
+  tablo satırlarındaki koşullar) düğme olarak sunulur; serbest metin de yazılabilir. Kısa cevabınız ("DDR4, 2400
+  MT/s") bekleyen soruyla birleştirilir (giriş kutusunun üstünde gösterilir, "Vazgeç" ile iptal edilir); yeni bir
+  soru sormak veya "Yeni sohbet" bekleyen soruyu bırakır. "Bilmiyorum" derseniz kesin değer veya uyumluluk kararı
+  verilmez; cevap, kaynaklarda yazdığı kadarıyla koşullara bağlı olarak açıklanır ve bu bir notla belirtilir.
+  Netleştirme sorusu sabit bir şablondur, teknik iddia içermez; doğrulamayı atlatan bir yol değildir. Seçimle
+  çelişen bir cevap (yalnız DDR4 seçiliyken "DDR5") sessizce kullanılmaz: "seçili kapsamda yok" denir.
+* **Cevap biçimi:** önce doğrudan cevap, sonra kısa paragraflar. Liste yalnızca adımlar, birbirinden bağımsız
+  koşullar, seçenekler veya kontrol listesi için; tablo karşılaştırma veya çok sayıda sayısal değer için
+  kullanılır; "tablo halinde", "madde madde" gibi bir biçim isterseniz ona uyulur. Atıflar desteklediği ifadenin
+  hemen yanındadır; paragraftaki her ifade ayrı ayrı doğrulanır (paragraf sonundaki tek atıf önceki ifadeleri
+  doğrulamaz). Kaynakta yazan bilgi ile mühendislik yorumu ayrı bölümlerde kalır.
 * **Cevap akışı:** taslak, "doğrulanmamış" etiketli katlanmış bir alanda ilerleme olarak görünür; araç
   çağrıları ve isteğe bağlı model düşünmesi listelenir. Doğrulama bitince yalnızca doğrulanmış ifadelerden
   kurulan son cevap gösterilir.
@@ -283,8 +345,11 @@ kullanıcıların onu açması önerilir (açıkken üzerine yazmayın).
 4. Panelde iki ayrı durum görünür: **Doğrulama** (ifade kaynakla destekleniyor mu) ve **Konum** (kanıt sayfada
    bulundu mu). Konum bulunması ifadenin doğru olduğu anlamına gelmez.
 5. Kesin yer bulunamazsa "Kaynak sayfası bulundu, kesin konum eşleştirilemedi" yazar; metin katmanı yoksa veya
-   kütüphane eski sürümle indekslenmişse bu da açıkça söylenir. PDF olmayan kaynaklarda kanıt metin içinde
-   işaretlenir. **Hesap** kaynaklarında sonuç PDF'te aranmaz; girdileri ve her girdinin kaynağı listelenir
+   kütüphane eski sürümle indekslenmişse bu da açıkça söylenir. PDF kaynaklarında panelde yalnızca sayfa
+   görüntüsü ve kısa kaynak bilgisi (belge, revizyon, bölüm, sayfa) bulunur; çıkarılan metin sayfanın altında
+   ayrıca listelenmez, boşalan yer sayfaya verilir (metin indekste kalır, arama ve doğrulama onu kullanır).
+   Sayfa görüntülenemiyorsa (dosya taşınmış/silinmiş) bu yazılır ve alıntılanan metin incelenebilir. PDF olmayan
+   kaynaklarda belge bilgisi, "Orijinal dosyayı aç" ve "Kaynak metnini incele" (kanıt işaretli) gösterilir. **Hesap** kaynaklarında sonuç PDF'te aranmaz; girdileri ve her girdinin kaynağı listelenir
    (tıklanınca o girdinin konumu gösterilir). **Kullanıcı girdisi** kaynağı bir doküman değildir.
 6. Sayfa göstergesi fiziksel sayfa indeksini ve PDF'in basılı sayfa etiketini ayrı gösterir
    ("Sayfa 23 / 300 (basılı: 21)").
@@ -304,6 +369,8 @@ SayisalTasarimUzmani.exe add-folder D:\Teknik_Belgeler --preview   :: bucket'lar
 SayisalTasarimUzmani.exe add-folder D:\Teknik_Belgeler             :: belge klasörünü ekle ve indeksle (yerinde okunur)
 SayisalTasarimUzmani.exe rescan                    :: kütüphaneyi ve tüm belge klasörlerini yeniden tara
 SayisalTasarimUzmani.exe purge-missing             :: kaynağı silinmiş belgeleri indeksten kaldır
+SayisalTasarimUzmani.exe quality [--all]           :: indeksleme kalite raporu (son çalıştırma, sorunlu belgeler)
+SayisalTasarimUzmani.exe retry                     :: başarısız işlemleri yeniden dene (mümkünse yalnız başarısız sayfalar)
 SayisalTasarimUzmani.exe inspect dosya.pdf --table-pages   :: parçalama ve VLM'e gidecek sayfalar
 SayisalTasarimUzmani.exe search "DDR5 tRFC 16Gb"   :: yalnızca arama (kapsam, pasajlar, parametre satırları)
 SayisalTasarimUzmani.exe ask "PCIe 5.0 LTSSM Polling alt durumları?"
@@ -363,7 +430,8 @@ doğrulama, hücre eşleştirme, konum, geçiş) sınar, gerçek bir modelin do�
 | "Doğrulama tamamlanamadı" | Denetçi (sohbet modeli) hata verdi veya geçerli karar döndürmedi; sunucuyu/`techrag.log`'u kontrol edin. Bu durumda ifadeler bilerek gösterilmez. |
 | Belge "kaynak yok" görünüyor | Dosya silinmiş/taşınmış ya da klasör yeniden adlandırılmış. Dosya geri gelirse yeniden taramada otomatik düzelir; gerçekten silindiyse sol paneldeki uyarıdan "İndeksten kaldır". |
 | Yeniden tarama "erişilemeyen" diyor | Ağ paylaşımı bağlı mı / klasör yetkisi var mı? Belgeler bu durumda silinmiş sayılmaz. |
-| Sürekli kapsam sorusu | Soruya standart/sürümü yazın ya da soldan doküman seçin; istenmiyorsa `retrieval.clarify_ambiguous: false` |
+| Sürekli netleştirme sorusu | Soruya standart/sürümü ve koşulu (hız sınıfı, yoğunluk, sıcaklık) yazın ya da soldan belge seçin; "tüm değerleri listele" gibi bir istek koşul sorusunu atlar; tamamen kapatmak için `retrieval.clarify_ambiguous: false` |
+| Bir belge "kısmen işlendi" / "başarısız" | 📋 Kalite raporunda aşama, sayfa ve önerilen işlem yazar; "Başarısız işlemleri yeniden dene" mevcut indeksi silmeden yeniden dener. |
 | Soru yanlış standarda gidiyor / "yüklü değil" | `SayisalTasarimUzmani.exe docs` ile doküman etiketlerini kontrol edin; etiketsiz dokümanlar adı geçen standarda dahil edilmez. Dosya adına standart/sürüm yazın veya `domains.yaml` desenlerini genişletin |
 | `SSL: CERTIFICATE_VERIFY_FAILED` | Aşağıdaki "HTTPS sertifika hataları" bölümü |
 
@@ -408,11 +476,21 @@ girerek açıyorsa model sunucuları için **"Sistem proxy ayarlarını kullan"*
   kayıtlı olmadığından ilk yeniden taramada her dosyanın SHA-256'sı bir kez hesaplanır (yalnızca disk/ağ okuması,
   API maliyeti yok).
 * Sohbet simgesi: CI'da gerçek Windows pencereleriyle (tek monitör, %100 ölçek) doğrulanır — simgenin önce
-  açılması, sürüklemenin sohbeti açmaması, tıklamanın açması, kapatmanın gizlemesi ve sayfanın korunması, ikinci
-  exe'nin devretmesi, menüden tam çıkış. Çoklu monitör, farklı DPI'lar arası sürükleme, monitör çıkarma ve
+  açılması, sürüklemenin sohbeti açmaması, tıklamanın açması, öndeyken tıklamanın gizlemesi, gizliyken
+  göstermesi, küçültülmüş veya başka pencerenin arkasında kalmış pencereyi öne getirmesi, kapatmanın gizlemesi ve
+  sayfanın korunması, ikinci exe'nin devretmesi, menüden tam çıkış. Çoklu monitör, farklı DPI'lar arası sürükleme, monitör çıkarma ve
   görev çubuğu değişikliği kuralları birim testleriyle doğrulandı ama gerçek çoklu monitörlü bir makinede
   denenmedi; WebView2 penceresinin odak/öne getirme davranışı Windows'un odak kurallarına bağlıdır.
-* Kapsam sorusu sezgiseldir: standart adı geçmeyen sayısal sorularda kanıt kardeş sürümlerden geliyorsa sorulur.
+* Netleştirici sorular sezgiseldir: sürüm sorusu kanıtın kardeş sürümlerden gelmesine, koşul sorusu doğrulanmış
+  tablo satırlarının koşula göre farklı değer vermesine (yalnızca VLM ile çıkarılmış ve doğrulanmış satırlarda
+  çalışır; değer yalnızca metinde geçiyorsa sorulmaz), uyumluluk sorusu planlayıcı modelin sınıflandırmasına
+  dayanır. Sahte model sunucusuyla test edildi; gerçek Qwen modeliyle ne sıklıkta gereksiz soru sorduğu veya
+  gerekli bir soruyu atladığı ölçülmedi. Kısa cevabın bekleyen soruya mı yoksa yeni bir konuya mı ait olduğu
+  kurallarla anlaşılır (soru işareti/soru kelimesi, uzunluk, seçenek eşleşmesi).
+* Paragraf biçimi cevap sözleşmesiyle istenir; modelin buna ne ölçüde uyduğu gerçek modelle ölçülmedi. Doğrulama
+  biçimden bağımsızdır (her cümle ayrı denetlenir).
+* Kalite raporu indekslemenin sayımlarıdır; cevapların doğruluğunu ölçmez. Bu sürümden önce indekslenmiş
+  belgeler için bilgi yoktur.
 * Değerlendirme betiğindeki olgu eşleştirme sezgiseldir (parametre adı, değer+birim, koşul kelimeleri,
   olumsuzlama); şüpheli durumlarda yanlış sayar.
 
@@ -424,7 +502,8 @@ girerek açıyorsa model sunucuları için **"Sistem proxy ayarlarını kullan"*
 techrag/
   desktop.py       exe giriş noktası: tek örnek, süreç içi FastAPI, gizli açılan pywebview sohbet penceresi,
                    gizle/göster, güvenli çıkış; argümanla CLI
-  launcher.py      yuvarlak sohbet simgesi (Win32 katmanlı pencere, DPI/çoklu monitör, sağ tık menüsü), tek örnek kilidi
+  launcher.py      mikroçip simgesi (Win32 katmanlı pencere, DPI/çoklu monitör, sağ tık menüsü, aç/gizle için
+                   "pencere önde mi" denetimi), tek örnek kilidi
   server.py        API: ayarlar, kütüphane (yayımla, geçiş), dokümanlar, sayfa görüntüsü/bilgisi, SSE soru akışı
   engine.py        plan -> kapsam -> arama -> ajan döngüsü -> doğrulama/denetçi/yeniden üretim -> kanıt konumu
   tools.py         ajan araçları (ortak kapsam) + atıf kayıt defteri + izlenebilir hesap makinesi
@@ -433,10 +512,12 @@ techrag/
   geometry.py      sayfa kelime konumları, ekran/PDF dönüşümleri, metin ve hücre eşleştirme
   retrieval.py     varlık kapsamı (sessiz genişletme yok), BM25+vektör+RRF+rerank, standart başına kanıt
   query.py         planlayıcı;  domains.py  koleksiyon/standart varlıkları, TR->EN terimler
+  clarify.py       netleştirici sorular (eksik koşul, yalnız indeksten seçenekler, bekleyen soruyla birleştirme)
   ingest/          loaders, cleaning, structure, chunker, metadata (seri/sürüm/revizyon), vlm (hücre doğrulama),
                    sources (belge klasörü tarama, bucket'lar, değişiklik planı),
-                   pipeline (artımlı senkronizasyon, tablo bazında birleştirme, eski indeks geçişi)
-  store.py         SQLite indeks (şema v4 + yerinde geçiş), belge klasörleri, parametre deposu, sayfa geometrisi,
+                   pipeline (artımlı senkronizasyon, tablo bazında birleştirme, eski indeks geçişi, yeniden deneme),
+                   quality (kalite raporu kayıtları, gizli bilgi temizliği)
+  store.py         SQLite indeks (şema v5 + yerinde geçiş), belge klasörleri, parametre deposu, sayfa geometrisi,
                    yayımlama (klasör belgelerini pakete kopyalar)
   evaluation.py    olgu tabanlı değerlendirme şeması ve metrikler
   api.py, llm.py, embeddings.py, reranker.py   OpenAI uyumlu istemciler (vLLM)

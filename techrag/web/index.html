@@ -33,6 +33,7 @@
       <div class="src-actions" id="src-actions">
         <button id="btn-add-folder" data-i18n="addFolder"></button>
         <button class="ghost" id="btn-rescan" data-i18n-title="rescan">⟳</button>
+        <button class="ghost" id="btn-quality" data-i18n-title="qualityReport">📋</button>
       </div>
       <input type="search" id="doc-filter" class="doc-filter" autocomplete="off">
       <div class="scope-line small" id="scope-line"></div>
@@ -142,6 +143,23 @@
         <button type="button" class="ghost" id="btn-reindex-all" data-i18n="reindexAll"></button></div>
       <p class="small muted" id="lib-status"></p>
       <div class="dlg-actions"><button type="button" data-close data-i18n="close"></button></div>
+    </form>
+  </dialog>
+
+  <!-- Indexing quality report -->
+  <dialog id="dlg-quality">
+    <form method="dialog" class="dlg">
+      <h2 data-i18n="qualityReport"></h2>
+      <p class="hint" data-i18n="qualityHint"></p>
+      <div id="q-run" class="q-run"></div>
+      <div id="q-retry" class="q-retry"></div>
+      <div class="row q-filter"><label class="small"><input type="checkbox" id="q-all"> <span data-i18n="qShowAll"></span></label>
+        <span class="muted small" id="q-count"></span></div>
+      <div id="q-docs" class="q-docs"></div>
+      <div class="dlg-actions">
+        <span class="muted small" id="q-status"></span>
+        <button type="button" data-close data-i18n="close"></button>
+      </div>
     </form>
   </dialog>
 

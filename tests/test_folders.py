@@ -192,7 +192,9 @@ def test_settings_change_triggers_reprocessing_but_reuses_vlm_cache(cfg, tree, l
     cfg.chunking.target_tokens = 200
     report = ingestor().sync_root(root_id)
     assert len(report.updated) == 8, "every successfully indexed document is re-processed"
-    assert _api_calls(fake)["embeddings"] > emb
+    e = report.quality["embedding"]
+    assert e["reused"] > 0, "chunks whose text did not change keep their stored embedding"
+    assert _api_calls(fake)["embeddings"] - emb <= (1 if e["embedded"] else 0) * 8, "only changed chunks are embedded"
     vlm2 = sum(1 for c in fake.calls if "extract tables" in str(c["body"].get("messages", [{}])[0].get("content", "")))
     assert vlm2 == vlm, "table extraction results come from the cache"
     assert not ingestor().sync_root(root_id).updated, "and only once"

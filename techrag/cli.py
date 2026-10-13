@@ -239,6 +239,57 @@ def cmd_chat(cfg: Config, args) -> int:
         history += [{"role": "user", "content": q}, {"role": "assistant", "content": a}]
 
 
+def cmd_quality(cfg: Config, args) -> int:
+    """The indexing quality report (counts of the indexing; not a measure of answer accuracy)."""
+    from techrag.store import Store
+
+    store = Store(cfg.db_path, read_only=True)
+    records = store.quality()
+    if records is None:
+        _print("No quality information in this library (created by an older version).")
+        return 0
+    runs = store.ingest_runs(1)
+    if runs:
+        r, q = runs[0], runs[0]["summary"]
+        v, t = q.get("vlm", {}), q.get("tables", {})
+        _print(f"last run: {r['kind']} {r['finished_at'] or r['started_at']} {r['status']}")
+        _print(f"  documents: processed={q.get('processed', 0)} unchanged={q.get('skipped_unchanged', 0)} "
+               f"reused={q.get('reused', 0)} partial={q.get('partial', 0)} failed={q.get('failed', 0)} "
+               f"unreachable={q.get('unreachable', 0)} missing={q.get('missing', 0)}")
+        if v.get("enabled") is False:
+            _print("  VLM: off (tables from the PDF text only)")
+        else:
+            _print(f"  VLM pages: selected={v.get('selected', 0)} with_tables={v.get('with_tables', 0)} "
+                   f"no_table={v.get('no_table', 0)} failed={v.get('failed', 0)} filtered_out={v.get('filtered_out', 0)} "
+                   f"over_limit={v.get('over_limit', 0)} cached={v.get('cached', 0)}")
+        _print(f"  tables: extracted={t.get('extracted', 0)} grounded={t.get('grounded', 0)}; parameter rows verified "
+               f"{t.get('rows_verified', 0)}/{t.get('rows', 0)} (denominator: rows extracted by the VLM)")
+    paths = {d.path for d in store.documents()}
+    for path in sorted(paths - set(records)):
+        _print(f"  NO RECORD (indexed before the report existed): {path}")
+    for path, rec in sorted(records.items()):
+        if rec["status"] == "ok" and not args.all:
+            continue
+        _print(f"  {rec['status'].upper()} {path}" + (f" (stage: {rec['stage']})" if rec["stage"] else "")
+               + (" - earlier index kept" if rec["index_kept"] else "") + (" - needs reprocessing" if
+                                                                           rec["needs_reprocess"] else ""))
+        for it in (rec.get("data") or {}).get("issues", []):
+            where = f" p.{it['page']}" if it.get("page") else ""
+            _print(f"      {it['code']}{where} {it.get('table', '')} {it.get('detail', '')}".rstrip())
+    return 0
+
+
+def cmd_retry(cfg: Config, args) -> int:
+    if cfg.read_only:
+        _print("The library is configured read-only.")
+        return 2
+    _, ing = _ingestor(cfg, args)
+    report = ing.retry_failed(args.path or None)
+    for key, r in report.retry.items():
+        _print(f"  retry {key}: {r.get('scope')} {r.get('pages') or ''} -> {r.get('result', 'done')}")
+    return _print_report(report)
+
+
 def cmd_stats(cfg: Config, args) -> int:
     from techrag.store import Store
 
@@ -514,6 +565,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("dest")
     s.set_defaults(func=cmd_publish)
 
+    s = sub.add_parser("quality", help="indexing quality report (last run, documents with problems)")
+    s.add_argument("--all", action="store_true", help="also list documents without problems")
+    s.set_defaults(func=cmd_quality)
+    s = sub.add_parser("retry", help="retry failed indexing work (only failed VLM pages where possible)")
+    s.add_argument("path", nargs="*", help="document keys as listed by 'quality' (default: everything)")
+    s.set_defaults(func=cmd_retry)
     sub.add_parser("stats", help="index statistics").set_defaults(func=cmd_stats)
     sub.add_parser("docs", help="list documents").set_defaults(func=cmd_docs)
     sub.add_parser("models", help="list models served by each configured endpoint").set_defaults(func=cmd_models)

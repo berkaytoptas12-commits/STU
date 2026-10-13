@@ -1,5 +1,54 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.6.0 — netleştirici sorular, kalite raporu, mikroçip simgesi, paragraf cevaplar
+- **Netleştirici sorular:** cevap, soruda belirtilmeyen bir koşula göre gerçekten değişiyorsa cevap yerine en
+  fazla üç kısa soru sorulur — kanıt birden çok standart/sürümden geliyorsa sürüm; doğrulanmış tablo satırları
+  hız sınıfına, yoğunluğa veya sıcaklığa göre farklı değer veriyorsa o koşul; elektriksel uyumluluk sorularında
+  gerilim seviyeleri, TX/RX rolleri ve sonlandırma. Genel sorular doğrudan cevaplanır; soruda, sohbette veya
+  seçili belgelerde zaten olan bilgi yeniden sorulmaz (seçili bucket sürüm seçimi sayılmaz). Seçenekler yalnızca
+  kütüphaneden gelir (yüklü standartlar, doğrulanmış satırlardaki koşullar) ve düğme olarak sunulur; serbest metin
+  de yazılabilir. Kısa cevap ("DDR4, 2400 MT/s") bekleyen soruyla birleştirilir; yeni soru veya yeni sohbet bekleyen
+  soruyu bırakır; "bilmiyorum" koşullara bağlı, kaynaklarla doğrulanan bir açıklama verir (kesin değer veya
+  uyumluluk kararı uydurulmaz). "Netleştirme gerekiyor" durumu "kaynakta bulunamadı"dan ayrı gösterilir.
+  Netleştirme sorusu sabit bir şablondur; teknik iddia taşımaz, doğrulamayı atlatan bir yol değildir.
+- Sohbette daha önce adı geçen standart, standart belirtmeyen değer sorularında korunur ("Peki tREFI?").
+  Yeniden üretim (regeneration) artık ilk taslağın kapsam notlarını da görür.
+- **Paragraf cevaplar:** önce doğrudan cevap, sonra kısa paragraflar; liste yalnızca adımlar, bağımsız koşullar,
+  seçenekler veya kontrol listesi için, tablo karşılaştırma ve çok sayıda sayısal değer için; istenen biçime
+  uyulur. Atıflar desteklediği ifadenin yanındadır. Doğrulama gevşetilmedi ve ek model çağrısı eklenmedi: her
+  cümle yine ayrı ayrı denetlenir (paragraf sonundaki tek atıf önceki ifadeleri doğrulamaz). Kaynakta yazan
+  bilgi ile mühendislik yorumu ayrı bölümlerde kalır.
+- **İndeksleme kalite raporu (📋):** her indeksleme çalıştırmasının ve her belgenin son işlenişinin kalıcı kaydı —
+  işlenen/atlanan/yeniden kullanılan/kısmen işlenen/başarısız/erişilemeyen belgeler; VLM için seçilen, tablo
+  bulunan, incelenip tablo bulunmayan, başarısız, filtre altında kalan ve sayfa sınırı yüzünden incelenmeyen
+  sayfalar (VLM kapalıysa açıkça yazar); tablo ve parametre satırı doğrulama sayıları (her oran paydasıyla);
+  embedding ve indeks yazma hataları. Belge başına aşama, sayfa, tablo, neden, önerilen işlem ve "Sayfaya git".
+  Rapora API anahtarı, sunucu adresi veya erişim anahtarı yazılmaz. Rapor bir cevap doğruluğu ölçüsü değildir.
+- **Başarısız işlemleri yeniden dene:** kısmen işlenen belgede yalnızca başarısız VLM sayfaları yeniden denenir
+  (başarılı sayfalar önbellekten, değişmeyen parçalar mevcut embedding'iyle); diğer hatalarda belge düzeyinde
+  yeniden işlenir ve bu kapsam önceden gösterilir. Başarısız bir deneme mevcut indeksi silmez; daha kötü sonuç
+  veren deneme yazılmaz. Belgeler kalite kaydıyla birlikte tek işlemde yazılır. Komut satırı: `quality`, `retry`.
+- Yeniden işlenen belgelerde (ayar değişikliği, yeniden deneme) metni değişmeyen parçalar embedding'lerini korur:
+  embedding servisine yalnızca yeni/değişen parçalar gönderilir.
+- **Mikroçip simgesi:** başlatıcı simgesi küçük boyutta da okunan, saydam köşeli bir mikroçip oldu; uygulamanın
+  içinde her monitörün ölçeğinde çizilir (internetten bir şey indirilmez).
+- **Simgeyle aç/gizle:** sol tık — gizliyse göster ve öne al; görünür ve öndeyse gizle; küçültülmüş veya başka
+  pencerelerin arkasındaysa öne getir. Gizlemek çıkmak değildir (sohbet, seçili bucket'lar, açık PDF, panel
+  genişlikleri ve süren indeksleme korunur). Sürükleme aç/kapat tetiklemez; çift tık pencereyi açık bırakır; hızlı
+  tıklamalar sırayla işlenir. Sağ tık menüsü, tek örnek ve çoklu monitör davranışı aynı.
+- **Kaynak paneli:** PDF kaynaklarında sayfanın altındaki çıkarılmış metin alanı kaldırıldı; boşalan yer sayfa
+  görüntüsüne verildi. Vurgu, atıf→konum, yakınlaştırma, sayfa/kanıt gezinme, orijinali açma ve durum mesajları
+  aynı. Metin indekste kalır (arama, doğrulama ve kanıt eşleştirme onu kullanır). Sayfa görüntülenemezse bu
+  yazılır ve alıntılanan metin incelenebilir; PDF olmayan kaynaklarda belge bilgisi, "Orijinal dosyayı aç" ve
+  "Kaynak metnini incele" gösterilir.
+- **Yükseltme:** 0.5 kütüphanesi açılışta şema 5'e yükseltilir — yalnızca kalite raporu için iki tablo eklenir;
+  belgeler, embedding'ler, tablolar, ayarlar ve API anahtarları değişmez. Eski belgeler için raporda "kalite
+  bilgisi mevcut değil" yazar (tahmin yapılmaz).
+- Doğrulanan: tüm birim/arayüz testleri (Python 3.11 ve 3.13, Playwright ile arayüz), Windows'ta testler, iki
+  derleme, self-test ve gerçek pencerelerle GUI smoke testi (simgenin öndeyken gizlemesi, gizliyken göstermesi,
+  küçültülmüş ve örtülmüş pencereyi öne getirmesi dahil). Gerçek model sunucusuyla netleştirme sıklığı, paragraf
+  biçimine uyum ve gerçek VLM hataları ölçülmedi; gerçek çoklu monitörlü makinede denenmedi.
+
 ### 0.5.0 — yeni ad: Sayısal Tasarım Uzmanı
 - Uygulamanın adı **Sayısal Tasarım Uzmanı** oldu (pencere başlığı, simge menüsü, iletiler, belgeler). Dosyalar:
   `SayisalTasarimUzmani-portable.exe` ve `SayisalTasarimUzmani-win64.zip` (içinde `SayisalTasarimUzmani.exe`);

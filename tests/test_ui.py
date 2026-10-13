@@ -400,3 +400,38 @@ def test_missing_pdf_page_says_so_and_offers_the_text(ui):
     assert "görüntülenemiyor" in ui.inner_text("#tab-source .pv-fail")
     assert "350 ns" in ui.inner_text("#tab-source .pv-fail .source-excerpt")
     assert ui.is_hidden("#tab-source .page-view")
+
+
+def test_quality_report_dialog(ui):
+    ui.click("#btn-quality")
+    ui.wait_for_selector("#dlg-quality[open]")
+    ui.wait_for_function("() => document.querySelector('#q-run').textContent.includes('işlendi')")
+    run = ui.inner_text("#q-run")
+    assert "3 işlendi" in run and "payda: VLM'in çıkardığı satırlar" in run and "4/4 doğrulandı (%100)" in run
+    assert "cevap doğruluğu ölçüsü değildir" in ui.inner_text("#dlg-quality .hint")
+    assert ui.locator("#q-docs .q-doc").count() == 0, "only documents with something to report by default"
+    ui.check("#q-all")
+    assert ui.locator("#q-docs .q-doc").count() == 3
+    assert "PDF değil" in ui.inner_text("#q-docs")
+    # a document with a failed VLM page, and one indexed before the report existed
+    data = ui.evaluate("() => QUALITY")
+    pdfs = [d for d in data["documents"] if d["pdf"]]
+    q = pdfs[0]["quality"]
+    q.update(status="partial", needs_reprocess=True)
+    q["data"]["vlm"]["failed"] = {"6": "ValueError: page 6: the reply was cut off"}
+    q["data"]["issues"] = [{"code": "vlm_failed", "stage": "vlm", "page": 6, "cut_off": True,
+                            "detail": "ValueError: page 6: the reply was cut off"}]
+    pdfs[1]["quality"] = None
+    data["retry"] = [{"path": pdfs[0]["path"], "scope": "pages", "pages": [6]}]
+    ui.evaluate("(d) => { QUALITY = d; renderQuality(); }", data)
+    ui.uncheck("#q-all")
+    docs = ui.inner_text("#q-docs")
+    assert "Sayfa 6: VLM tablo çıkarımı başarısız" in docs and "vision.max_tokens" in docs
+    assert "yeniden işleme gerekli" in docs and "Kalite bilgisi mevcut değil" in docs
+    retry = ui.inner_text("#q-retry")
+    assert "1 belgede yalnızca başarısız VLM sayfaları (1 sayfa" in retry and "mevcut indeksi silmez" in retry
+    assert ui.is_enabled("#btn-q-retry")
+    ui.click("#q-docs .goto")
+    assert not ui.evaluate("() => document.querySelector('#dlg-quality').open")
+    ui.wait_for_function("() => /Sayfa 6/.test((document.querySelector('#tab-source .pv-label') || {}).textContent || '')")
+    _wait_img(ui)

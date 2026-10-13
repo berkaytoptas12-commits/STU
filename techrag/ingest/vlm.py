@@ -123,7 +123,8 @@ def is_figure_page(text: str, drawings: int, images: int) -> bool:
     return bool(_FIGURE.search(text)) and (images > 0 or drawings >= 30)
 
 
-def select_pages(page_texts: dict[int, str], page_stats: dict, min_score: float, max_pages: int) -> list[int]:
+def page_candidates(page_texts: dict[int, str], page_stats: dict, min_score: float) -> list[int]:
+    """Pages whose cheap table score reaches the threshold, best first."""
     scored = []
     for page, text in page_texts.items():
         st = page_stats.get(page)
@@ -131,7 +132,11 @@ def select_pages(page_texts: dict[int, str], page_stats: dict, min_score: float,
         if s >= min_score:
             scored.append((s, page))
     scored.sort(reverse=True)
-    return sorted(p for _, p in scored[:max_pages])
+    return [p for _, p in scored]
+
+
+def select_pages(page_texts: dict[int, str], page_stats: dict, min_score: float, max_pages: int) -> list[int]:
+    return sorted(page_candidates(page_texts, page_stats, min_score)[:max_pages])
 
 
 # ------------------------------------------------------------------------------ validation
@@ -365,6 +370,7 @@ class TableExtractor:
         self.dpi = dpi
         self.max_tokens = max_tokens
         self.concurrency = max(1, concurrency)
+        self.failed: dict[int, str] = {}
 
     def _cache_file(self, doc_sha: str, page: int) -> Path:
         key = hashlib.sha256(f"{PROMPT_VERSION}|{self.client.model}|{self.dpi}".encode()).hexdigest()[:12]
@@ -394,17 +400,23 @@ class TableExtractor:
         geoms = geoms or {}
         return [validate(t, geoms.get(page), geoms.get(page - 1), geoms.get(page + 1)) for t in _parse(obj, page)]
 
+    def cached(self, doc_sha: str, page: int) -> bool:
+        return _read_cache(self._cache_file(doc_sha, page)) is not None
+
     def extract(self, pdf_path: Path, doc_sha: str, pages: list[int], page_texts: dict[int, str],
                 progress: Callable[[str], None] = lambda m: None,
                 geoms: Optional[dict] = None) -> tuple[dict[int, list[ExtractedTable]], list[str]]:
+        """Tables per page and one error line per failed page; `self.failed` then maps each failed page to its
+        reason (a failed page is never reported as a page without tables)."""
         results: dict[int, list[ExtractedTable]] = {}
         errors: list[str] = []
+        self.failed: dict[int, str] = {}
 
         def run(page: int):
             try:
                 return page, self.extract_page(pdf_path, doc_sha, page, page_texts.get(page, ""), geoms=geoms), None
             except Exception as exc:
-                return page, [], f"p.{page}: VLM extraction failed ({exc.__class__.__name__}: {str(exc)[:160]})"
+                return page, [], f"{exc.__class__.__name__}: {str(exc)[:160]}"
 
         done = 0
         with ThreadPoolExecutor(max_workers=self.concurrency) as pool:
@@ -412,7 +424,8 @@ class TableExtractor:
                 done += 1
                 results[page] = tables
                 if err:
-                    errors.append(err)
+                    self.failed[page] = err
+                    errors.append(f"p.{page}: VLM extraction failed ({err})")
                 if done % 10 == 0 or done == len(pages):
                     progress(f"    VLM tables: {done}/{len(pages)} pages")
         return results, errors

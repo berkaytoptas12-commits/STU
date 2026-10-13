@@ -38,6 +38,47 @@ const I18N = {
     vClarify: "Netleştirme gerekiyor: cevap, soruda belirtilmeyen bir koşula göre değişiyor. Bu bir “bulunamadı” sonucu değildir; koşulu belirtince cevap kaynaklardan verilir.",
     clarifySend: "Yanıtı gönder", dontKnow: "Bilmiyorum", pendingNote: "Sonraki mesajınız şu soruya yanıt olarak birleştirilecek: “{0}”",
     pendingCancel: "Vazgeç", mergedAs: "soru: “{0}”", carried: "sohbetten: {0}",
+    qualityReport: "İndeksleme kalite raporu", qShowAll: "Sorunsuz belgeleri de göster",
+    qualityHint: "Bu rapor indekslemenin ne yaptığını anlatır (işlenen/atlanan belgeler, VLM sayfaları, tablo ve satır doğrulaması). Bir cevap doğruluğu ölçüsü değildir; her oranın paydası yanında yazılıdır.",
+    qNone: "Henüz kalite kaydı yok.", qUnavailable: "Bu kütüphanede kalite bilgisi mevcut değil (eski sürümle oluşturulmuş, salt okunur indeks).",
+    qLastRun: "Son indeksleme", qRuns: "Önceki çalıştırmalar", qKind_sync: "ekleme/eşitleme", qKind_rescan: "yeniden tarama", qKind_folder: "klasör ekleme",
+    qKind_upload: "dosya yükleme", qKind_add: "dosya ekleme", qKind_retry: "yeniden deneme", qKind_ingest: "indeksleme",
+    qRun_done: "tamamlandı", qRun_done_with_errors: "hatalarla tamamlandı", qRun_running: "sürüyor", qRun_interrupted: "yarıda kesildi", qRun_failed: "hatayla bitti",
+    qDocsLine: "Belgeler: {0} işlendi ({1} yeni, {2} güncellendi) · {3} değişmediği için atlandı · {4} yeniden kullanıldı (taşınmış/kopya) · {5} kısmen işlendi · {6} başarısız · {7} erişilemedi · {8} kaynağı yok",
+    qVlmOff: "Görsel model (VLM) bu çalıştırmada kapalıydı: tablolar yalnızca PDF metin katmanından okundu, hücre hücre tablo doğrulaması yapılmadı.",
+    qVlmLine: "VLM: {0} belgede {1} sayfa incelendi ({2} önbellekten) — {3} sayfada tablo bulundu, {4} sayfa incelendi ama tablo yok, {5} sayfada VLM başarısız. {6} sayfa tablo filtresinin altında kaldı (incelenmedi), {7} sayfa sayfa sınırı yüzünden incelenmedi.",
+    qTablesLine: "Tablolar: {0} çıkarıldı · {1} PDF metniyle hücre hücre eşleşti · {2} eşleşmedi (orijinal PDF metni kanıt, VLM sürümü yalnızca aramada).",
+    qRowsLine: "Parametre satırları: {0}/{1} doğrulandı{2} — payda: VLM'in çıkardığı satırlar. Doğrulanmamış {3} satır cevaplarda kullanılmaz.",
+    qStages: "Aşama hataları: okuma {0} · ayrıştırma {1} · embedding {2} · indeks yazımı {3} · diğer {4}", qEmb: "Embedding: {0} parça gönderildi, {1} değişmemiş parça mevcut vektörünü korudu.",
+    qUnreachableFolders: "Erişilemeyen klasörler: {0}",
+    qRetryTitle: "Başarısız işlemleri yeniden dene", qRetryNone: "Yeniden denenecek başarısız işlem yok.",
+    qRetryScope: "{0} belge yeniden denenecek: {1} belgede yalnızca başarısız VLM sayfaları ({2} sayfa; başarılı sayfalar önbellekten, değişmeyen parçalar mevcut vektörüyle), {3} belge belge düzeyinde yeniden işlenecek.",
+    qRetryFolders: "{0} erişilemeyen klasör yeniden taranacak.", qRetryKeep: "Başarısız bir deneme mevcut indeksi silmez; daha kötü sonuç veren deneme yazılmaz.",
+    qRetryRunning: "Yeniden deneniyor", qRetryDone: "Yeniden deneme: {0}",
+    qRes_ok: "tamamlandı", qRes_partial: "hâlâ kısmi", qRes_failed: "yine başarısız (mevcut indeks korundu)", qRes_kept_existing: "sonuç daha iyi değil, mevcut indeks korundu", qRes_file_missing: "kaynak dosya yok",
+    qSt_ok: "sorunsuz", qSt_partial: "kısmen işlendi", qSt_failed: "başarısız", qSt_none: "kalite bilgisi yok",
+    qNoRecord: "Kalite bilgisi mevcut değil: bu belge rapor özelliğinden önce indekslendi. Tahmin yapılmaz; yeniden taramada belge değişmişse veya yeniden işlenirse bilgi oluşur.",
+    qProcessed: "son işlem: {0}", qNeeds: "yeniden işleme gerekli", qKept: "Önceki indeks korunuyor ve cevaplarda kullanılıyor (son başarılı işlem: {0}).", qNotIndexed: "Bu belge hiç indekslenemedi; cevaplarda kullanılmıyor.",
+    qMissingFile: "Kaynak dosya bulunamadı: belge cevaplardan çıkarıldı (indeks korunuyor).",
+    qVlmDoc: "VLM: {0} sayfa incelendi — {1} tablolu, {2} tablosuz, {3} başarısız; {4} sayfa filtre altında, {5} sayfa sınır dışı.",
+    qVlmDocOff: "VLM kapalıydı: tablolar yalnızca PDF metninden.", qVlmDocNotPdf: "PDF değil: VLM tablo çıkarımı uygulanmaz.",
+    qTablesDoc: "Tablolar: {0} ({1} eşleşti) · satırlar {2}/{3} doğrulandı.", qRetried: "Son yeniden deneme: {0}.",
+    qGoto: "Sayfaya git", qAction: "Önerilen:",
+    qi_vlm_failed: "Sayfa {page}: VLM tablo çıkarımı başarısız ({detail}).", qa_vlm_failed: "Görsel model sunucusunu kontrol edip yeniden deneyin.", qa_vlm_cut: "vision.max_tokens değerini artırıp yeniden deneyin.",
+    qi_metadata_failed: "Belge bilgisi (standart/revizyon) modelle okunamadı; dosya adı ve ön sayfalardan çıkarıldı ({detail}).", qa_metadata_failed: "Model sunucusu erişilebilir olduğunda yeniden deneyin.",
+    qi_no_text: "Metin çıkarılamadı (taranmış PDF olabilir).", qa_no_text: "Önce OCR uygulayıp belgeyi yeniden ekleyin.",
+    qi_vlm_disabled: "VLM kapalıydı: tablolar yalnızca PDF metninden okundu.", qa_vlm_disabled: "Tablo doğrulaması için Ayarlar'dan görsel modeli etkinleştirip yeniden tarayın.",
+    qi_vlm_over_limit: "{count} tablo adayı sayfa, belge başına sayfa sınırı nedeniyle incelenmedi.", qa_vlm_over_limit: "vision.max_pages_per_doc değerini artırıp yeniden tarayın.",
+    qi_table_not_grounded: "Sayfa {page}, {table}: tablo PDF metniyle hücre hücre eşleştirilemedi ({status}); orijinal PDF metni kanıt olarak kullanılıyor, VLM sürümü yalnızca aramada.", qa_table_not_grounded: "Sayfayı kontrol edin.",
+    qi_rows_unverified: "Sayfa {page}, {table}: {count}/{total} parametre satırı doğrulanamadı; bu satırlar cevaplarda kullanılmaz.", qa_rows_unverified: "Sayfayı kontrol edin.",
+    qi_table_match_uncertain: "Sayfa {page}, {table}: VLM tablosu PDF'teki tabloyla güvenle eşleştirilemedi; orijinali korundu.", qa_table_match_uncertain: "",
+    qi_read_failed: "Dosya okunamadı ({detail}).", qa_read_failed: "Dosyanın açık/kilitli olmadığını ve erişim izni olduğunu kontrol edip yeniden deneyin.",
+    qi_parse_failed: "Dosya ayrıştırılamadı ({detail}).", qa_parse_failed: "Dosyanın bozuk olmadığını kontrol edin (yeniden kaydedin/indirin) ve yeniden deneyin.",
+    qi_embedding_failed: "Embedding servisi hata verdi ({detail}).", qa_embedding_failed: "Embedding sunucusunu kontrol edip yeniden deneyin.",
+    qi_index_write_failed: "İndekse yazılamadı ({detail}).", qa_index_write_failed: "Disk alanını ve yazma iznini kontrol edip yeniden deneyin.",
+    qi_other_failed: "İşlenemedi ({detail}).", qa_other_failed: "Yeniden deneyin; sorun sürerse günlüğe bakın.",
+    qStage_read: "okuma", qStage_parse: "ayrıştırma", qStage_embedding: "embedding", qStage_index_write: "indeks yazımı", qStage_other: "diğer", qStage_vlm: "VLM", qStage_metadata: "belge bilgisi",
+    qOpenReport: "Kalite raporu",
     vRegenerated: "Cevap bir kez düzeltilerek yeniden üretildi.",
     judgeDone: "bağımsız denetçi tamamlandı", judgeFailed: "bağımsız denetçi tamamlanamadı", judgeOff: "bağımsız denetçi kapalı", judgeNone: "denetçi gerekmedi",
     removedList: "Çıkarılan / işaretlenen ifadeler", claimDetails: "İfade ayrıntıları", usesUser: "kullanıcı girdisi içerir", usesCalc: "hesap içerir",
@@ -134,6 +175,47 @@ const I18N = {
     vClarify: "Clarification needed: the answer depends on a condition the question does not state. This is not a “not found” result; once you specify it, the answer comes from the sources.",
     clarifySend: "Send answer", dontKnow: "I don't know", pendingNote: "Your next message will be merged as a reply to: “{0}”",
     pendingCancel: "Cancel", mergedAs: "question: “{0}”", carried: "from the conversation: {0}",
+    qualityReport: "Indexing quality report", qShowAll: "Also show documents without problems",
+    qualityHint: "This report describes what indexing did (processed/skipped documents, VLM pages, table and row verification). It is not a measure of answer accuracy; every ratio states its denominator.",
+    qNone: "No quality records yet.", qUnavailable: "No quality information in this library (an index created by an older version, opened read-only).",
+    qLastRun: "Last indexing", qRuns: "Earlier runs", qKind_sync: "add/sync", qKind_rescan: "rescan", qKind_folder: "folder added",
+    qKind_upload: "upload", qKind_add: "files added", qKind_retry: "retry", qKind_ingest: "indexing",
+    qRun_done: "finished", qRun_done_with_errors: "finished with errors", qRun_running: "running", qRun_interrupted: "interrupted", qRun_failed: "ended with an error",
+    qDocsLine: "Documents: {0} processed ({1} new, {2} updated) · {3} skipped as unchanged · {4} reused (moved/copies) · {5} partially processed · {6} failed · {7} unreachable · {8} source missing",
+    qVlmOff: "The vision model (VLM) was off for this run: tables were read from the PDF text layer only, no cell-level table verification was done.",
+    qVlmLine: "VLM: {1} pages examined in {0} documents ({2} from the cache) — tables on {3} pages, {4} pages examined without a table, VLM failed on {5} pages. {6} pages stayed below the table filter (not examined), {7} pages were not examined because of the page limit.",
+    qTablesLine: "Tables: {0} extracted · {1} matched the PDF text cell by cell · {2} did not (the original PDF text is the evidence, the VLM version is search-only).",
+    qRowsLine: "Parameter rows: {0}/{1} verified{2} — denominator: rows extracted by the VLM. The {3} unverified rows are not used in answers.",
+    qStages: "Stage failures: read {0} · parse {1} · embedding {2} · index write {3} · other {4}", qEmb: "Embedding: {0} chunks sent, {1} unchanged chunks kept their vector.",
+    qUnreachableFolders: "Unreachable folders: {0}",
+    qRetryTitle: "Retry failed operations", qRetryNone: "Nothing failed that could be retried.",
+    qRetryScope: "{0} documents will be retried: {1} only their failed VLM pages ({2} pages; successful pages from the cache, unchanged chunks keep their vectors), {3} processed again as a whole.",
+    qRetryFolders: "{0} unreachable folder(s) will be scanned again.", qRetryKeep: "A failed retry never deletes the existing index; a retry with a worse result is not written.",
+    qRetryRunning: "Retrying", qRetryDone: "Retry: {0}",
+    qRes_ok: "done", qRes_partial: "still partial", qRes_failed: "failed again (existing index kept)", qRes_kept_existing: "not better, existing index kept", qRes_file_missing: "source file missing",
+    qSt_ok: "no problems", qSt_partial: "partially processed", qSt_failed: "failed", qSt_none: "no quality info",
+    qNoRecord: "No quality information: this document was indexed before the report existed. Nothing is guessed; the information appears once it is processed again.",
+    qProcessed: "last processed: {0}", qNeeds: "needs reprocessing", qKept: "The earlier index is kept and used in answers (last success: {0}).", qNotIndexed: "This document was never indexed; it is not used in answers.",
+    qMissingFile: "Source file not found: the document is excluded from answers (its index is kept).",
+    qVlmDoc: "VLM: {0} pages examined — {1} with tables, {2} without, {3} failed; {4} pages below the filter, {5} over the limit.",
+    qVlmDocOff: "VLM was off: tables from the PDF text only.", qVlmDocNotPdf: "Not a PDF: no VLM table extraction.",
+    qTablesDoc: "Tables: {0} ({1} matched) · rows {2}/{3} verified.", qRetried: "Last retry: {0}.",
+    qGoto: "Go to page", qAction: "Suggested:",
+    qi_vlm_failed: "Page {page}: VLM table extraction failed ({detail}).", qa_vlm_failed: "Check the vision model server and retry.", qa_vlm_cut: "Raise vision.max_tokens and retry.",
+    qi_metadata_failed: "Document info (standard/revision) could not be read by the model; taken from the file name and front pages ({detail}).", qa_metadata_failed: "Retry when the model server is reachable.",
+    qi_no_text: "No text could be extracted (scanned PDF?).", qa_no_text: "Run OCR first and add the document again.",
+    qi_vlm_disabled: "VLM was off: tables were read from the PDF text only.", qa_vlm_disabled: "Enable the vision model in Settings and rescan to verify tables.",
+    qi_vlm_over_limit: "{count} table-like pages were not examined because of the per-document page limit.", qa_vlm_over_limit: "Raise vision.max_pages_per_doc and rescan.",
+    qi_table_not_grounded: "Page {page}, {table}: the table could not be matched to the PDF text cell by cell ({status}); the original PDF text is the evidence, the VLM version is search-only.", qa_table_not_grounded: "Check the page.",
+    qi_rows_unverified: "Page {page}, {table}: {count}/{total} parameter rows could not be verified; they are not used in answers.", qa_rows_unverified: "Check the page.",
+    qi_table_match_uncertain: "Page {page}, {table}: the VLM table could not be matched to a PDF table reliably; the original is kept.", qa_table_match_uncertain: "",
+    qi_read_failed: "The file could not be read ({detail}).", qa_read_failed: "Check that the file is not open/locked and readable, then retry.",
+    qi_parse_failed: "The file could not be parsed ({detail}).", qa_parse_failed: "Check that the file is not damaged (save/download it again), then retry.",
+    qi_embedding_failed: "The embedding service failed ({detail}).", qa_embedding_failed: "Check the embedding server and retry.",
+    qi_index_write_failed: "The index could not be written ({detail}).", qa_index_write_failed: "Check disk space and write permission, then retry.",
+    qi_other_failed: "Could not be processed ({detail}).", qa_other_failed: "Retry; if it keeps failing, see the log.",
+    qStage_read: "read", qStage_parse: "parse", qStage_embedding: "embedding", qStage_index_write: "index write", qStage_other: "other", qStage_vlm: "VLM", qStage_metadata: "document info",
+    qOpenReport: "Quality report",
     vRegenerated: "The answer was corrected and regenerated once.",
     judgeDone: "independent judge completed", judgeFailed: "independent judge NOT completed", judgeOff: "independent judge off", judgeNone: "judge not needed",
     removedList: "Removed / flagged statements", claimDetails: "Statement details", usesUser: "uses user input", usesCalc: "uses a calculation",
@@ -759,7 +841,7 @@ function showSource(s, msg, claimId, override) {
   $$(".cite-chip.active").forEach((c) => c.classList.remove("active"));
 }
 
-async function showDocument(id) {
+async function showDocument(id, page) {
   const seq = ++state.viewSeq;
   showRight();
   const d = await getJSON(`/api/documents/${id}`);
@@ -781,7 +863,7 @@ async function showDocument(id) {
     if (o) o.addEventListener("click", () => postJSON(`/api/documents/${d.id}/open`, {}).catch((e) => alert(e.message)));
     return;
   }
-  pageViewer(pv, d.id, 1, d.n_pages);
+  pageViewer(pv, d.id, page || 1, d.n_pages);
   $$(".toc a", pane).forEach((a) => a.addEventListener("click", () => { pv.innerHTML = ""; pageViewer(pv, d.id, +a.dataset.page, d.n_pages); }));
 }
 
@@ -1118,7 +1200,9 @@ async function followJob(job, title) {
     $("#job-now").textContent = t("reportLine", (r.added || []).length, (r.updated || []).length, r.unchanged || 0,
       (r.reused || []).length, (r.missing || []).length, (r.unreachable || []).length, Object.keys(r.failed || {}).length);
     const failed = Object.entries(r.failed || {});
-    $("#job-errors").innerHTML = failed.slice(0, 20).map(([k, v]) => `<div title="${esc(v)}">✕ ${esc(k.replace(/^@\d+\//, ""))}</div>`).join("");
+    $("#job-errors").innerHTML = failed.slice(0, 20).map(([k, v]) => `<div title="${esc(v)}">✕ ${esc(k.replace(/^@\d+\//, ""))}</div>`).join("")
+      + `<button type="button" class="ghost small" id="btn-job-quality">${esc(t("qOpenReport"))}</button>`;
+    $("#btn-job-quality").addEventListener("click", openQuality);
   } else if (j.status === "failed") {
     $("#job-errors").textContent = j.messages.slice(-1)[0] || "";
   }
@@ -1210,6 +1294,128 @@ async function rescan(rebuild) {
     if (!ok) return;
     const r = await postJSON("/api/rescan", { rebuild: !!rebuild });
     await pollJob(r.job, t("rescan"));
+  } catch (e) { alert(`${t("errorPrefix")}: ${e.message}`); }
+}
+
+// ------------------------------------------------------------------ indexing quality report
+// What the last indexing runs did and, per document, what its last processing produced. Counts only: no answer
+// accuracy is claimed, and every ratio names its denominator.
+const QFAIL = { failed: 0, partial: 1, none: 2, ok: 3 };
+function fmtTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return isNaN(d) ? iso : d.toLocaleString(LANG === "tr" ? "tr-TR" : "en-GB");
+}
+function qIssue(it) {
+  const fill = (s) => String(s).replace(/\{(\w+)\}/g, (_, k) => (it[k] ?? "") === "" ? "?" : (k === "pages" ? it[k].join(", ") : it[k]));
+  const text = fill(t("qi_" + it.code));
+  const act = it.code === "vlm_failed" && it.cut_off ? t("qa_vlm_cut") : t("qa_" + it.code);
+  return { text, act: act && act !== "qa_" + it.code ? act : "" };
+}
+function qRunHtml(run) {
+  const q = run.summary || {};
+  const v = q.vlm || {}, tb = q.tables || {}, st = q.stage_failures || {}, em = q.embedding || {};
+  const pct = tb.rows ? ` (%${Math.round((100 * tb.rows_verified) / tb.rows)})` : "";
+  const lines = [t("qDocsLine", q.processed || 0, q.added || 0, q.updated || 0, q.skipped_unchanged || 0, q.reused || 0,
+    q.partial || 0, q.failed || 0, q.unreachable || 0, q.missing || 0)];
+  if (v.enabled === false) lines.push(t("qVlmOff"));
+  else lines.push(t("qVlmLine", v.documents || 0, v.selected || 0, v.cached || 0, v.with_tables || 0, v.no_table || 0,
+    v.failed || 0, v.filtered_out || 0, v.over_limit || 0));
+  lines.push(t("qTablesLine", tb.extracted || 0, tb.grounded || 0, tb.not_grounded || 0));
+  if (tb.rows) lines.push(t("qRowsLine", tb.rows_verified || 0, tb.rows, pct, tb.rows_unverified || 0));
+  if (Object.values(st).some((n) => n)) lines.push(t("qStages", st.read || 0, st.parse || 0, st.embedding || 0, st.index_write || 0, st.other || 0));
+  if (em.embedded || em.reused) lines.push(t("qEmb", em.embedded || 0, em.reused || 0));
+  if ((q.unreachable_folders || []).length) lines.push(t("qUnreachableFolders", q.unreachable_folders.join("; ")));
+  if (q.retry) {
+    const res = Object.entries(q.retry).map(([k, r]) => `${k.replace(/^@\d+\//, "")}: ${t("qRes_" + (r.result || "ok"))}`);
+    if (res.length) lines.push(t("qRetryDone", res.join(" · ")));
+  }
+  return lines.map((l) => `<p>${esc(l)}</p>`).join("");
+}
+function qDocHtml(d) {
+  const q = d.quality;
+  const st = q ? q.status : "none";
+  const data = (q && q.data) || {};
+  const head = `<div class="q-head"><span class="q-st ${st}">${esc(t("qSt_" + st))}</span><b>${esc(d.title)}</b>
+    <span class="muted small">${esc(d.bucket || t("generalBucket"))} · ${esc(d.rel_path)}</span>
+    ${q ? `<span class="muted small">${esc(t("qProcessed", fmtTime(q.processed_at)))}</span>` : ""}
+    ${q && q.needs_reprocess ? `<span class="pill">${esc(t("qNeeds"))}</span>` : ""}</div>`;
+  const items = [];
+  if (!q) items.push(`<li class="muted">${esc(t("qNoRecord"))}</li>`);
+  if (d.missing) items.push(`<li>${esc(t("qMissingFile"))}</li>`);
+  if (q && q.status === "failed") items.push(`<li>${esc(q.index_kept ? t("qKept", fmtTime(q.last_ok_at)) : t("qNotIndexed"))}</li>`);
+  const v = data.vlm || (data.previous || {}).vlm;
+  if (q && v) {
+    if (v.enabled === false) items.push(`<li class="muted">${esc(v.off_reason === "not_pdf" ? t("qVlmDocNotPdf") : t("qVlmDocOff"))}</li>`);
+    else items.push(`<li class="muted">${esc(t("qVlmDoc", (v.selected || []).length, (v.with_tables || []).length, (v.no_table || []).length,
+      Object.keys(v.failed || {}).length, v.filtered_out || 0, (v.over_limit || []).length))}</li>`);
+  }
+  const tb = data.tables || (data.previous || {}).tables;
+  if (q && tb && tb.extracted) items.push(`<li class="muted">${esc(t("qTablesDoc", tb.extracted, tb.grounded || 0, tb.rows_verified || 0, tb.rows || 0))}</li>`);
+  if (data.retry) items.push(`<li class="muted">${esc(t("qRetried", fmtTime(data.retry.at)))}</li>`);
+  for (const it of (data.issues || []).filter((x) => x.code !== "vlm_disabled")) {
+    const { text, act } = qIssue(it);
+    const go = d.doc_id && d.pdf && !d.missing && it.page ? `<button type="button" class="ghost small goto" data-doc="${d.doc_id}" data-page="${it.page}">${esc(t("qGoto"))}</button>` : "";
+    items.push(`<li>${esc(text)}${go}${act ? `<br><span class="q-act small">${esc(t("qAction"))} ${esc(act)}</span>` : ""}</li>`);
+  }
+  return `<div class="q-doc ${st}">${head}<ul>${items.join("")}</ul></div>`;
+}
+let QUALITY = null;
+function renderQuality() {
+  const r = QUALITY;
+  if (!r) return;
+  const run = $("#q-run");
+  if (!r.available) {
+    run.innerHTML = `<p>${esc(t("qUnavailable"))}</p>`;
+  } else if (!r.runs.length) {
+    run.innerHTML = `<p>${esc(t("qNone"))}</p>`;
+  } else {
+    const last = r.runs[0];
+    run.innerHTML = `<h3>${esc(t("qLastRun"))}: ${esc(t("qKind_" + last.kind) !== "qKind_" + last.kind ? t("qKind_" + last.kind) : last.kind)} · ${esc(fmtTime(last.finished_at || last.started_at))} · ${esc(t("qRun_" + last.status))}</h3>${qRunHtml(last)}`
+      + (r.runs.length > 1 ? `<details class="q-runs"><summary class="small">${esc(t("qRuns"))}</summary><ul>${r.runs.slice(1).map((x) =>
+        `<li>${esc(fmtTime(x.finished_at || x.started_at))} · ${esc(t("qKind_" + x.kind))} · ${esc(t("qRun_" + x.status))} · ${esc(t("qDocsLine", ...["processed", "added", "updated", "skipped_unchanged", "reused", "partial", "failed", "unreachable", "missing"].map((k) => (x.summary || {})[k] || 0)))}</li>`).join("")}</ul></details>` : "");
+  }
+  const box = $("#q-retry");
+  const plan = r.retry || [];
+  box.hidden = !r.available;
+  if (r.available) {
+    const docs = plan.filter((p) => p.scope !== "folder");
+    const pages = docs.filter((p) => p.scope === "pages");
+    const lines = plan.length ? [t("qRetryScope", docs.length, pages.length, pages.reduce((a, p) => a + p.pages.length, 0), docs.length - pages.length)] : [t("qRetryNone")];
+    const folders = plan.filter((p) => p.scope === "folder").length;
+    if (folders) lines.push(t("qRetryFolders", folders));
+    if (plan.length) lines.push(t("qRetryKeep"));
+    box.innerHTML = `<h3>${esc(t("qRetryTitle"))}</h3>${lines.map((l) => `<p>${esc(l)}</p>`).join("")}
+      <div class="row"><button type="button" id="btn-q-retry"${!plan.length || r.read_only ? " disabled" : ""}>${esc(t("qRetryTitle"))}</button></div>`;
+    $("#btn-q-retry").addEventListener("click", retryFailed);
+  }
+  const all = $("#q-all").checked;
+  const docs = (r.documents || []).slice().sort((a, b) => QFAIL[a.quality ? a.quality.status : "none"] - QFAIL[b.quality ? b.quality.status : "none"]
+    || String(a.title).localeCompare(String(b.title)));
+  const shown = docs.filter((d) => all || !d.quality || d.quality.status !== "ok" || d.missing || (d.quality.data.issues || []).some((i) => i.code !== "vlm_disabled"));
+  $("#q-count").textContent = `${shown.length}/${docs.length}`;
+  $("#q-docs").innerHTML = shown.map(qDocHtml).join("");
+  $$("#q-docs .goto").forEach((b) => b.addEventListener("click", () => {
+    $("#dlg-quality").close();
+    showDocument(+b.dataset.doc, +b.dataset.page);
+  }));
+}
+async function openQuality() {
+  const dlg = $("#dlg-quality");
+  if (!dlg.open) dlg.showModal();
+  $("#q-status").textContent = "…";
+  try {
+    QUALITY = await getJSON("/api/quality");
+    renderQuality();
+    $("#q-status").textContent = "";
+  } catch (e) { $("#q-status").textContent = `${t("errorPrefix")}: ${e.message}`; }
+}
+async function retryFailed() {
+  try {
+    $("#btn-q-retry").disabled = true;
+    const r = await postJSON("/api/quality/retry", {});
+    await pollJob(r.job, t("qRetryRunning"));
+    if ($("#dlg-quality").open) await openQuality();
   } catch (e) { alert(`${t("errorPrefix")}: ${e.message}`); }
 }
 
@@ -1466,6 +1672,8 @@ function bind() {
   $("#lib-new-path").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("#btn-open-lib").click(); } });
   $("#btn-add-folder").addEventListener("click", addFolder);
   $("#btn-rescan").addEventListener("click", () => rescan(false));
+  $("#btn-quality").addEventListener("click", openQuality);
+  $("#q-all").addEventListener("change", renderQuality);
   $("#btn-job-close").addEventListener("click", () => { $("#job-box").hidden = true; });
   $("#doc-filter").addEventListener("input", (e) => { state.filter = e.target.value; renderCollections(); });
   $("#btn-toggle-left").addEventListener("click", () => setLeftCollapsed(leftOpen()));

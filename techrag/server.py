@@ -49,6 +49,10 @@ class AskRequest(BaseModel):
     clarification: Optional[dict] = None   # the pending clarifying question this message may answer
 
 
+class RetryRequest(BaseModel):
+    paths: Optional[list[str]] = None   # None: everything that needs a retry
+
+
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=4000)
     domains: Optional[list[str]] = None
@@ -458,7 +462,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
 
     # ------------------------------------------------------------- ingestion
     def start_job(kind: str, target: Optional[Path] = None, rebuild: bool = False, root_id: Optional[int] = None,
-                  everything: bool = False) -> dict:
+                  everything: bool = False, retry: bool = False, retry_paths: Optional[list[str]] = None) -> dict:
         """Indexing runs in a background thread (the window stays responsive); progress is polled."""
         from techrag.ingest.pipeline import Ingestor
 
@@ -474,12 +478,16 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         def run():
             with jobs.lock:
                 job["status"] = "running"
+                ing = None
                 try:
                     jobs.gate.check()
                     ing = Ingestor(c, e.store, e.embedder, e.domains, progress=lambda m: job["messages"].append(m),
                                    llm=e.llm if c.llm.model else None, vision=e.vision, status=status,
                                    gate=jobs.gate)
-                    if root_id is not None:
+                    ing.run_kind = kind
+                    if retry:
+                        report = ing.retry_failed(retry_paths)
+                    elif root_id is not None:
                         report = ing.sync_root(root_id, rebuild)
                     elif everything:
                         report = ing.sync_all(rebuild)
@@ -493,6 +501,8 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 except Exception as exc:
                     job["messages"].append(f"ERROR: {exc}")
                     job["status"] = "failed"
+                    if ing is not None:
+                        ing.abort_run("failed")
 
         threading.Thread(target=run, daemon=True).start()
         return job
@@ -562,6 +572,46 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
     @app.post("/api/rescan", dependencies=guard)
     def rescan(req: IngestRequest = IngestRequest()):
         return {"job": start_job("rescan", rebuild=req.rebuild, everything=True)["id"]}
+
+    # ------------------------------------------------------------ indexing quality
+    @app.get("/api/quality", dependencies=guard)
+    def quality():
+        """The indexing quality report: the last runs and, per document, what its last processing produced.
+        Documents indexed before this report existed have no record ("not available"); nothing is guessed.
+        The report holds no server address, key or token."""
+        from techrag.ingest.pipeline import retry_plan
+
+        e = eng()
+        store = e.store
+        records = store.quality()
+        docs = store.documents()
+        out = []
+        seen = set()
+        for d in docs:
+            seen.add(d.path)
+            out.append({"doc_id": d.id, "path": d.path, "title": d.title, "bucket": d.bucket,
+                        "rel_path": d.rel_path or d.path, "pdf": (d.rel_path or d.path).lower().endswith(".pdf"),
+                        "missing": d.missing, "ingested_at": d.ingested_at, "n_pages": d.n_pages,
+                        "quality": (records or {}).get(d.path)})
+        for path, rec in (records or {}).items():
+            if path in seen:
+                continue  # never indexed successfully: only the failure record exists
+            data = rec.get("data") or {}
+            src = data.get("source") or {}
+            out.append({"doc_id": None, "path": path, "title": data.get("title") or Path(path).stem,
+                        "bucket": src.get("bucket", ""), "rel_path": src.get("rel_path") or path,
+                        "pdf": str(src.get("rel_path") or path).lower().endswith(".pdf"), "missing": False,
+                        "ingested_at": "", "n_pages": 0, "quality": rec})
+        c: Config = state["cfg"]
+        return {"available": records is not None, "runs": store.ingest_runs(10), "documents": out,
+                "retry": retry_plan(store) if records is not None else [],
+                "vlm_enabled": bool(c.vision.enabled and c.vision_service().model),
+                "read_only": c.read_only}
+
+    @app.post("/api/quality/retry", dependencies=guard)
+    def quality_retry(req: RetryRequest = RetryRequest()):
+        """Retry what failed (only the failed VLM pages where possible; see Ingestor.retry_failed)."""
+        return {"job": start_job("retry", retry=True, retry_paths=req.paths)["id"]}
 
     @app.post("/api/documents/purge-missing", dependencies=guard)
     def purge_missing():
@@ -654,6 +704,8 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 except Exception as exc:
                     job["messages"].append(f"ERROR: {exc}")
                     job["status"] = "failed"
+                    if ing is not None:
+                        ing.abort_run("failed")
 
         threading.Thread(target=run, daemon=True).start()
         return {"job": job["id"]}

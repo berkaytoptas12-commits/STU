@@ -35,9 +35,11 @@ from techrag.ingest.chunker import Chunk, chunk_blocks
 from techrag.ingest.cleaning import clean_blocks
 from techrag.ingest.loaders import SUPPORTED_SUFFIXES, TABLE_KIND, Block, LoadedDocument, load_document
 from techrag.ingest.metadata import build_metadata, compute_supersedence, llm_metadata
+from techrag.ingest.quality import (FATAL_STAGES, DocQuality, IngestFailure, RetryNotBetter, add_document,
+                                    empty_summary, failure_record, failure_stage, scrub)
 from techrag.ingest.sources import PlanItem, plan_changes, scan_root
 from techrag.ingest.structure import SECTION_SEP, assign_sections, section_label
-from techrag.ingest.vlm import PROMPT_VERSION, ExtractedTable, TableExtractor, is_figure_page, select_pages
+from techrag.ingest.vlm import PROMPT_VERSION, ExtractedTable, TableExtractor, is_figure_page, page_candidates
 from techrag.llm import LLMClient
 from techrag.store import Store
 
@@ -89,30 +91,39 @@ class IngestReport:
     removed: list[str] = field(default_factory=list)
     failed: dict[str, str] = field(default_factory=dict)
     warnings: dict[str, list[str]] = field(default_factory=dict)
+    partial: list[str] = field(default_factory=list)        # processed, but a step (VLM page, metadata) failed
     chunks: int = 0
     tables: int = 0
     parameters: int = 0
     seconds: float = 0.0
+    quality: dict = field(default_factory=empty_summary)    # page / table / stage counts (techrag.ingest.quality)
+    retry: dict[str, dict] = field(default_factory=dict)    # retry runs: what was retried per document
+    run_id: Optional[int] = None
 
     def summary(self) -> str:
         return (f"added={len(self.added)} updated={len(self.updated)} unchanged={len(self.skipped)} "
-                f"reused={len(self.reused)} missing={len(self.missing)} unreachable={len(self.unreachable)} "
-                f"failed={len(self.failed)} chunks={self.chunks} vlm_tables={self.tables} "
-                f"parameters={self.parameters} time={self.seconds:.1f}s")
+                f"reused={len(self.reused)} partial={len(self.partial)} missing={len(self.missing)} "
+                f"unreachable={len(self.unreachable)} failed={len(self.failed)} chunks={self.chunks} "
+                f"vlm_tables={self.tables} parameters={self.parameters} time={self.seconds:.1f}s")
 
-    def merge(self, other: "IngestReport") -> None:
-        for name in ("added", "updated", "skipped", "reused", "missing", "unreachable", "removed"):
-            getattr(self, name).extend(getattr(other, name))
-        self.failed.update(other.failed)
-        self.warnings.update(other.warnings)
-        self.chunks += other.chunks
-        self.tables += other.tables
-        self.parameters += other.parameters
+    def run_summary(self, vlm_enabled: bool) -> dict:
+        q = dict(self.quality, processed=len(self.added) + len(self.updated), added=len(self.added),
+                 updated=len(self.updated), skipped_unchanged=len(self.skipped), reused=len(self.reused),
+                 partial=len(self.partial), failed=len(self.failed), unreachable=len(self.unreachable),
+                 missing=len(self.missing), seconds=round(self.seconds, 1))
+        q["vlm"] = dict(q["vlm"], enabled=vlm_enabled)
+        q["lists"] = {"failed": sorted(self.failed)[:200], "partial": self.partial[:200],
+                      "unreachable": self.unreachable[:200], "missing": self.missing[:200]}
+        if self.retry:
+            q["retry"] = self.retry
+        return q
 
     def to_dict(self) -> dict:
         return {"summary": self.summary(), "added": self.added, "updated": self.updated, "reused": self.reused,
                 "unchanged": len(self.skipped), "missing": self.missing, "unreachable": self.unreachable,
-                "failed": self.failed, "warnings": self.warnings}
+                "failed": self.failed, "warnings": self.warnings, "partial": self.partial,
+                "quality": self.run_summary(self.quality["vlm"].get("enabled") is not False), "retry": self.retry,
+                "run_id": self.run_id}
 
 
 def ingest_fingerprint(cfg: Config, vision_model: Optional[str]) -> str:
@@ -258,6 +269,8 @@ class Ingestor:
             self.extractor = TableExtractor(vision, cfg.vlm_cache_dir, cfg.vision.dpi, cfg.vision.max_tokens,
                                             cfg.vision.concurrency)
         self.fingerprint = ingest_fingerprint(cfg, self.extractor.client.model if self.extractor else None)
+        self.run_kind = "sync"     # how the run is listed in the quality report (sync | rescan | folder | retry ...)
+        self._run_id: Optional[int] = None
 
     def _rel(self, path: Path) -> str:
         try:
@@ -274,7 +287,8 @@ class Ingestor:
             self.store.check_embedding_model(name, dim)
 
     # ------------------------------------------------------------------ syncs
-    def run(self, target: Optional[Path] = None, rebuild: bool = False, prune: bool = True) -> IngestReport:
+    def run(self, target: Optional[Path] = None, rebuild: bool = False, prune: bool = True,
+            report: Optional[IngestReport] = None, finish: bool = True) -> IngestReport:
         """The library's own sources folder (or one file/folder inside it, or a single outside file)."""
         start = time.time()
         root = self.cfg.sources_dir
@@ -283,7 +297,8 @@ class Ingestor:
         if not target.exists():
             raise FileNotFoundError(f"Source path not found: {target}")
         self._check_embedding(rebuild)
-        report = IngestReport()
+        report = report if report is not None else IngestReport()
+        self._begin_run(report)
         rel_target = self._rel(target)
         if Path(rel_target).is_absolute():  # a single file outside the library, indexed by its absolute path
             if target.is_dir():
@@ -301,8 +316,9 @@ class Ingestor:
                 items = [it for it in items if it.action not in ("missing", "unreachable")]
             self.progress(f"{len(scan.files)} file(s) found under {target}")
             self._apply(items, None, lambda it: it.rel, report, "")
-        self._finish(report)
         report.seconds = time.time() - start
+        if finish:
+            self._finish(report)
         return report
 
     def sync_root(self, root_id: int, rebuild: bool = False, report: Optional[IngestReport] = None,
@@ -314,6 +330,7 @@ class Ingestor:
             raise ValueError(f"unknown document folder #{root_id}")
         self._check_embedding(rebuild)
         report = report if report is not None else IngestReport()
+        self._begin_run(report)
         self.status({"phase": "scan", "root": r["path"]})
         scan = scan_root(r["path"], exclude=(self.cfg.library_dir,))
         if not scan.reachable:
@@ -331,28 +348,53 @@ class Ingestor:
             with self.gate.write():
                 self.store.set_root_status(root_id, "ok" if not scan.unreadable else
                                            f"partly unreadable: {len(scan.unreadable)} item(s)")
+        else:
+            report.quality.setdefault("unreachable_folders", []).append(r["path"])
+        report.seconds = time.time() - start
         if finish:
             self._finish(report)
-        report.seconds = time.time() - start
         return report
 
     def sync_all(self, rebuild: bool = False) -> IngestReport:
         """Rescan: the library's sources folder and every document folder."""
         start = time.time()
-        report = self.run(rebuild=rebuild)
+        report = self.run(rebuild=rebuild, finish=False)
         for r in self.store.roots():
             try:
                 self.sync_root(r["id"], rebuild, report, finish=False)
             except Exception as exc:
-                report.failed[r["path"]] = f"{exc.__class__.__name__}: {exc}"
-        self._finish(report)
+                report.failed[r["path"]] = scrub(f"{exc.__class__.__name__}: {exc}")
         report.seconds = time.time() - start
+        self._finish(report)
         return report
+
+    def _begin_run(self, report: IngestReport) -> None:
+        """One quality-report run per top-level call (a rescan of several folders is one run)."""
+        if self._run_id is None:
+            with self.gate.write():
+                self._run_id = self.store.start_ingest_run(self.run_kind)
+        report.run_id = self._run_id
+
+    def abort_run(self, status: str = "failed") -> None:
+        """A run that ended with an error is listed as such (a run cut off by closing the app cannot be written
+        any more; the next start lists it as interrupted)."""
+        if self._run_id is None:
+            return
+        try:
+            with self.gate.write():
+                self.store.finish_ingest_run(self._run_id, status, {})
+        except BaseException:
+            pass
+        self._run_id = None
 
     def _finish(self, report: IngestReport) -> None:
         pairs = compute_supersedence([d for d in self.store.documents() if not d.missing])
         with self.gate.write():
             self.store.set_superseded(pairs)
+            status = "done" if not (report.failed or report.unreachable or
+                                    report.quality.get("unreachable_folders")) else "done_with_errors"
+            self.store.finish_ingest_run(self._run_id, status, report.run_summary(self.extractor is not None))
+        self._run_id = None
         for doc_id, newer in pairs:
             if newer:
                 d, nd = self.store.document(doc_id), self.store.document(newer)
@@ -368,22 +410,46 @@ class Ingestor:
                     (not existing.ingest_fp or existing.ingest_fp == self.fingerprint):
                 report.skipped.append(key)
                 return
-            stats, warnings = self.ingest_file(path, key, digest, {"rel_path": key, "bucket": "", "subpath": "",
-                                                                    "file_size": st.st_size,
-                                                                    "file_mtime": st.st_mtime_ns})
+            source = {"rel_path": key, "bucket": "", "subpath": "", "file_size": st.st_size,
+                      "file_mtime": st.st_mtime_ns}
+            stats, warnings = self.ingest_file(path, key, digest, source)
             self._count(report, existing is not None, key, stats, warnings)
         except Exception as exc:
-            report.failed[key] = f"{exc.__class__.__name__}: {exc}"
+            self._failed(report, key, path.stem, {"rel_path": key, "bucket": ""}, exc)
 
     def _count(self, report: IngestReport, existed: bool, key: str, stats: dict, warnings: list) -> None:
         report.chunks += stats["chunks"]
         report.tables += stats["tables"]
         report.parameters += stats["parameters"]
         (report.updated if existed else report.added).append(key)
+        q: Optional[DocQuality] = stats.get("quality")
+        if q is not None:
+            add_document(report.quality, q)
+            if q.status == "partial":
+                report.partial.append(key)
         if warnings:
             report.warnings[key] = warnings
             for w in warnings[:5]:
                 self.progress(f"    warning: {w}")
+
+    def _failed(self, report: IngestReport, key: str, title: str, source: dict, exc: BaseException) -> None:
+        """A document could not be processed: reported, and recorded in the quality report. Its existing index
+        rows (an earlier, successful processing) are not touched and stay usable."""
+        cause = exc.cause if isinstance(exc, IngestFailure) else exc
+        report.failed[key] = scrub(f"{cause.__class__.__name__}: {cause}")
+        stage = failure_stage(exc)
+        report.quality["stage_failures"][stage if stage in FATAL_STAGES else "other"] += 1
+        try:
+            doc = self.store.document_by_path(key)
+            previous = (self.store.quality() or {}).get(key)
+            rec = failure_record(exc, source, doc.title if doc else title, self._run_id, previous,
+                                 doc.ingested_at if doc else "")
+            with self.gate.write():
+                self.store.set_quality(key, rec)
+        except IngestStopped:
+            raise
+        except Exception as rec_exc:  # the report must never hide the original failure
+            self.progress(f"    (could not record the failure in the quality report: {rec_exc})")
 
     def _apply(self, items: list[PlanItem], root_id: Optional[int], key_of, report: IngestReport,
                root_path: str) -> None:
@@ -432,21 +498,36 @@ class Ingestor:
                         continue
                 self.progress(f"[{n}/{total}] {it.bucket + ' / ' if it.bucket else ''}{it.rel}"
                               + (f" ({it.reason})" if it.reason else ""))
-                digest = it.sha256 or sha256_file(f.path)
+                try:
+                    digest = it.sha256 or sha256_file(f.path)
+                except OSError as exc:
+                    raise IngestFailure("read", exc) from exc
                 existed = it.doc_id is not None
                 stats, warnings = self.ingest_file(Path(f.path), key, digest, source, rel_for_domain=it.rel)
                 self._count(report, existed, key, stats, warnings)
             except Exception as exc:  # one bad or unreadable file must not stop a batch
-                report.failed[key] = f"{exc.__class__.__name__}: {exc}"
-                self.progress(f"    FAILED {it.rel}: {exc}")
+                src = {"root_id": root_id, "rel_path": it.rel, "bucket": it.bucket, "bucket_id": it.bucket_id,
+                       "subpath": it.file.subpath if it.file else ""}
+                self._failed(report, key, Path(it.rel).stem, src, exc)
+                self.progress(f"    FAILED {it.rel}: {report.failed[key]}")
         self.status({"phase": "index", "done": total, "total": total, "errors": len(report.failed)})
 
     # ---------------------------------------------------------------- one file
     def ingest_file(self, path: Path, rel: str, digest: str, source: Optional[dict] = None,
-                    rel_for_domain: Optional[str] = None) -> tuple[dict, list[str]]:
+                    rel_for_domain: Optional[str] = None, retry_of: Optional[dict] = None) -> tuple[dict, list[str]]:
+        """Process one file and write it in one transaction (with its quality record). Any failure raises before
+        the write: the document's existing index rows stay as they were. ``retry_of``: the quality record of a
+        retried document - the new result is only written when it has no more failed VLM pages than the old one."""
         t0 = time.time()
         cfg = self.cfg
-        doc: LoadedDocument = load_document(path, extract_tables=cfg.chunking.extract_tables)
+        q = DocQuality(pdf=path.suffix.lower() == ".pdf")
+        try:
+            doc: LoadedDocument = load_document(path, extract_tables=cfg.chunking.extract_tables)
+        except OSError as exc:
+            raise IngestFailure("read", exc) from exc
+        except Exception as exc:
+            raise IngestFailure("parse", exc) from exc
+        q.n_pages = doc.n_pages
         blocks = clean_blocks(doc.blocks, doc.n_pages, cfg.chunking.strip_headers_footers,
                               cfg.chunking.skip_toc_pages)
         warnings = list(doc.warnings)
@@ -461,21 +542,47 @@ class Ingestor:
             try:
                 llm_meta = llm_metadata(self.llm, front, digest, cfg.vlm_cache_dir)
             except Exception as exc:
-                warnings.append(f"metadata extraction failed: {exc}")
+                warnings.append(f"metadata extraction failed: {scrub(exc)}")
+                q.issue("metadata_failed", "metadata", detail=f"{exc.__class__.__name__}: {exc}")
         meta = build_metadata(self.domains, domain, path.stem, str(doc.metadata.get("title", "")), front, llm_meta)
 
         figure_pages = [p for p, st in doc.page_stats.items()
                         if is_figure_page(texts.get(p, ""), st.drawings, st.images)]
 
         accepted: list[ExtractedTable] = []
-        if self.extractor is not None and path.suffix.lower() == ".pdf":
-            pages = select_pages(texts, doc.page_stats, cfg.vision.min_page_score, cfg.vision.max_pages_per_doc)
+        if not q.pdf:
+            q.vlm = {"enabled": False, "off_reason": "not_pdf"}
+        elif self.extractor is None:
+            q.vlm = {"enabled": False, "off_reason": "disabled"}
+            q.issue("vlm_disabled", "vlm")
+        else:
+            cands = page_candidates(texts, doc.page_stats, cfg.vision.min_page_score)
+            pages = sorted(cands[:cfg.vision.max_pages_per_doc])
+            over = sorted(cands[cfg.vision.max_pages_per_doc:])
+            q.vlm = {"enabled": True, "selected": pages, "over_limit": over,
+                     "filtered_out": max(0, len(texts) - len(cands)),
+                     "cached": sum(1 for p in pages if self.extractor.cached(digest, p))}
+            if over:
+                q.issue("vlm_over_limit", "vlm", pages=over[:50], count=len(over))
+            failed: dict[int, str] = {}
             if pages:
-                self.progress(f"    {len(pages)} table page(s) -> VLM")
+                self.progress(f"    {len(pages)} table page(s) -> VLM"
+                              + (f" ({q.vlm['cached']} from the cache)" if q.vlm["cached"] else ""))
                 found, errors = self.extractor.extract(path, digest, pages, texts, self.progress, geoms=doc.pages)
-                warnings.extend(errors[:20])
+                failed = dict(self.extractor.failed)
+                warnings.extend(scrub(e) for e in errors[:20])
+                for page, why in sorted(failed.items()):
+                    q.issue("vlm_failed", "vlm", page=page, detail=why,
+                            cut_off="cut off" in why)
+                q.vlm.update(with_tables=[p for p in pages if found.get(p)],
+                             no_table=[p for p in pages if p not in failed and not found.get(p)],
+                             failed={str(p): scrub(why, 200) for p, why in failed.items()})
                 blocks, accepted, notes = merge_vlm_tables(blocks, found)
                 warnings.extend(notes[:20])
+                for n in notes:
+                    m = re.match(r"p\.(\d+): '(.*)' matched", n)
+                    q.issue("table_match_uncertain", "vlm", page=int(m.group(1)) if m else None,
+                            table=m.group(2) if m else "")
                 partial = [t for t in accepted if not t.grounded]
                 if partial:
                     warnings.append(f"{len(partial)} VLM table(s) could not be tied cell by cell to the PDF text "
@@ -485,12 +592,21 @@ class Ingestor:
                 unverified = sum(1 for p in params if not p.get("verified"))
                 if unverified:
                     warnings.append(f"{unverified}/{len(params)} parameter row(s) not verified (not used in answers)")
+            else:
+                q.vlm.update(with_tables=[], no_table=[], failed={})
+            if retry_of is not None:
+                before = len(((retry_of.get("data") or {}).get("vlm") or {}).get("failed") or {})
+                if retry_of.get("status") != "failed" and len(failed) > before:
+                    raise RetryNotBetter(f"{len(failed)} VLM page(s) failed now, {before} before")
+        self._table_quality(q, accepted)
 
         sectioned = assign_sections(doc, blocks)
         chunks = chunk_blocks(sectioned, cfg.chunking.target_tokens, cfg.chunking.max_tokens,
                               cfg.chunking.overlap_tokens, cfg.chunking.min_tokens)
         if not chunks:
             warnings.append("no text could be extracted (scanned PDF? run OCR first)")
+            q.issue("no_text", "parse")
+        q.chunks = len(chunks)
 
         table_sections: dict[int, str] = {}
         for sb in sectioned:
@@ -504,14 +620,12 @@ class Ingestor:
         } for i, t in enumerate(accepted)]
 
         title = doc.title
-        emb_texts = [embedding_text(title, c.section, c, meta.entities) for c in chunks]
-        vectors = []
-        batch = max(1, cfg.embedding.batch_size) * max(1, cfg.embedding.concurrency)
-        for i in range(0, len(emb_texts), batch):
-            vectors.append(self.embedder.embed_documents(emb_texts[i:i + batch]))
-            if len(emb_texts) > batch:
-                self.progress(f"    embedded {min(i + batch, len(emb_texts))}/{len(emb_texts)} chunks")
-        matrix = np.vstack(vectors) if vectors else np.zeros((0, self.embedder.dim), np.float32)
+        try:
+            matrix = self._embed(rel, title, meta.entities, chunks, q)
+        except IngestStopped:
+            raise
+        except Exception as exc:
+            raise IngestFailure("embedding", exc) from exc
 
         rows = [{"ordinal": c.ordinal, "section": SECTION_SEP.join(c.section), "page_start": c.page_start,
                  "page_end": c.page_end, "kind": c.kind, "overlap": c.overlap, "text": c.text,
@@ -519,20 +633,168 @@ class Ingestor:
         metadata = dict(doc.metadata)
         metadata.update({"figure_pages": figure_pages, "llm": meta.llm, "doc_key": meta.doc_key,
                          "version": meta.version, "part": meta.part})
-        with self.gate.write():  # one transaction per document
-            self.store.replace_document(
-                path=rel, title=title, domain=domain, sha256=digest, n_pages=doc.n_pages,
-                toc=[list(t) for t in doc.toc], metadata=metadata, warnings=warnings, chunks=rows,
-                embeddings=matrix, entities=meta.entities, doc_type=meta.doc_type, revision=meta.revision,
-                doc_date=meta.doc_date, tables=table_rows,
-                pages=[(p, g.label, *g.encode()) for p, g in sorted(doc.pages.items())],
-                source=dict(source or {"rel_path": rel}, ingest_fp=self.fingerprint),
-            )
+        retry_info = None
+        if retry_of is not None:
+            failed_before = sorted(int(p) for p in (((retry_of.get("data") or {}).get("vlm") or {})
+                                                    .get("failed") or {}))
+            retry_info = {"scope": "pages" if retry_of.get("status") == "partial" else "document",
+                          "pages": failed_before, "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+        record = q.record(source or {"rel_path": rel}, title, self._run_id, retry_info)
+        with self.gate.write():  # one transaction per document, with its quality record
+            try:
+                self.store.replace_document(
+                    path=rel, title=title, domain=domain, sha256=digest, n_pages=doc.n_pages,
+                    toc=[list(t) for t in doc.toc], metadata=metadata, warnings=warnings, chunks=rows,
+                    embeddings=matrix, entities=meta.entities, doc_type=meta.doc_type, revision=meta.revision,
+                    doc_date=meta.doc_date, tables=table_rows,
+                    pages=[(p, g.label, *g.encode()) for p, g in sorted(doc.pages.items())],
+                    source=dict(source or {"rel_path": rel}, ingest_fp=self.fingerprint), quality=record,
+                )
+            except Exception as exc:  # the transaction was rolled back: the old rows are still there
+                raise IngestFailure("index_write", exc) from exc
         n_params = sum(1 for t in table_rows for p in t["parameters"] if p.get("verified"))
         self.progress(f"    -> {len(chunks)} chunks, {len(table_rows)} VLM tables, {n_params} verified parameters, "
                       f"collection={domain}, standard={', '.join(meta.entities) or '-'}, type={meta.doc_type}, "
                       f"rev={meta.revision or '-'}, {time.time() - t0:.1f}s")
-        return {"chunks": len(chunks), "tables": len(table_rows), "parameters": n_params}, warnings
+        return {"chunks": len(chunks), "tables": len(table_rows), "parameters": n_params, "quality": q}, warnings
+
+    @staticmethod
+    def _table_quality(q: DocQuality, accepted: list[ExtractedTable]) -> None:
+        t = q.tables
+        for tb in accepted:
+            rows = len(tb.parameters)
+            ok = sum(1 for p in tb.parameters if p.get("verified"))
+            t["extracted"] += 1
+            t["grounded" if tb.grounded else "not_grounded"] += 1
+            t["rows"] += rows
+            t["rows_verified"] += ok
+            t["rows_unverified"] += rows - ok
+            if not tb.grounded or ok < rows:
+                t["items"].append({"page": tb.page, "table": tb.caption[:120], "status": tb.status, "rows": rows,
+                                   "rows_verified": ok})
+            if not tb.grounded:
+                q.issue("table_not_grounded", "vlm", page=tb.page, table=tb.caption, status=tb.status)
+            if ok < rows:
+                q.issue("rows_unverified", "vlm", page=tb.page, table=tb.caption, count=rows - ok, total=rows)
+
+    def _embed(self, rel: str, title: str, entities: list[str], chunks: list[Chunk], q: DocQuality) -> np.ndarray:
+        """Embeddings of the chunks. When the document is processed again (a retry, a changed setting), chunks whose
+        text, section and header did not change keep their stored embedding: only new or changed chunks are sent
+        to the embedding service."""
+        cfg = self.cfg
+        known: dict[tuple, np.ndarray] = {}
+        old = self.store.document_by_path(rel)
+        if old is not None and old.title == title and list(old.entities) == list(entities):
+            known = self.store.chunk_embeddings(old.id)
+        out: list[Optional[np.ndarray]] = []
+        todo: list[int] = []
+        for i, c in enumerate(chunks):
+            vec = known.get((SECTION_SEP.join(c.section), c.kind, c.text))
+            if vec is not None and vec.shape[0] == self.embedder.dim:
+                out.append(vec.astype(np.float32))
+            else:
+                out.append(None)
+                todo.append(i)
+        texts = [embedding_text(title, chunks[i].section, chunks[i], entities) for i in todo]
+        batch = max(1, cfg.embedding.batch_size) * max(1, cfg.embedding.concurrency)
+        for start in range(0, len(texts), batch):
+            vecs = self.embedder.embed_documents(texts[start:start + batch])
+            for j, v in zip(todo[start:start + batch], vecs):
+                out[j] = np.asarray(v, dtype=np.float32)
+            if len(texts) > batch:
+                self.progress(f"    embedded {min(start + batch, len(texts))}/{len(texts)} chunks")
+        q.embedding = {"embedded": len(todo), "reused": len(chunks) - len(todo)}
+        if known and len(todo) < len(chunks):
+            self.progress(f"    {len(chunks) - len(todo)} unchanged chunk(s) kept their embedding")
+        return np.vstack(out) if out else np.zeros((0, self.embedder.dim), np.float32)
+
+    # ---------------------------------------------------------------- retry
+    def retry_failed(self, paths: Optional[list[str]] = None) -> IngestReport:
+        """Retry what failed, as narrowly as possible: a partially processed document repeats only its failed
+        VLM pages (pages answered before come from the cache; unchanged chunks keep their embeddings); a failed
+        document is processed again as a whole; an unreachable document folder is scanned again. A retry that
+        fails, or that would end with more failed pages than before, leaves the existing index as it is."""
+        start = time.time()
+        report = IngestReport()
+        self.run_kind = "retry"
+        self._check_embedding(False)
+        self._begin_run(report)
+        records = self.store.quality() or {}
+        todo = [r for r in records.values() if r.get("needs_reprocess") and (paths is None or r["path"] in paths)]
+        total = len(todo)
+        for n, rec in enumerate(todo, 1):
+            self.gate.check()
+            key = rec["path"]
+            data = rec.get("data") or {}
+            src = dict(data.get("source") or {})
+            doc = self.store.document_by_path(key)
+            if doc is not None:
+                src = {"root_id": doc.root_id, "rel_path": doc.rel_path or key, "bucket": doc.bucket,
+                       "bucket_id": doc.bucket_id, "subpath": doc.subpath}
+                file = self.store.source_path(doc, self.cfg.sources_dir)
+            elif src.get("root_id") is not None and self.store.root(src["root_id"]):
+                file = Path(self.store.root(src["root_id"])["path"]) / src.get("rel_path", "")
+            else:
+                file = Path(key) if Path(key).is_absolute() else self.cfg.sources_dir / key
+            pages = sorted(int(p) for p in ((data.get("vlm") or {}).get("failed") or {}))
+            scope = "pages" if rec.get("status") == "partial" and doc is not None else "document"
+            report.retry[key] = {"scope": scope, "pages": pages if scope == "pages" else []}
+            self.status({"phase": "index", "bucket": src.get("bucket", ""), "file": src.get("rel_path") or key,
+                         "action": "retry", "done": n - 1, "total": total, "errors": len(report.failed)})
+            if not file.is_file():
+                report.retry[key]["result"] = "file_missing"
+                report.missing.append(key)
+                self.progress(f"[{n}/{total}] {key}: the source file is not there; nothing retried")
+                continue
+            self.progress(f"[{n}/{total}] retry {key}: "
+                          + (f"VLM page(s) {', '.join(map(str, pages))}" if scope == "pages" and pages
+                             else "the whole document"))
+            try:
+                try:
+                    digest = sha256_file(file)
+                    st = file.stat()
+                except OSError as exc:
+                    raise IngestFailure("read", exc) from exc
+                if doc is not None and digest != doc.sha256:
+                    report.retry[key]["scope"] = "document"  # the file changed meanwhile: all of it again
+                source = dict(src, file_size=st.st_size, file_mtime=st.st_mtime_ns)
+                stats, warnings = self.ingest_file(file, key, digest, source, rel_for_domain=src.get("rel_path"),
+                                                   retry_of=rec if doc is not None else None)
+                self._count(report, doc is not None, key, stats, warnings)
+                qd: DocQuality = stats["quality"]
+                report.retry[key]["result"] = qd.status
+                report.retry[key]["still_failed"] = sorted(int(p) for p in (qd.vlm.get("failed") or {}))
+            except RetryNotBetter as exc:
+                report.retry[key]["result"] = "kept_existing"
+                report.retry[key]["detail"] = str(exc)
+                self.progress(f"    retry not better ({exc}): the existing index is kept")
+            except Exception as exc:
+                self._failed(report, key, Path(key).stem, src, exc)
+                report.retry[key]["result"] = "failed"
+                self.progress(f"    FAILED again: {scrub(exc)}")
+        if paths is None:  # document folders that could not be read last time
+            for r in self.store.roots():
+                if str(r.get("last_status") or "").startswith("unreachable"):
+                    report.retry[r["path"]] = {"scope": "folder"}
+                    self.sync_root(r["id"], report=report, finish=False)
+        report.seconds = time.time() - start
+        self._finish(report)
+        return report
+
+
+def retry_plan(store: Store) -> list[dict]:
+    """What 'retry failed' would do, per document (shown to the user before it runs)."""
+    out = []
+    paths = {d.path for d in store.documents()}
+    for r in (store.quality() or {}).values():
+        if not r.get("needs_reprocess"):
+            continue
+        pages = sorted(int(p) for p in (((r.get("data") or {}).get("vlm") or {}).get("failed") or {}))
+        scope = "pages" if r.get("status") == "partial" and r["path"] in paths else "document"
+        out.append({"path": r["path"], "scope": scope, "pages": pages if scope == "pages" else []})
+    out += [{"path": r["path"], "scope": "folder", "pages": []} for r in store.roots()
+            if str(r.get("last_status") or "").startswith("unreachable")]
+    return out
 
 
 def pdf_geometry(path: Path) -> dict:
