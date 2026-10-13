@@ -46,6 +46,7 @@ class AskRequest(BaseModel):
     doc_ids: Optional[list[int]] = None
     top_k: Optional[int] = Field(default=None, ge=1, le=30)
     stream: bool = True
+    clarification: Optional[dict] = None   # the pending clarifying question this message may answer
 
 
 class SearchRequest(BaseModel):
@@ -441,11 +442,12 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         e = eng()
         history = [t.model_dump() for t in req.history]
         if not req.stream:
-            return e.ask(req.question, history, req.domains, req.doc_ids, req.top_k, req.buckets)
+            return e.ask(req.question, history, req.domains, req.doc_ids, req.top_k, req.buckets, req.clarification)
 
         def events():
             try:
-                for ev in e.ask_stream(req.question, history, req.domains, req.doc_ids, req.top_k, req.buckets):
+                for ev in e.ask_stream(req.question, history, req.domains, req.doc_ids, req.top_k, req.buckets,
+                                       req.clarification):
                     yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
             except Exception as exc:
                 err = {"type": "error", "message": f"{exc.__class__.__name__}: {exc}"}

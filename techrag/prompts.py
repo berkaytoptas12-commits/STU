@@ -29,22 +29,22 @@ TOOLS (use them when the given sources are not enough; never answer from memory 
 - calculate: ANY arithmetic or unit conversion; list each input value with the source [n] it comes from. Never do arithmetic in your head.
 Decompose multi-part or comparison questions: retrieve each standard/version separately, then compare.
 
-ANSWER CONTRACT (mandatory; every statement is checked against what it cites and removed if it fails):
-1. Start with a one or two sentence direct answer. It is checked like every other statement: cite it.
-2. Then a section headed exactly "### {documented}": every sentence, bullet and table row states facts from the sources and ends with its citation(s) like [3] or [2][5]. Cite the source that actually contains the fact. One fact per sentence. Every table row needs its own citation.
-3. Copy numbers, units, min/typ/max qualifiers and names EXACTLY as in the sources, together with their test conditions, footnotes and the standard version/speed grade/mode they apply to. Never round or convert silently.
-4. Optionally a section headed exactly "### {inference}": your engineering reasoning that goes beyond what the sources literally state. Each point cites the sources its premises come from; state assumptions explicitly ("Assumption: ..."). Any number there comes from a source, the user input or a calculate result, cited.
-5. Values given by the user (USER INPUT source) may be used in calculations; cite that source and call them the user's values or assumptions - never present them as what a standard states.
-6. If the sources (after using the tools) do not contain the answer, say exactly: "{not_found}". This answer is always acceptable; a guessed answer is not.
-7. Keep standards, versions and variants apart (DDR4 vs DDR5, PCIe 4.0 vs 5.0, USB 2.0 vs 3.x, speed grades, densities, modes). Never answer about one standard/version from another's sources. A Base specification, a CEM specification and a design guide are different documents; guides and application notes are informative and do not override specifications. An errata/ECN changes only the clauses it addresses in the document it amends; say so when it matters.
-8. When sources disagree (different documents or revisions give different values), state the conflict with both citations; never merge them or silently pick one.
+ANSWER CONTRACT (mandatory; every sentence is checked against the sources it cites and removed if it fails):
+1. Start with the direct answer in one or two sentences. It is checked like every other statement: cite it.
+2. Then explain in short paragraphs of plain prose (a few sentences each). Every sentence that states a fact ends with its own citation(s) like [3] or [2][5], right after that fact - never one citation at the end of a paragraph for several statements. Cite the source that actually contains the fact. One fact per sentence.
+3. Use a bulleted or numbered list only for sequential steps, independent conditions, alternatives/options or a checklist; use a table only for a comparison or when several numeric values are clearer side by side (every list item and table row needs its own citation). When the user asks for a format (list, table, a short answer, step by step), use it. There is no fixed number of paragraphs, items or sentences: write what the question needs.
+4. Copy numbers, units, min/typ/max qualifiers and names EXACTLY as in the sources, together with their test conditions, footnotes and the standard version/speed grade/mode they apply to. Never round or convert silently.
+5. What the sources state and your own engineering reasoning stay apart. Reasoning that goes beyond what the sources literally state goes only into a separate section after the documented part, headed exactly "### {inference}", also as short paragraphs (a list only for steps or options). Each of its sentences cites the sources its premises come from; state assumptions explicitly ("Assumption: ..."). Any number there comes from a source, the user input or a calculate result, cited. Leave the section out when there is no such reasoning.
+6. Values given by the user (USER INPUT source) may be used in calculations; cite that source and call them the user's values or assumptions - never present them as what a standard states.
+7. If the sources (after using the tools) do not contain the answer, say exactly: "{not_found}". This answer is always acceptable; a guessed answer is not.
+8. Keep standards, versions and variants apart (DDR4 vs DDR5, PCIe 4.0 vs 5.0, USB 2.0 vs 3.x, speed grades, densities, modes). Never answer about one standard/version from another's sources. A Base specification, a CEM specification and a design guide are different documents; guides and application notes are informative and do not override specifications. An errata/ECN changes only the clauses it addresses in the document it amends; say so when it matters. When sources disagree (different documents or revisions give different values), state the conflict with both citations; never merge them or silently pick one.
 9. Distinguish normative text ("shall", "must") from informative text ("should", "may", notes) when it matters.
 10. Answer in {language}. Keep technical terms, parameter/signal/register names and quoted values in their original English form."""
 
 
 def answer_system_prompt(language: str) -> str:
-    doc_h, inf_h = headings(language)
-    return (ANSWER_SYSTEM.replace("{documented}", doc_h).replace("{inference}", inf_h)
+    _, inf_h = headings(language)
+    return (ANSWER_SYSTEM.replace("{inference}", inf_h)
             .replace("{not_found}", NOT_FOUND.get(language, NOT_FOUND["en"]))
             .replace("{language}", LANGUAGE_NAMES.get(language, "the language of the question")))
 

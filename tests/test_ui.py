@@ -332,3 +332,71 @@ def test_hidden_window_does_not_poll_and_resumes_when_shown(ui):
     ui.evaluate("window.techragHost.setVisible(true)")
     ui.wait_for_function("() => document.querySelector('#job-bar').style.width === '100%'")
     assert len(calls) > n
+
+
+def test_clarifying_question_reply_is_merged_and_cleared(ui):
+    sent = _sent_scopes(ui)
+    _ask(ui, "tRFC değeri nedir?")
+    assert "Netleştirme gerekiyor" in ui.inner_text(".msg.assistant .verify") and \
+        "bulunamadı” sonucu değildir" in ui.inner_text(".msg.assistant .verify")
+    labels = ui.locator(".msg.assistant .clarify button").all_inner_texts()
+    assert any(x.startswith("DDR4") for x in labels) and any(x.startswith("DDR5") for x in labels)
+    assert "Hepsini karşılaştır" in labels and "Bilmiyorum" in labels
+    assert ui.is_visible("#pending-clarify") and "tRFC değeri nedir?" in ui.inner_text("#pending-text")
+    _ask(ui, "DDR4")                    # free text reply in the input box
+    assert sent[-1]["clarification"]["question"] == "tRFC değeri nedir?"
+    plan = ui.inner_text(".msg.assistant >> nth=1 >> .plan")
+    assert "tRFC değeri nedir? (DDR4)" in plan
+    assert ui.is_hidden("#pending-clarify")
+    assert "350" in ui.inner_text(".msg.assistant >> nth=1 >> .body")
+    _ask(ui, "I2C bus speed?")          # no pending question: sent as it is
+    assert sent[-1]["clarification"] is None
+    # option buttons answer their own question; "Bilmiyorum" gives a conditional answer with a notice
+    _ask(ui, "tRFC değeri nedir?")
+    n = ui.locator(".msg.assistant").count()
+    ui.locator(".msg.assistant >> nth=-1 >> .clarify button", has_text="Bilmiyorum").click()
+    ui.wait_for_selector(f".msg.assistant >> nth={n} >> .msg-actions:not([hidden])", timeout=20000)
+    assert "Not:" in ui.inner_text(f".msg.assistant >> nth={n} >> .notice")
+    # a new chat drops a pending question (and the conversation's standards)
+    ui.click("#btn-new-chat")
+    _ask(ui, "tRFC değeri nedir?")
+    assert ui.is_visible("#pending-clarify")
+    ui.click("#btn-new-chat")
+    assert ui.is_hidden("#pending-clarify")
+
+
+def test_source_panel_shows_the_pdf_page_without_a_text_dump(ui):
+    _ask(ui, "DDR5 tRFC değeri nedir?")
+    _cite(ui)
+    ui.wait_for_selector("#tab-source .hl.current")
+    _wait_img(ui)
+    assert ui.locator("#tab-source .source-text").count() == 0, "no extracted text under the PDF page"
+    meta = ui.inner_text("#tab-source .source-meta")
+    assert "DDR5" in meta and "Sayfa" in meta and "rev" in ui.inner_text("#tab-source h3")
+    assert "destekleniyor" in ui.inner_text("#tab-source .loc-status")
+    panel = ui.evaluate("() => document.querySelector('#viewer-panel').getBoundingClientRect().height")
+    view = ui.evaluate("() => document.querySelector('#tab-source .page-view').getBoundingClientRect().height")
+    assert view > 0.6 * panel, (view, panel)   # the freed space goes to the page
+    assert ui.is_visible("#tab-source .pv-zin") and ui.is_visible("#tab-source .pv-evnext")
+
+
+def test_non_pdf_source_keeps_its_info_and_an_inspect_option(ui):
+    md = ui.evaluate("() => state.docs.find((d) => /\\.md$/.test(d.rel_path || d.path)).id")
+    ui.evaluate(f"""() => showSource({{n: 1, kind: 'passage', doc_id: {md}, doc_title: 'I2C Bus Notes',
+      section: '3.1 Bus Speeds', page_start: 1, page_end: 1, text: 'Fast-mode supports up to 400 kbit/s.'}}, null, null)""")
+    assert "PDF değil" in ui.inner_text("#tab-source .no-page")
+    assert ui.locator("#tab-source .page-view").count() == 0, "no empty page frame"
+    assert not ui.is_visible("#tab-source .source-excerpt .source-text"), "the text is behind the inspect toggle"
+    ui.click("#tab-source .source-excerpt summary")
+    assert "400 kbit/s" in ui.inner_text("#tab-source .source-excerpt")
+
+
+def test_missing_pdf_page_says_so_and_offers_the_text(ui):
+    ui.route("**/page/**.png*", lambda route: route.fulfill(status=404, body="page cannot be rendered"))
+    pdf = ui.evaluate("() => state.docs.find((d) => /\\.pdf$/.test(d.rel_path || d.path)).id")
+    ui.evaluate(f"""() => showSource({{n: 2, kind: 'passage', doc_id: {pdf}, doc_title: 'DDR4', section: '3.2',
+      page_start: 6, page_end: 6, text: 'The refresh cycle time tRFC for an 8Gb device is 350 ns.'}}, null, null)""")
+    ui.wait_for_selector("#tab-source .pv-fail:not([hidden])")
+    assert "görüntülenemiyor" in ui.inner_text("#tab-source .pv-fail")
+    assert "350 ns" in ui.inner_text("#tab-source .pv-fail .source-excerpt")
+    assert ui.is_hidden("#tab-source .page-view")

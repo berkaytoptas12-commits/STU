@@ -10,6 +10,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Optional, Sequence
 
+from techrag.clarify import COMPAT_KINDS, is_compatibility
 from techrag.domains import DomainRegistry
 from techrag.llm import LLMClient, parse_json_object
 
@@ -29,13 +30,15 @@ Return ONLY a JSON object with these keys:
 - "parameters": names or symbols of numeric parameters the question asks for (e.g. ["tRFC", "VOD", "rise time"]), else [].
 - "question_type": one of lookup | numeric | comparison | procedure | multi_part | other.
 - "needs_reasoning": true if answering requires combining several facts, comparing standards/versions, or calculations.
+- "compatibility": true only if the user asks whether specific devices, signals or interfaces can be connected or work together electrically; else false.
+- "missing_conditions": only for such a compatibility question: which of "voltage" (supply / I/O levels), "interface_role" (which side transmits/drives and which receives), "termination" the verdict depends on but are stated neither in the question nor in the history. [] for every other question, including general or conceptual ones.
 Never answer the question. Never invent values."""
 
 PLANNER_EXAMPLE_USER = """History:
 user: DDR4 için tRFC nedir?
 Question: Peki DDR5'te 16Gb yoğunluk için değeri ne?"""
 
-PLANNER_EXAMPLE_ASSISTANT = """{"standalone_question": "DDR5'te 16Gb yoğunluklu bir cihaz için tRFC (Refresh Cycle Time) değeri nedir?", "english_question": "What is the tRFC (refresh cycle time) value for a 16Gb DDR5 SDRAM device?", "search_queries": ["DDR5 tRFC1 refresh cycle time 16Gb", "DDR5 refresh timing parameters by density table", "tRFC1 tRFC2 tRFCsb 16 Gb"], "keywords": ["tRFC", "tRFC1", "tRFC2", "tRFCsb", "Refresh Cycle Time", "16Gb", "REFab"], "parameters": ["tRFC1", "tRFC2", "tRFCsb"], "question_type": "numeric", "needs_reasoning": false}"""
+PLANNER_EXAMPLE_ASSISTANT = """{"standalone_question": "DDR5'te 16Gb yoğunluklu bir cihaz için tRFC (Refresh Cycle Time) değeri nedir?", "english_question": "What is the tRFC (refresh cycle time) value for a 16Gb DDR5 SDRAM device?", "search_queries": ["DDR5 tRFC1 refresh cycle time 16Gb", "DDR5 refresh timing parameters by density table", "tRFC1 tRFC2 tRFCsb 16 Gb"], "keywords": ["tRFC", "tRFC1", "tRFC2", "tRFCsb", "Refresh Cycle Time", "16Gb", "REFab"], "parameters": ["tRFC1", "tRFC2", "tRFCsb"], "question_type": "numeric", "needs_reasoning": false, "compatibility": false, "missing_conditions": []}"""
 
 
 def detect_language(text: str) -> str:
@@ -60,6 +63,9 @@ class QueryPlan:
     question_type: str = "other"
     needs_reasoning: bool = False
     rewritten_by_llm: bool = False
+    compatibility: bool = False
+    missing_conditions: list[str] = field(default_factory=list)   # compatibility conditions not stated
+    carried_entities: list[str] = field(default_factory=list)     # standard taken over from the conversation
 
     def bm25_queries(self) -> list[str]:
         qs = [" ".join([self.standalone, *self.expansions]),
@@ -139,11 +145,33 @@ class QueryPlanner:
         plan.expansions = self.domains.expand_terms(explicit)
         plan.domains = self.domains.detect(explicit)
         plan.entities = self.domains.detect_entities(explicit)
+        if not plan.rewritten_by_llm:
+            plan.compatibility = is_compatibility(question)
+        if not plan.entities and history and plan.wants_parameters:
+            self._carry_entities(plan, history)
         if len(plan.entities) > 1 and plan.question_type not in ("comparison", "multi_part"):
             plan.needs_reasoning = True
         if not plan.keywords:
             plan.keywords = _dedupe(plan.expansions)
         return plan
+
+    def _carry_entities(self, plan: QueryPlan, history: list[dict]) -> None:
+        """A value follow-up without a standard ("Peki tREFI?") keeps the standard the user named last in this
+        conversation, unless the question points at another collection (a new topic)."""
+        asked = set(self.domains.detect(f"{plan.question} {plan.standalone}", exclude_general=True))
+        for m in reversed([m for m in history if m.get("role") == "user"][-self.history_turns:]):
+            ents = self.domains.detect_entities(str(m.get("content", "")))
+            if not ents:
+                continue
+            if asked and not asked & {self.domains.entity_domain(e) for e in ents}:
+                return
+            plan.entities = ents
+            plan.carried_entities = list(ents)
+            note = f" ({', '.join(ents)})"
+            plan.standalone += note
+            if plan.english:
+                plan.english += note
+            return
 
     def _llm_rewrite(self, plan: QueryPlan, history: list[dict]) -> None:
         hist = _history_text(history, self.history_turns)
@@ -179,4 +207,7 @@ class QueryPlanner:
         qt = text("question_type").lower()
         plan.question_type = qt if qt in QUESTION_TYPES else "other"
         plan.needs_reasoning = bool(obj.get("needs_reasoning")) or plan.question_type in ("comparison", "multi_part")
+        plan.compatibility = obj.get("compatibility") is True
+        plan.missing_conditions = [k for k in items("missing_conditions", 3) if k in COMPAT_KINDS] \
+            if plan.compatibility else []
         plan.rewritten_by_llm = True

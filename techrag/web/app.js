@@ -35,12 +35,16 @@ const I18N = {
     vUnverified: "⚠ Doğrulama tamamlanamadı; doğrulanamayan ifadeler cevap olarak gösterilmiyor.",
     vNotChecked: "Doğrulama uygulanmadı (Ayarlar'da kapalı): ifadeler kaynaklarla denetlenmedi, doğrulanmış sayılmaz.",
     vNotCheckedJudge: "Bağımsız denetçi kapalı: ifadeler yalnızca sayı/atıf kontrolünden geçti; anlamsal olarak doğrulanmadı.",
-    vClarify: "Kapsam belirsiz — hangi standardı/sürümü kastettiğinizi seçin:",
+    vClarify: "Netleştirme gerekiyor: cevap, soruda belirtilmeyen bir koşula göre değişiyor. Bu bir “bulunamadı” sonucu değildir; koşulu belirtince cevap kaynaklardan verilir.",
+    clarifySend: "Yanıtı gönder", dontKnow: "Bilmiyorum", pendingNote: "Sonraki mesajınız şu soruya yanıt olarak birleştirilecek: “{0}”",
+    pendingCancel: "Vazgeç", mergedAs: "soru: “{0}”", carried: "sohbetten: {0}",
     vRegenerated: "Cevap bir kez düzeltilerek yeniden üretildi.",
     judgeDone: "bağımsız denetçi tamamlandı", judgeFailed: "bağımsız denetçi tamamlanamadı", judgeOff: "bağımsız denetçi kapalı", judgeNone: "denetçi gerekmedi",
     removedList: "Çıkarılan / işaretlenen ifadeler", claimDetails: "İfade ayrıntıları", usesUser: "kullanıcı girdisi içerir", usesCalc: "hesap içerir",
     st_supported: "destekleniyor", st_unsupported: "desteklenmiyor", st_unverified: "doğrulanamadı", st_not_checked: "uygulanmadı",
     prev: "‹ Önceki", next: "Sonraki ›", zoom: "Yakınlaştır", zoomIn: "Yakınlaştır", zoomOut: "Uzaklaştır", openOriginal: "Orijinal dosyayı aç",
+    inspectText: "Kaynak metnini incele", noPageImage: "Bu kaynak PDF değil, bu yüzden sayfa görüntüsü yok.",
+    pageUnavailable: "Sayfa görüntülenemiyor: kaynak dosya bulunamadı, taşınmış veya okunamıyor.",
     highlight: "Vurgu", prevEv: "‹ Önceki kanıt", nextEv: "Sonraki kanıt ›", printed: "basılı", verifStatus: "Doğrulama", locStatus: "Konum",
     loc_located: "kanıt sayfada işaretlendi", loc_partial: "kanıtın bir kısmı işaretlendi",
     loc_not_located: "Kaynak sayfası bulundu, kesin konum eşleştirilemedi.", loc_ambiguous: "Kaynak sayfası bulundu, kesin konum eşleştirilemedi (metin sayfada birden fazla yerde geçiyor).",
@@ -127,12 +131,16 @@ const I18N = {
     vUnverified: "⚠ Verification could not be completed; unverified statements are not shown as the answer.",
     vNotChecked: "Verification not applied (switched off in Settings): statements were not checked against the sources.",
     vNotCheckedJudge: "Independent judge switched off: statements passed only the number/citation check and are not semantically verified.",
-    vClarify: "The scope is ambiguous — choose the standard/version you mean:",
+    vClarify: "Clarification needed: the answer depends on a condition the question does not state. This is not a “not found” result; once you specify it, the answer comes from the sources.",
+    clarifySend: "Send answer", dontKnow: "I don't know", pendingNote: "Your next message will be merged as a reply to: “{0}”",
+    pendingCancel: "Cancel", mergedAs: "question: “{0}”", carried: "from the conversation: {0}",
     vRegenerated: "The answer was corrected and regenerated once.",
     judgeDone: "independent judge completed", judgeFailed: "independent judge NOT completed", judgeOff: "independent judge off", judgeNone: "judge not needed",
     removedList: "Removed / flagged statements", claimDetails: "Statement details", usesUser: "uses user input", usesCalc: "uses a calculation",
     st_supported: "supported", st_unsupported: "unsupported", st_unverified: "unverified", st_not_checked: "not applied",
     prev: "‹ Prev", next: "Next ›", zoom: "Zoom", zoomIn: "Zoom in", zoomOut: "Zoom out", openOriginal: "Open original file",
+    inspectText: "Inspect source text", noPageImage: "This source is not a PDF, so there is no page image.",
+    pageUnavailable: "The page cannot be shown: the source file is missing, moved or unreadable.",
     highlight: "Highlight", prevEv: "‹ Previous evidence", nextEv: "Next evidence ›", printed: "printed", verifStatus: "Verification", locStatus: "Location",
     loc_located: "evidence marked on the page", loc_partial: "part of the evidence marked",
     loc_not_located: "Source page found; the exact location could not be matched.", loc_ambiguous: "Source page found; the exact location could not be matched (the text occurs in several places).",
@@ -222,7 +230,7 @@ function applyI18n() {
 
 // ------------------------------------------------------------------ state + api
 const state = { info: null, docs: [], selected: new Set(), selectedBuckets: new Set(), history: [], busy: false,
-  token: TOKEN, filter: "", ui: loadUi(), chatId: 0, abort: null, viewSeq: 0 };
+  token: TOKEN, filter: "", ui: loadUi(), chatId: 0, abort: null, viewSeq: 0, pendingClarify: null };
 
 // Panel layout preferences (per user, kept across restarts; never affect what is searched).
 function loadUi() {
@@ -588,7 +596,7 @@ function pageViewer(container, docId, page, nPages, opts = {}) {
     <button type="button" class="ghost small pv-zout" title="${t("zoomOut")}">−</button><span class="pv-zl small"></span>
     <button type="button" class="ghost small pv-zin" title="${t("zoomIn")}">+</button>
     ${state.info && state.info.desktop ? `<button type="button" class="ghost small pv-open">${t("openOriginal")}</button>` : ""}</div>
-    ${evCtl}<div class="pv-role small muted"></div>
+    ${evCtl}<div class="pv-role small muted"></div><div class="pv-fail" hidden></div>
     <div class="page-view"><div class="page-wrap"><img alt=""><div class="hl-layer"></div></div></div>`;
   const img = $("img", box);
   const wrap = $(".page-wrap", box);
@@ -627,8 +635,16 @@ function pageViewer(container, docId, page, nPages, opts = {}) {
     draw();
   };
   img.addEventListener("load", () => {
+    $(".pv-fail", box).hidden = true;
+    $(".page-view", box).hidden = false;
     const c = $(".hl.current", box);
     if (c && st.show) c.scrollIntoView({ block: "center", inline: "center" });
+  });
+  img.addEventListener("error", () => {  // file moved/missing: say so instead of an empty frame
+    const fail = $(".pv-fail", box);
+    fail.innerHTML = `<div class="small muted">${esc(t("pageUnavailable"))}</div>${opts.fallback ? opts.fallback() : ""}`;
+    fail.hidden = false;
+    $(".page-view", box).hidden = true;
   });
   const go = (i) => { st.cur = (i + regions.length) % regions.length; if (regions[st.cur].page !== st.p) { st.p = regions[st.cur].page; show(); } else { draw(); const c = $(".hl.current", box); if (c) c.scrollIntoView({ block: "center", inline: "center" }); } };
   $(".pv-prev", box).addEventListener("click", () => { if (st.p > 1) { st.p--; show(); } });
@@ -711,10 +727,24 @@ function showSource(s, msg, claimId, override) {
       (inp.sources || []).length ? inp.sources.map((n) => `<button type="button" class="cite" data-input="${i}" data-n="${n}">${n}</button>`).join("") : `<span class="flag">${t("noSource")}</span>`}</li>`).join("")}</ul></div>`;
   }
   const title = s.kind === "calc" ? t("calc") : s.kind === "user" ? t("userKind") : s.doc_title;
-  pane.innerHTML = `<div class="source-card"><h3>[${s.n}] ${esc(title)}${s.revision ? ` <span class="tag">rev ${esc(s.revision)}</span>` : ""}</h3>
+  // A PDF source shows its page (with the highlights) and nothing else: the extracted text stays in the index for
+  // search, verification and evidence matching, it is just not repeated under the page. A source without a page
+  // image (Markdown, DOCX, text) keeps its document info and the passage behind an "inspect" toggle.
+  const doc = s.doc_id ? state.docs.find((d) => d.id === s.doc_id) : null;
+  const isPdf = !!s.doc_id && (!doc || /\.pdf$/i.test(doc.rel_path || doc.path || ""));
+  const inspect = (open) => `<details class="source-excerpt"${open ? " open" : ""}><summary>${t("inspectText")}</summary>
+    <div class="source-text markdown">${markQuotes(renderMarkdown(s.text, false), quotes)}</div></details>`;
+  let body = "";
+  if (isPdf) body = `<div class="pv"></div>`;
+  else if (s.doc_id) {
+    body = `<div class="small muted no-page">${esc(t("noPageImage"))}</div>${state.info && state.info.desktop
+      ? `<button type="button" class="ghost small src-open">${t("openOriginal")}</button>` : ""}${inspect(false)}`;
+  } else body = `<div class="source-text markdown">${renderMarkdown(s.text, false)}</div>`;  // calculation / user input
+  pane.innerHTML = `<div class="source-card${isPdf ? " pdf" : ""}"><h3>[${s.n}] ${esc(title)}${s.revision ? ` <span class="tag">rev ${esc(s.revision)}</span>` : ""}</h3>
     <div class="source-meta">${meta}</div>${s.relation ? `<div class="small relation">${esc(s.relation)}</div>` : ""}
-    <div class="loc-status">${status}</div>${inputs}<div class="pv"></div>
-    <div class="source-text markdown">${markQuotes(renderMarkdown(s.text, false), quotes)}</div></div>`;
+    <div class="loc-status">${status}</div>${inputs}${body}</div>`;
+  const srcOpen = $(".src-open", pane);
+  if (srcOpen) srcOpen.addEventListener("click", () => postJSON(`/api/documents/${s.doc_id}/open`, {}).catch((e) => alert(e.message)));
   if (s.kind === "calc") {
     $$(".calc-inputs .cite", pane).forEach((b) => b.addEventListener("click", () => {
       const src = (msg._sources || []).find((x) => x.n === +b.dataset.n);
@@ -723,9 +753,8 @@ function showSource(s, msg, claimId, override) {
       if (src) showSource(src, msg, null, loc || { n: src.n, status: "not_located", regions: [], quotes: [inp.value] });
     }));
   }
-  if (s.doc_id) {
-    const doc = state.docs.find((d) => d.id === s.doc_id);
-    pageViewer($(".pv", pane), s.doc_id, s.page_start || 1, doc ? doc.n_pages : 0, { regions });
+  if (isPdf) {
+    pageViewer($(".pv", pane), s.doc_id, s.page_start || 1, doc ? doc.n_pages : 0, { regions, fallback: () => inspect(true) });
   }
   $$(".cite-chip.active").forEach((c) => c.classList.remove("active"));
 }
@@ -745,6 +774,13 @@ async function showDocument(id) {
     ${warn ? `<div class="verify warning"><ul>${warn}</ul></div>` : ""}<div class="pv"></div>
     <h3 style="margin-top:10px">${t("toc")}</h3>${toc ? `<ul class="toc">${toc}</ul>` : `<p class="muted">${t("noToc")}</p>`}</div>`;
   const pv = $(".pv", pane);
+  if (!/\.pdf$/i.test(d.rel_path || d.path || "")) {  // no page image: document info + open, never an empty frame
+    pv.innerHTML = `<div class="small muted no-page">${esc(t("noPageImage"))}</div>${state.info && state.info.desktop
+      ? `<button type="button" class="ghost small src-open">${t("openOriginal")}</button>` : ""}`;
+    const o = $(".src-open", pv);
+    if (o) o.addEventListener("click", () => postJSON(`/api/documents/${d.id}/open`, {}).catch((e) => alert(e.message)));
+    return;
+  }
   pageViewer(pv, d.id, 1, d.n_pages);
   $$(".toc a", pane).forEach((a) => a.addEventListener("click", () => { pv.innerHTML = ""; pageViewer(pv, d.id, +a.dataset.page, d.n_pages); }));
 }
@@ -811,19 +847,101 @@ function stageText(ev) {
     regenerating: t("stRegenerating", ev.failed || ""), tools_unsupported: t("stNoTools") }[ev.stage] || "";
 }
 
+// A clarifying question waits for the user's reply: the next message is merged into the question it belongs to
+// (the server decides; a new question of its own drops it). Shown above the input so it is never a surprise.
+function setPending(p) {
+  state.pendingClarify = p || null;
+  const box = $("#pending-clarify");
+  box.hidden = !state.pendingClarify;
+  if (state.pendingClarify) $("#pending-text").textContent = t("pendingNote", state.pendingClarify.question);
+}
+
+function renderClarify(el, body, clar) {
+  if (clar.questions && clar.questions.length) {
+    body.innerHTML = `<p>${esc(clar.intro || "")}</p>`;
+    const picks = {};
+    const multi = clar.questions.length > 1;
+    const send = document.createElement("button");
+    const reply = () => clar.questions.map((q) => picks[q.kind]).filter(Boolean).join(", ");
+    clar.questions.forEach((q, i) => {
+      const block = document.createElement("div");
+      block.className = "clarify-q";
+      block.innerHTML = `<div>${multi ? `${i + 1}. ` : ""}${esc(q.text)}</div>`;
+      if (q.options.length) {
+        const row = document.createElement("div");
+        row.className = "clarify";
+        for (const o of q.options) {
+          const b = document.createElement("button");
+          b.className = "example";
+          b.textContent = o.label;
+          b.title = o.value;
+          b.addEventListener("click", () => {
+            if (!multi) { ask(o.value, clar.pending || null); return; }
+            picks[q.kind] = picks[q.kind] === o.value ? null : o.value;
+            $$("button", row).forEach((x) => x.classList.toggle("active", x === b && picks[q.kind] === o.value));
+            send.disabled = !reply();
+          });
+          row.append(b);
+        }
+        block.append(row);
+      }
+      body.append(block);
+    });
+    const acts = document.createElement("div");
+    acts.className = "clarify clarify-actions";
+    if (multi && clar.questions.some((q) => q.options.length)) {
+      send.className = "example";
+      send.textContent = t("clarifySend");
+      send.disabled = true;
+      send.addEventListener("click", () => { const r = reply(); if (r) ask(r, clar.pending || null); });
+      acts.append(send);
+    }
+    const dk = document.createElement("button");
+    dk.className = "example";
+    dk.textContent = t("dontKnow");
+    dk.addEventListener("click", () => ask(clar.dont_know || t("dontKnow"), clar.pending || null));
+    acts.append(dk);
+    body.append(acts);
+    const outro = document.createElement("p");
+    outro.className = "small muted";
+    outro.textContent = clar.outro || "";
+    body.append(outro);
+    return;
+  }
+  if (clar.options) {  // an older server: one list of ready-made questions
+    const box = document.createElement("div");
+    box.className = "clarify";
+    for (const o of clar.options) {
+      const b = document.createElement("button");
+      b.className = "example";
+      b.textContent = o.label;
+      b.title = o.question;
+      b.addEventListener("click", () => ask(o.question));
+      box.append(b);
+    }
+    body.append(box);
+  }
+}
+
 function newChat(note) {
   state.chatId++;  // events of an answer still streaming no longer touch the new chat
   if (state.abort) state.abort.abort();
   state.history = [];
+  setPending(null);
   $("#messages").innerHTML = `<div class="empty" id="empty-state"><p>${esc(note)}</p></div>`;
 }
 
-async function ask(question) {
+// `reply`: the clarifying question this message answers (an option button of that question); by default the one
+// pending above the input.
+async function ask(question, reply) {
   if (state.busy || !question.trim()) return;
   state.busy = true;
   const chat = state.chatId;
   const ctrl = new AbortController();
   state.abort = ctrl;
+  const pendingClarify = reply !== undefined ? reply : state.pendingClarify;
+  setPending(null);
+  let asked = question;
   $("#btn-send").disabled = true;
   const empty = $("#empty-state");
   if (empty) empty.remove();
@@ -871,6 +989,8 @@ async function ask(question) {
         else if (s.reason === "user" || (s.buckets || []).length) parts.push(t("scopeUser"));
         else if (s.reason === "domain") parts.push(t("scopeDomain", (s.domains || []).join(", ")));
         else parts.push(t("scopeAll"));
+        if (ev.merged_question) { asked = ev.merged_question; parts.push(esc(t("mergedAs", ev.merged_question))); }
+        if ((ev.plan.carried_entities || []).length) parts.push(esc(t("carried", ev.plan.carried_entities.join(", "))));
         if (ev.plan.english && ev.plan.english !== ev.plan.question) parts.push(`${t("searchAs")}: “${esc(ev.plan.english)}”`);
         if (ev.thinking) parts.push(t("thinkingOn"));
         const p = $(".plan", el);
@@ -903,18 +1023,15 @@ async function ask(question) {
         renderChips(el);
         renderVerification(el, ev.verification, confidence);
         const clar = ev.clarify || el._clarify;
-        if (clar && clar.options) {
-          const box = document.createElement("div");
-          box.className = "clarify";
-          for (const o of clar.options) {
-            const b = document.createElement("button");
-            b.className = "example";
-            b.textContent = o.label;
-            b.title = o.question;
-            b.addEventListener("click", () => ask(o.question));
-            box.append(b);
-          }
-          body.append(box);
+        if (clar) {
+          renderClarify(el, body, clar);
+          if (clar.pending && chat === state.chatId) setPending(clar.pending);
+        }
+        if (ev.notice) {
+          const n = document.createElement("div");
+          n.className = "notice";
+          n.textContent = ev.notice;
+          body.prepend(n);
         }
         const acts = $(".msg-actions", el);
         acts.hidden = false;
@@ -925,7 +1042,7 @@ async function ask(question) {
           e.target.textContent = t("copied");
         });
         if (chat === state.chatId) {
-          state.history.push({ role: "user", content: question }, { role: "assistant", content: text });
+          state.history.push({ role: "user", content: asked }, { role: "assistant", content: text });
           state.history = state.history.slice(-12);
         }
         break;
@@ -937,7 +1054,8 @@ async function ask(question) {
 
   try {
     const res = await api("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
-      body: JSON.stringify(Object.assign({ question, history: state.history.slice(-6), stream: true }, scope())) });
+      body: JSON.stringify(Object.assign({ question, history: state.history.slice(-6), stream: true,
+        clarification: pendingClarify }, scope())) });
     const reader = res.body.getReader();
     const dec = new TextDecoder();
     let buf = "";
@@ -1296,6 +1414,7 @@ function bind() {
     if (s) showSource(s, msg, c.dataset.claim ? +c.dataset.claim : null);
   });
   $("#btn-new-chat").addEventListener("click", () => newChat(t("newChatStarted")));
+  $("#btn-pending-cancel").addEventListener("click", () => setPending(null));
   $$("dialog [data-close]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close("cancel")));
   $$(".lang").forEach((b) => b.addEventListener("click", () => {
     LANG = b.dataset.lang;

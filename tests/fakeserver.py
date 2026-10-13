@@ -127,9 +127,20 @@ class FakeOpenAI:
         q = _text(msgs[-1]["content"]).split("Question:", 1)[-1].strip()
         params = [p for p in ("tRFC", "tREFI", "VDD") if p.lower() in q.lower()]
         qtype = "comparison" if re.search(r"\b(vs|versus|fark|compare)\b", q, re.I) else ("numeric" if params else "lookup")
+        compat = bool(re.search(r"uyumlu|bağla|compatible|connect", q, re.I))
+        missing = []
+        if compat:  # the conditions a compatibility verdict needs that the question does not state
+            hist = _text(msgs[-1]["content"])
+            if not re.search(r"\d\s*V\b|LVCMOS|LVDS", hist):
+                missing.append("voltage")
+            if not re.search(r"\b(TX|RX|verici|alıcı|driver|receiver)\b", hist, re.I):
+                missing.append("interface_role")
+            if not re.search(r"sonland|terminat|ohm|Ω", hist, re.I):
+                missing.append("termination")
         return json.dumps({"standalone_question": q, "english_question": q, "search_queries": [q],
                            "keywords": params or q.split()[:4], "parameters": params, "question_type": qtype,
-                           "needs_reasoning": qtype == "comparison"})
+                           "needs_reasoning": qtype == "comparison", "compatibility": compat,
+                           "missing_conditions": missing})
 
     def _meta(self, msgs) -> str:
         txt = _text(msgs[-1]["content"])

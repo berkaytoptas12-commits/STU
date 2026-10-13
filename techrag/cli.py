@@ -156,9 +156,11 @@ def cmd_search(cfg: Config, args) -> int:
     return 0
 
 
-def _stream(e, question: str, history: list, args) -> str:
+def _stream(e, question: str, history: list, args, pending: Optional[dict] = None) -> tuple[str, Optional[dict]]:
+    """Prints the answer; returns it with the clarifying question it asks back (if any)."""
     answer = ""
-    for ev in e.ask_stream(question, history, domains=args.domain, doc_ids=args.doc):
+    asked = None
+    for ev in e.ask_stream(question, history, domains=args.domain, doc_ids=args.doc, clarification=pending):
         kind = ev["type"]
         if kind == "status" and args.verbose:
             _print(f"({ev['stage']})")
@@ -166,8 +168,12 @@ def _stream(e, question: str, history: list, args) -> str:
             _print(f"(scope: {ev['scope']}, thinking: {ev['thinking']}, english: {ev['plan']['english']!r})")
         elif kind == "tool":
             _print(f"  > {ev['name']}: {ev['summary']}")
+        elif kind == "plan" and ev.get("merged_question"):
+            _print(f"(question: {ev['merged_question']})")
         elif kind == "final":
             answer = ev["answer"]
+            if ev.get("notice"):
+                _print("\n" + ev["notice"])
             _print("\n" + answer + "\n")
             v = ev["verification"]
             j = v.get("judge", {})
@@ -189,11 +195,13 @@ def _stream(e, question: str, history: list, args) -> str:
             if args.verbose:
                 _print(f"(timings: {ev['timings']})")
         elif kind == "clarify":
-            for o in ev["options"]:
-                _print(f"  ? {o['label']}: {o['question']}")
+            asked = ev.get("pending")
+            for i, q in enumerate(ev.get("questions") or [], 1):
+                if q["options"]:
+                    _print(f"  {i}. " + " | ".join(o["label"] for o in q["options"]))
         elif kind == "error":
             _print(f"ERROR: {ev['message']}")
-    return answer
+    return answer, asked
 
 
 def cmd_ask(cfg: Config, args) -> int:
@@ -208,6 +216,7 @@ def cmd_ask(cfg: Config, args) -> int:
 def cmd_chat(cfg: Config, args) -> int:
     e = _engine(cfg)
     history: list[dict] = []
+    pending: Optional[dict] = None
     _print("techrag chat — /q to quit, /reset to clear history")
     while True:
         try:
@@ -218,11 +227,12 @@ def cmd_chat(cfg: Config, args) -> int:
             return 0
         if q == "/reset":
             history.clear()
+            pending = None
             continue
         if not q:
             continue
         try:
-            a = _stream(e, q, history, args)
+            a, pending = _stream(e, q, history, args, pending)
         except Exception as exc:
             _print(f"ERROR: {exc}")
             continue

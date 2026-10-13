@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Iterator, Optional, Sequence
 
+from techrag import clarify
 from techrag.config import Config, write_text_atomic
 from techrag.domains import DomainRegistry
 from techrag.embeddings import Embedder, create_embedder
@@ -208,8 +209,14 @@ class RAGEngine:
         mode = self.cfg.llm.thinking
         return mode == "on" or (mode == "auto" and plan.needs_reasoning)
 
-    def _scope_note(self, s: Scope, conflicts: Sequence[str] = ()) -> str:
+    def _scope_note(self, s: Scope, conflicts: Sequence[str] = (), unknown: Sequence[str] = (),
+                    lang: str = "en") -> str:
         lines = []
+        if unknown:
+            lines.append(f"CONDITIONS NOT KNOWN: the user does not know the {clarify.kind_labels('en', unknown)}. "
+                         "Do not pick one value or version and do not give a yes/no compatibility verdict. Explain, "
+                         "with citations, how the answer differs for each condition the sources state, and say "
+                         "which information would settle it.")
         if s.reason == "entity":
             lines.append(f"Search scope: only documents tagged {', '.join(s.entities)} (named in the question). "
                          f"The tools stay inside this scope.")
@@ -244,34 +251,79 @@ class RAGEngine:
                 out.append(f"{d.title}" + (f" [{', '.join(d.entities)}]" if d.entities else ""))
         return out[:8]
 
-    def _clarification(self, plan: QueryPlan, res: RetrievalResult, user_scoped: bool) -> Optional[dict]:
-        """Ask back when no standard is named but the evidence for a value question comes from sibling
-        standards/versions of one collection (whose values may differ)."""
-        if not self.cfg.retrieval.clarify_ambiguous or user_scoped or plan.entities or res.scope.reason != "all" \
-                and res.scope.reason != "domain":
+    def _clarification(self, plan: QueryPlan, res: RetrievalResult, history: Sequence[dict] = (),
+                       answered: Sequence[str] = (), round_no: int = 1) -> Optional[dict]:
+        """Ask back for conditions that change the answer (see techrag.clarify). Only value and compatibility
+        questions; general questions are answered directly. Options come from the index only."""
+        if not self.cfg.retrieval.clarify_ambiguous or round_no > clarify.MAX_ROUNDS:
             return None
-        if not (plan.parameters or plan.question_type == "numeric"):
+        value_q = bool(plan.parameters) or plan.question_type in ("numeric", "comparison")
+        compat_q = plan.compatibility
+        if not (value_q or compat_q):
             return None
-        docs = self.catalog.docs()
-        by_domain: dict[str, dict[str, list[str]]] = {}
-        doc_ids = [p.doc_id for p in res.passages[:5]] + [r.doc_id for r in res.parameters[:6]]
-        for i in doc_ids:
-            d = docs.get(i)
-            if d and d.entities and d.doc_type == "base":
-                for e in d.entities:
-                    by_domain.setdefault(d.domain, {}).setdefault(e, [])
-                    if d.title not in by_domain[d.domain][e]:
-                        by_domain[d.domain][e].append(d.title)
-        for dom, ents in by_domain.items():
-            if len(ents) >= 2:
-                lang = plan.language
-                opts = [{"label": f"{e} — {', '.join(t[:2])}", "question": f"{plan.question} ({e})"}
-                        for e, t in sorted(ents.items())]
-                opts.append({"label": message(lang, "clarify_all"),
-                             "question": f"{plan.question} ({' vs '.join(sorted(ents))})"})
-                text = message(lang, "clarify", options=", ".join(sorted(ents)))
-                return {"text": text, "options": opts, "entities": sorted(ents)}
-        return None
+        lang = plan.language
+        done = set(answered)
+        recent = " ".join(str(m.get("content", "")) for m in list(history)[-4:] if m.get("role") == "user")
+        known = f"{plan.question} {plan.standalone} {recent}"
+        questions: list[clarify.Question] = []
+
+        # 1. standard/version: the evidence comes from sibling standards of one collection. A named standard
+        #    (or one carried over from the conversation) settles it; a selected bucket does not.
+        if "standard_version" not in done and not plan.entities and res.scope.reason in ("all", "domain", "user"):
+            docs = self.catalog.docs()
+            by_domain: dict[str, dict[str, list[str]]] = {}
+            doc_ids = [p.doc_id for p in res.passages[:5]] + [r.doc_id for r in res.parameters[:6]]
+            for i in doc_ids:
+                d = docs.get(i)
+                if d and d.entities and d.doc_type == "base":
+                    for e in d.entities:
+                        titles = by_domain.setdefault(d.domain, {}).setdefault(e, [])
+                        if d.title not in titles:
+                            titles.append(d.title)
+            named = set(plan.domains) - {"general"}
+            for dom, ents in by_domain.items():
+                # a compatibility question asks about versions only within a collection it points at
+                if len(ents) >= 2 and (dom in named or (value_q and not named)):
+                    questions.append(clarify.version_question(lang, ents))
+                    break
+
+        # 2. speed grade / density / operating condition: verified rows differ by a condition not named
+        if value_q and not clarify.asks_all(plan.question):
+            merged: dict[tuple, list[str]] = {}
+            for kind, param, conds in clarify.varying_conditions(res.parameters, plan.parameters):
+                if kind in done or any(clarify.mentions(known, c) for c in conds):
+                    continue
+                params = merged.setdefault((kind, tuple(conds)), [])
+                if param not in params:
+                    params.append(param)
+            for (kind, conds), params in merged.items():
+                if not any(q.kind == kind for q in questions):
+                    questions.append(clarify.condition_question(lang, kind, ", ".join(params), list(conds)))
+
+        # 3. electrical compatibility: voltage levels, TX/RX roles, termination
+        if compat_q:
+            for kind in plan.missing_conditions:
+                if kind in clarify.COMPAT_KINDS and kind not in done and not clarify.stated(kind, known):
+                    questions.append(clarify.compat_question(lang, kind))
+
+        pending = {"question": plan.question, "answered": sorted(done), "round": round_no}
+        return clarify.build(lang, questions, pending)
+
+    def _unresolved(self, plan: QueryPlan, reply: Optional[clarify.Reply], pending: Optional[dict]) -> list[str]:
+        """The conditions the user said they do not know and that the merged question still leaves open."""
+        if not reply or not reply.unknown:
+            return []
+        opts = (pending or {}).get("options") or {}
+        out = []
+        for k in reply.unknown:
+            if k == "standard_version" and plan.entities and len(plan.entities) == 1:
+                continue
+            values = opts.get(k) if isinstance(opts, dict) else None
+            if k != "standard_version" and isinstance(values, list) and \
+                    any(clarify.mentions(reply.question, str(v)) for v in values):
+                continue
+            out.append(k)
+        return out
 
     def _final_short(self, answer: str, status: str, timings: dict, scope: Scope, **extra) -> dict:
         v = Verification(enabled=self.cfg.answer.verify, judge_enabled=self.cfg.answer.judge, status=status,
@@ -281,17 +333,25 @@ class RAGEngine:
 
     def ask_stream(self, question: str, history: Optional[Sequence[dict]] = None,
                    domains: Optional[Sequence[str]] = None, doc_ids: Optional[Sequence[int]] = None,
-                   top_k: Optional[int] = None, buckets: Optional[Sequence[str]] = None) -> Iterator[dict]:
+                   top_k: Optional[int] = None, buckets: Optional[Sequence[str]] = None,
+                   clarification: Optional[dict] = None) -> Iterator[dict]:
+        """``clarification``: the pending clarifying question the user's message may answer (sent back by the
+        UI). A short reply is merged into that question; a new question drops it."""
         t0 = time.time()
         history = list(history or [])
+        reply = clarify.merge_reply(question, clarification)
+        if reply:
+            question = reply.question
         yield {"type": "status", "stage": "planning"}
         res = self.retrieve(question, history, domains, doc_ids, top_k, buckets)
         plan = res.plan
         lang = plan.language
         scope = res.scope
         thinking = self._thinking(plan)
+        unknown = self._unresolved(plan, reply, clarification)
         yield {"type": "plan", "plan": plan.to_dict(), "scope": scope.to_dict(), "thinking": thinking,
-               "planner_error": None if plan.rewritten_by_llm else self.planner.last_error}
+               "planner_error": None if plan.rewritten_by_llm else self.planner.last_error,
+               "merged_question": reply.question if reply else None, "unknown_conditions": unknown}
         timings = dict(res.timings)
 
         if self.store.stats()["chunks"] == 0:
@@ -314,7 +374,10 @@ class RAGEngine:
                 text += " " + message(lang, "missing_loaded", loaded="; ".join(related))
             yield self._final_short(text, "not_found", timings, scope)
             return
-        clar = self._clarification(plan, res, bool(doc_ids or domains or buckets))
+        clar = None
+        if not (reply and reply.unknown):
+            clar = self._clarification(plan, res, history, reply.answered if reply else (),
+                                       reply.round if reply else 1)
         if clar:
             yield {"type": "clarify", **clar}
             yield self._final_short(clar["text"], "clarify", timings, scope, clarify=clar)
@@ -354,7 +417,7 @@ class RAGEngine:
 
         system = answer_system_prompt(lang)
         hints = self.domains.glossary_hints(plan.domains, f"{plan.question} {plan.standalone}")
-        note = self._scope_note(scope, parameter_conflicts(registry))
+        note = self._scope_note(scope, parameter_conflicts(registry), unknown, lang)
         user_text = answer_user_prompt(plan.standalone, "\n\n---\n\n".join(s.prompt_text() for s in registry.items),
                                        hints, note)
         if images:
@@ -419,7 +482,7 @@ class RAGEngine:
         verification, parsed = self._verify(draft, registry)
         if verification.failing and self.cfg.answer.regenerate:
             yield {"type": "status", "stage": "regenerating", "failed": len(verification.failing)}
-            revised = self._regenerate(system, registry, plan, draft, verification, thinking)
+            revised = self._regenerate(system, registry, plan, draft, verification, thinking, note)
             if revised:
                 known = {(c.text, tuple(c.citations)): (c.judge["verdict"], c.judge["reason"])
                          for c in verification.claims if c.status == SUPPORTED}
@@ -446,9 +509,11 @@ class RAGEngine:
                 g = self.store.page_geom(s.doc_id, s.page_start)
                 d["page_label"] = g.label if g else ""
             sources.append(d)
+        notice = clarify.text(lang, "conditional", conditions=clarify.kind_labels(lang, unknown)) if unknown else ""
         yield {"type": "final", "answer": final, "verification": verification.summary(), "sources": sources,
                "timings": timings, "cite_claims": cite_claims(final, verification.claims), "scope": scope.to_dict(),
-               "user_input": user_src.n if user_src else None}
+               "user_input": user_src.n if user_src else None, "notice": notice,
+               "merged_question": reply.question if reply else None}
 
     # ------------------------------------------------------------ verification
     def _verify(self, answer: str, registry: SourceRegistry,
@@ -522,10 +587,10 @@ class RAGEngine:
                         apply_verdict(c, verdict, reason)
 
     def _regenerate(self, system: str, registry: SourceRegistry, plan: QueryPlan, draft: str,
-                    verification: Verification, thinking: bool) -> str:
+                    verification: Verification, thinking: bool, scope_note: str = "") -> str:
         sources = "\n\n---\n\n".join(s.prompt_text() for s in registry.items)
-        msgs = [{"role": "system", "content": system},
-                {"role": "user", "content": answer_user_prompt(plan.standalone, sources, [], "")},
+        msgs = [{"role": "system", "content": system},  # the same scope rules as the first draft
+                {"role": "user", "content": answer_user_prompt(plan.standalone, sources, [], scope_note)},
                 {"role": "assistant", "content": draft},
                 {"role": "user", "content": REGENERATE_PROMPT.format(problems=verification.problems_text())}]
         try:
@@ -606,9 +671,10 @@ class RAGEngine:
 
     def ask(self, question: str, history: Optional[Sequence[dict]] = None,
             domains: Optional[Sequence[str]] = None, doc_ids: Optional[Sequence[int]] = None,
-            top_k: Optional[int] = None, buckets: Optional[Sequence[str]] = None) -> dict:
+            top_k: Optional[int] = None, buckets: Optional[Sequence[str]] = None,
+            clarification: Optional[dict] = None) -> dict:
         out: dict = {"question": question, "tools": [], "draft": ""}
-        for ev in self.ask_stream(question, history, domains, doc_ids, top_k, buckets):
+        for ev in self.ask_stream(question, history, domains, doc_ids, top_k, buckets, clarification):
             if ev["type"] == "plan":
                 out["plan"], out["scope"], out["thinking"] = ev["plan"], ev["scope"], ev["thinking"]
             elif ev["type"] == "tool":
@@ -620,9 +686,10 @@ class RAGEngine:
             elif ev["type"] == "sources":
                 out["confidence"] = ev["confidence"]
             elif ev["type"] == "clarify":
-                out["clarify"] = {k: ev[k] for k in ("text", "options", "entities")}
+                out["clarify"] = {k: ev[k] for k in ("text", "options", "entities", "questions", "pending")}
             elif ev["type"] == "final":
                 out.update({k: ev[k] for k in ("answer", "verification", "sources", "timings", "cite_claims")})
+                out.update({k: ev[k] for k in ("notice", "merged_question") if ev.get(k)})
         return out
 
 

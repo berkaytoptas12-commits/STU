@@ -178,6 +178,15 @@ button.cite { background: var(--accent-soft); color: var(--accent); border: 0; p
 .source-text { font-size: 13px; line-height: 1.5; background: var(--code); padding: 10px; border-radius: 8px; overflow-wrap: anywhere; margin-top: 8px; }
 .source-text table { background: var(--panel); }
 .page-view { border: 1px solid var(--border); border-radius: 8px; overflow: auto; max-height: 62vh; background: #fff; }
+/* A cited PDF page gets all the height of the panel (no text block under it any more). */
+.viewer { display: flex; flex-direction: column; }
+.viewer > .tab-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.source-card.pdf, .source-card.pdf .pv, .source-card.pdf .pv-box { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.source-card.pdf .page-view { flex: 1; min-height: 240px; max-height: none; }
+.source-excerpt { margin-top: 8px; }
+.source-excerpt summary { cursor: pointer; font-size: 13px; }
+.no-page { margin: 6px 0; }
+.src-open { margin: 2px 0 4px; }
 .page-wrap { position: relative; width: 100%; }
 .page-wrap img { display: block; width: 100%; height: auto; }
 .hl-layer { position: absolute; inset: 0; pointer-events: none; }
@@ -205,6 +214,13 @@ button.cite { background: var(--accent-soft); color: var(--accent); border: 0; p
 .draft-box summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
 .draft-box .draft { color: var(--muted); border-left: 2px dashed var(--border); padding-left: 8px; margin-top: 4px; }
 .clarify { display: grid; gap: 6px; margin-top: 8px; }
+.clarify-q { margin-top: 10px; }
+.clarify-actions { grid-auto-flow: column; justify-content: start; }
+.example.active { outline: 2px solid var(--accent); }
+.example:disabled { opacity: .5; cursor: default; }
+.notice { background: var(--accent-soft); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; font-size: 13px; }
+.pending-clarify { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin: 0 16px;
+  padding: 6px 10px; border-radius: 8px; background: var(--accent-soft); font-size: 13px; }
 .toc { list-style: none; padding: 0; margin: 0; font-size: 12.5px; }
 .toc li { padding: 2px 0; }
 .toc a { color: var(--text); text-decoration: none; cursor: pointer; }
