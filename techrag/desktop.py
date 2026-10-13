@@ -141,16 +141,21 @@ class DesktopApp:
 
     The chat window is created once and from then on only shown and hidden: the conversation, the selected buckets,
     the open PDF page and the panel sizes stay exactly as they were, and indexing (a backend thread) goes on while it
-    is hidden. Its close button hides it (explained once); the full exit is the icon's "Quit" or Windows logging off.
-    Launcher callbacks only queue work; it runs here on one thread, in order.
+    is hidden. A click on the icon shows it, or hides it again when it is already in front; its close button hides
+    it too (explained once); the full exit is the icon's "Quit" or Windows logging off. Launcher callbacks only queue
+    work; it runs here on one thread, in order.
     """
 
     def __init__(self, chat, jobs, lang: Callable[[], str], state, hide_on_close: bool = True,
                  notice: Optional[Callable[[str, str], object]] = None,
-                 confirm: Optional[Callable[[str, str], bool]] = None):
+                 confirm: Optional[Callable[[str, str], bool]] = None,
+                 front: Optional[Callable[[], bool]] = None):
         from techrag import launcher as L
 
         self._L = L
+        self.front = front or self._chat_in_front   # is the (visible) chat window in front of the others?
+        self.double_click = L.double_click_seconds()
+        self._last_open_click = -1e9
         self.chat, self.jobs, self._lang, self.state = chat, jobs, lang, state
         self.hide_on_close = hide_on_close
         self.notice = notice or L.message_box
@@ -159,7 +164,8 @@ class DesktopApp:
         self.quitting = False
         self.session_ending = False   # Windows asked to log off / shut down (may still be cancelled)
         self.visible = not hide_on_close
-        self.stats = {"opened": 0, "hidden": 0, "activations": 0, "hints": 0}
+        self.stats = {"opened": 0, "hidden": 0, "activations": 0, "hints": 0, "toggled_hidden": 0,
+                      "double_clicks": 0}
         self._shutdown_lock = threading.Lock()
         self._shutdown_done = False
         self._q: queue.Queue = queue.Queue()
@@ -176,6 +182,12 @@ class DesktopApp:
 
     def open_chat(self) -> None:
         self._post(self._open, None)
+
+    def toggle_chat(self) -> None:
+        """Left click on the icon: hidden -> shown; shown and in front -> hidden; minimized or behind other
+        windows -> brought to the front. Clicks are handled one after another on the desktop thread, so fast
+        clicks never mix up the state."""
+        self._post(self._toggle, time.monotonic())
 
     def open_settings(self) -> None:
         self._post(self._open, "window.techragHost && window.techragHost.openSettings()")
@@ -267,6 +279,34 @@ class DesktopApp:
                 fn(*args)
             except Exception:
                 log.exception("desktop action %s failed", getattr(fn, "__name__", fn))
+
+    def _chat_in_front(self) -> bool:
+        if os.name != "nt":
+            return self.visible
+        hwnd = self.chat_hwnd()
+        if not hwnd:
+            return self.visible
+        lw = self.launcher
+        return self._L.in_front(hwnd, ignore=(getattr(lw, "hwnd", None),))
+
+    def _toggle(self, clicked_at: float) -> None:
+        if self.quitting:
+            return
+        try:
+            front = self.visible and self.front()
+        except Exception:
+            log.exception("could not tell whether the chat window is in front")
+            front = False
+        if not front:
+            self._last_open_click = clicked_at
+            self._open(None)
+            return
+        if clicked_at - self._last_open_click < self.double_click:
+            # the second click of a double click that opened the window: it stays open
+            self.stats["double_clicks"] += 1
+            return
+        self.stats["toggled_hidden"] += 1
+        self._hide()
 
     def chat_hwnd(self) -> Optional[int]:
         try:
@@ -421,9 +461,11 @@ def _wait(pred: Callable[[], object], timeout: float, step: float = 0.2):
 
 def _smoke(desk: DesktopApp, result_path: str) -> None:
     """CI check of the packaged app with real windows: the launcher icon comes first; a drag moves it without opening
-    the chat; a click opens the chat (UI, JS<->Python bridge, no notes UI); the close button only hides it and the
-    page is kept; a second the exe hands over instead of starting a backend; the icon's menu opens the settings and
-    finally quits the app (the CI step checks that the process then ends by itself)."""
+    the chat; a click opens the chat (UI, JS<->Python bridge, no notes UI); a click on the icon hides the chat when it
+    is in front, shows it again with the page kept, restores it when minimized and raises it when another window
+    covers it; the close button only hides it and the page is kept; a second start of the exe hands over instead of
+    starting a backend; the icon's menu opens the settings and finally quits the app (the CI step checks that the
+    process then ends by itself)."""
     chat = desk.chat
     r: dict = {"ok": False, "checks": {}}
     checks = r["checks"]
@@ -491,6 +533,43 @@ def _smoke(desk: DesktopApp, result_path: str) -> None:
             check("chat_ui", pg.get("bridge") and APP_TITLE in str(pg.get("brand", "")) and pg.get("host"))
             check("notes_removed", pg.get("notes") is False)
             chat.evaluate_js("window.__smoke = 'kept'; document.querySelector('#question').value = 'draft'; 1")
+
+            def pause() -> None:  # the next click is a new click, not the second half of a double click
+                time.sleep(desk.double_click + 0.4)
+
+            def front() -> bool:
+                return bool(L.in_front(hwnd, ignore=(lw.hwnd,)))
+
+            # the icon toggles: in front -> hidden (not quit), hidden -> shown, minimized/covered -> to the front
+            r["front_after_open"] = front()
+            check("opened_chat_is_in_front", _wait(front, 10))
+            pause()
+            click()
+            check("click_hides_chat_in_front", _wait(lambda: not L.window_state(hwnd)["visible"], 30))
+            time.sleep(0.5)
+            check("hiding_is_not_quitting", lw.hwnd and not desk.quitting and desk.stats["toggled_hidden"] == 1)
+            pause()
+            click()
+            check("click_shows_hidden_chat", _wait(lambda: L.window_state(hwnd)["visible"], 30))
+            check("page_state_kept_after_toggle", _wait(lambda: chat.evaluate_js(
+                "[window.__smoke, document.querySelector('#question').value]") == ["kept", "draft"], 10))
+            a.ShowWindow(hwnd, 6)  # SW_MINIMIZE
+            _wait(lambda: L.window_state(hwnd)["minimized"], 10)
+            pause()
+            click()
+            check("click_restores_minimized_chat", _wait(
+                lambda: (lambda st: st["visible"] and not st["minimized"])(L.window_state(hwnd)), 30))
+            cover = _cover_window(L._rect(hwnd))
+            try:
+                check("covered_chat_is_not_in_front", cover and _wait(lambda: not front(), 10))
+                hidden_before = desk.stats["toggled_hidden"]
+                pause()
+                click()
+                check("click_raises_covered_chat", _wait(front, 30) and L.window_state(hwnd)["visible"]
+                      and desk.stats["toggled_hidden"] == hidden_before)
+            finally:
+                if cover:
+                    a.PostMessageW(cover, L.WM_CLOSE, 0, 0)
             a.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE: the window's close button
             check("close_hides_chat", _wait(lambda: not L.window_state(hwnd)["visible"], 30))
             time.sleep(1.0)
@@ -524,6 +603,33 @@ def _smoke(desk: DesktopApp, result_path: str) -> None:
         desk.launcher.post(L.WM_COMMAND, L.IDM_QUIT)
     else:
         desk.request_quit(confirm=False)
+
+
+def _cover_window(rect) -> Optional[int]:
+    """Smoke test: an ordinary window of 'another program' over the chat window, active and on top, with its own
+    message loop (a window nobody answers would be ghosted by Windows). WM_CLOSE ends it."""
+    from techrag import launcher as L
+
+    ready, out = threading.Event(), {}
+
+    def run() -> None:
+        a = L.win32()
+        x0, y0, x1, y1 = rect
+        hwnd = a.CreateWindowExW(0, "STATIC", "smoke cover", 0x00CF0000 | 0x10000000, x0 + 20, y0 + 20,
+                                 max(200, x1 - x0 - 40), max(200, y1 - y0 - 40), None, None,
+                                 a.GetModuleHandleW(None), None)
+        out["hwnd"] = hwnd
+        if hwnd:
+            L.bring_to_front(hwnd)
+        ready.set()
+        msg = a.W.MSG()
+        while hwnd and a.IsWindow(hwnd) and a.GetMessageW(a.ctypes.byref(msg), None, 0, 0) > 0:
+            a.TranslateMessage(a.ctypes.byref(msg))
+            a.DispatchMessageW(a.ctypes.byref(msg))
+
+    threading.Thread(target=run, name="smoke-cover", daemon=True).start()
+    ready.wait(10)
+    return out.get("hwnd")
 
 
 def _smoke_exit(result_path: str, clean: bool) -> None:
@@ -576,7 +682,7 @@ def _launcher_supported() -> bool:
 def _make_launcher(key: str, desk: DesktopApp, state):
     from techrag.launcher import Launcher
 
-    return Launcher(key, state.get("launcher"), desk.lang, on_click=desk.open_chat, on_command=desk.command,
+    return Launcher(key, state.get("launcher"), desk.lang, on_click=desk.toggle_chat, on_command=desk.command,
                     on_activate=desk.activate, on_moved=desk.icon_moved, on_session_end=desk.session_end,
                     on_close_request=lambda: desk.request_quit(confirm=False))
 

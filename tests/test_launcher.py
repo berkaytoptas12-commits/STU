@@ -86,15 +86,30 @@ def test_press_tracker_tells_a_click_from_a_drag():
     assert t.release((50, 50)) is None
 
 
-def test_icon_is_round_with_transparent_corners():
-    for size in (60, 90, 120):
-        px = np.frombuffer(render_icon(size), np.uint8).reshape(size, size, 4)
-        assert px[0, 0, 3] == px[0, -1, 3] == px[-1, 0, 3] == px[-1, -1, 3] == 0, "corners click-through"
-        assert px[size // 2, size // 5, 3] == 255, "opaque disc"
+def _runs(line, threshold=128) -> int:
+    on = line >= threshold
+    return int(on[0]) + int(((~on[:-1]) & on[1:]).sum())
+
+
+def test_icon_is_a_microchip_with_transparent_corners():
+    for size in (32, 48, 60, 90, 120):
+        raw = render_icon(size)
+        assert len(raw) == size * size * 4, "drawn at the exact pixel size of the monitor (no scaling)"
+        px = np.frombuffer(raw, np.uint8).reshape(size, size, 4)
+        a = px[..., 3]
+        assert a[0, 0] == a[0, -1] == a[-1, 0] == a[-1, -1] == 0, "corners click-through"
+        assert a[size // 2, size // 2] == 255, "opaque package"
         assert (px[..., :3] <= px[..., 3:4]).all(), "premultiplied alpha"
-        edge = px[size // 2, :, 3]
-        assert ((edge > 0) & (edge < 255)).any(), "anti-aliased edge"
-    assert render_icon(60, hover=True) != render_icon(60)
+        assert ((a > 0) & (a < 255)).any(), "anti-aliased edges"
+        # four pins on every side: along a line through the pins, four opaque runs
+        k = round(size * 0.14)
+        for line in (a[:, k], a[:, -1 - k], a[k, :], a[-1 - k, :]):
+            assert _runs(line) == 4, (size, line)
+        if size >= 60:  # between two pins the icon is invisible but still part of the click target
+            gap = a[int(size * 0.37), k]
+            assert 1 <= gap < 40, gap
+    assert render_icon(60, hover=True) != render_icon(60), "hover feedback"
+    assert render_icon(60) == render_icon(60), "deterministic, nothing loaded from outside"
 
 
 def test_desktop_state_file(tmp_path):
@@ -227,3 +242,26 @@ def test_real_icon_reports_foreign_close_and_logoff(real_launcher):
     a.PostMessageW(ln.hwnd, L.WM_QUERYENDSESSION, 0, 0)
     a.PostMessageW(ln.hwnd, L.WM_ENDSESSION, 0, 0)     # logging off cancelled
     assert _wait(lambda: events["session"] == [None, False])
+
+
+@win
+def test_real_in_front_detection():
+    from techrag.desktop import _cover_window
+
+    a = L.win32()
+    chat = _cover_window((100, 100, 700, 600))        # stands in for the chat window
+    assert chat and _wait(lambda: L.in_front(chat)), "shown and raised: in front"
+    other = _cover_window((100, 100, 700, 600))       # another program's window on top of it
+    try:
+        assert _wait(lambda: not L.in_front(chat)), "covered: a click must bring it to the front, not hide it"
+        L.bring_to_front(chat)
+        assert _wait(lambda: L.in_front(chat)), "raised again"
+    finally:
+        a.PostMessageW(other, L.WM_CLOSE, 0, 0)
+    a.ShowWindow(chat, 6)                              # SW_MINIMIZE
+    assert _wait(lambda: not L.in_front(chat)), "minimized is not in front"
+    L.bring_to_front(chat)
+    assert _wait(lambda: L.in_front(chat) and not L.window_state(chat)["minimized"]), "restored"
+    a.PostMessageW(chat, L.WM_CLOSE, 0, 0)
+    assert _wait(lambda: not a.IsWindow(chat))
+    assert 0.2 <= L.double_click_seconds() <= 1.0

@@ -41,10 +41,10 @@ TEXTS = {
     "tr": {
         "open": "Sohbeti aç", "settings": "Ayarlar", "quit": "Uygulamadan çık",
         "hint_title": f"{APP_TITLE} çalışmaya devam ediyor",
-        "hint": (f"Pencere gizlendi; {APP_TITLE} ekrandaki yuvarlak simge olarak çalışmaya devam ediyor. Sohbet, "
+        "hint": (f"Pencere gizlendi; {APP_TITLE} ekrandaki mikroçip simgesi olarak çalışmaya devam ediyor. Sohbet, "
                  "seçili bucket'lar, açık PDF ve süren indeksleme olduğu gibi korunur.\n\nSohbeti yeniden açmak için "
-                 "simgeye tıklayın. Uygulamadan tamamen çıkmak için simgeye sağ tıklayıp \u201cUygulamadan çık\u201d "
-                 "seçeneğini kullanın."),
+                 "simgeye tıklayın; sohbet öndeyken simgeye tıklamak onu yeniden gizler. Uygulamadan tamamen çıkmak "
+                 "için simgeye sağ tıklayıp \u201cUygulamadan çık\u201d seçeneğini kullanın."),
         "busy_title": "İndeksleme sürüyor",
         "busy": ("Belge indeksleme devam ediyor. Şimdi çıkarsanız o an yazılmakta olan kayıt tamamlanır; işlenmekte "
                  "olan ve kalan belgeler bir sonraki taramada işlenir. İndeks bozulmaz.\n\nUygulamadan çıkılsın mı?"),
@@ -53,9 +53,10 @@ TEXTS = {
     "en": {
         "open": "Open chat", "settings": "Settings", "quit": "Quit",
         "hint_title": f"{APP_TITLE} keeps running",
-        "hint": (f"The window was hidden; {APP_TITLE} keeps running as the round icon on your screen. The chat, the "
-                 "selected buckets, the open PDF and any indexing in progress are kept as they are.\n\nClick the icon "
-                 "to open the chat again. To quit completely, right-click the icon and choose \u201cQuit\u201d."),
+        "hint": (f"The window was hidden; {APP_TITLE} keeps running as the microchip icon on your screen. The chat, "
+                 "the selected buckets, the open PDF and any indexing in progress are kept as they are.\n\nClick the "
+                 "icon to open the chat again; clicking it while the chat is in front hides it again. To quit "
+                 "completely, right-click the icon and choose \u201cQuit\u201d."),
         "busy_title": "Indexing in progress",
         "busy": ("Documents are still being indexed. If you quit now, the record being written is completed; the "
                  "document in progress and the remaining ones are processed by the next rescan. The index stays "
@@ -191,8 +192,11 @@ class PressTracker:
 
 # ------------------------------------------------------------------------------------------- drawing
 def render_icon(size: int, hover: bool = False) -> bytes:
-    """Premultiplied BGRA pixels (top-down) of the launcher: a blue disc with a soft shadow and a white chat bubble.
-    Anti-aliased by 4x4 supersampling; pixels outside the disc and its shadow are fully transparent (click-through)."""
+    """Premultiplied BGRA pixels (top-down) of the launcher: a microchip - a rounded square package with four pins
+    on each side, a lighter die and a pin-1 dot - with a soft shadow, so it reads on light and dark desktops alike.
+    Drawn in code at the monitor's pixel size (nothing is downloaded or scaled), anti-aliased by 4x4 supersampling.
+    The corners are fully transparent (click-through); between the pins the alpha is 1/255 - invisible, but the
+    whole chip stays one click target."""
     import numpy as np
 
     ss = 4
@@ -203,44 +207,53 @@ def render_icon(size: int, hover: bool = False) -> bytes:
     def cover(mask) -> "np.ndarray":
         return mask.astype(np.float32).reshape(size, ss, size, ss).mean(axis=(1, 3))
 
-    margin = S * 0.07
-    R = S / 2 - margin
-    cx, cy = S / 2, S / 2 - S * 0.015
-    disc = cover(np.hypot(X - cx, Y - cy) <= R)
-    ds = np.hypot(X - cx, Y - (cy + S * 0.03))
-    shadow = (np.clip((R + margin * 0.95 - ds) / (margin * 1.9), 0, 1) ** 2).reshape(
-        size, ss, size, ss).mean(axis=(1, 3)) * 0.30
+    def rrect(cx, cy, w, h, r):
+        """Signed distance to a rounded rectangle (<= 0 inside)."""
+        qx, qy = np.abs(X - cx) - (w / 2 - r), np.abs(Y - cy) - (h / 2 - r)
+        return np.hypot(np.maximum(qx, 0), np.maximum(qy, 0)) + np.minimum(np.maximum(qx, qy), 0) - r
 
-    # chat bubble: rounded rectangle + tail, with three dots
-    bw, bh, br = R * 1.0, R * 0.74, R * 0.25
-    bx, by = cx, cy - R * 0.07
-    qx, qy = np.abs(X - bx) - (bw / 2 - br), np.abs(Y - by) - (bh / 2 - br)
-    body = (np.hypot(np.maximum(qx, 0), np.maximum(qy, 0)) + np.minimum(np.maximum(qx, qy), 0) - br) <= 0
-    (ax, ay), (tx, ty), (ux, uy) = (bx - bw * 0.30, by + bh * 0.30), (bx - bw * 0.02, by + bh * 0.42), \
-        (bx - bw * 0.36, by + bh * 0.82)
-    e1 = (tx - ax) * (Y - ay) - (ty - ay) * (X - ax)
-    e2 = (ux - tx) * (Y - ty) - (uy - ty) * (X - tx)
-    e3 = (ax - ux) * (Y - uy) - (ay - uy) * (X - ux)
-    tail = ((e1 >= 0) & (e2 >= 0) & (e3 >= 0)) | ((e1 <= 0) & (e2 <= 0) & (e3 <= 0))
-    bubble = cover(body | tail)
-    rd = R * 0.085
-    dots = cover(np.min([np.hypot(X - (bx + k * R * 0.27), Y - by) for k in (-1, 0, 1)], axis=0) <= rd)
+    c = S / 2 - S * 0.01
+    body_w, body_r = S * 0.54, S * 0.09
+    pin_len, pin_w = S * 0.14, S * 0.07
+    edge = body_w / 2
+    pins = np.zeros_like(X, dtype=bool)
+    for k in range(4):
+        off = c + (k - 1.5) * S * 0.12
+        for horizontal in (True, False):
+            for side in (-1, 1):
+                mid = c + side * (edge + pin_len / 2 - S * 0.02)   # tucked a little under the package
+                if horizontal:   # pins on the left and right edges
+                    pins |= rrect(mid, off, pin_len + S * 0.04, pin_w, pin_w * 0.3) <= 0
+                else:            # top and bottom
+                    pins |= rrect(off, mid, pin_w, pin_len + S * 0.04, pin_w * 0.3) <= 0
+    body = cover(rrect(c, c, body_w, body_w, body_r) <= 0)
+    pin = cover(pins)
+    die = cover(rrect(c, c, S * 0.26, S * 0.26, S * 0.045) <= 0)
+    dot = cover(np.hypot(X - (c - edge + S * 0.10), Y - (c - edge + S * 0.10)) <= S * 0.04)
+    reach = edge + pin_len - S * 0.02                      # half-size of the chip with its pins
+    hit = cover(rrect(c, c, 2 * reach, 2 * reach, S * 0.10) <= 0)
+    sd = rrect(c, c + S * 0.03, body_w, body_w, body_r)   # a soft shadow under the package only
+    shadow = (np.clip(1 - sd / (S * 0.08), 0, 1) ** 2).reshape(size, ss, size, ss).mean(axis=(1, 3)) * 0.35
 
     rows = (np.arange(size, dtype=np.float32) + 0.5)[:, None]
-    t = np.clip((rows - (cy - R)) / (2 * R), 0, 1)[..., None] * np.ones((1, size, 1), np.float32)
-    top, bottom = np.array([64, 116, 230], np.float32), np.array([33, 70, 184], np.float32)
+    t = np.clip((rows - (c - edge)) / body_w, 0, 1)[..., None] * np.ones((1, size, 1), np.float32)
+    top, bottom = np.array([64, 116, 230], np.float32), np.array([30, 62, 170], np.float32)
+    die_top, die_bottom = np.array([132, 172, 255], np.float32), np.array([96, 140, 240], np.float32)
+    pin_rgb = np.array([150, 162, 186], np.float32)
     if hover:
-        top, bottom = top + 22, bottom + 22
-    disc_rgb = top * (1 - t) + bottom * t
-    white = np.full((size, size, 3), 255, np.float32)
+        top, bottom, die_top, die_bottom = top + 22, bottom + 22, die_top + 14, die_bottom + 14
+    body_rgb = top * (1 - t) + bottom * t
+    die_rgb = die_top * (1 - t) + die_bottom * t
+    black = np.zeros((size, size, 3), np.float32)
 
     rgb = np.zeros((size, size, 3), np.float32)   # premultiplied
     alpha = np.zeros((size, size), np.float32)
-    for color, a in ((np.zeros((size, size, 3), np.float32), shadow), (disc_rgb, disc), (white, bubble * disc),
-                     (disc_rgb, dots * bubble * disc)):
+    for color, a in ((black, np.maximum(shadow, hit / 255.0)), (pin_rgb * np.ones_like(rgb), pin),
+                     (body_rgb, body), (die_rgb, die * body), (np.full_like(rgb, 255), dot * body)):
         rgb = color * a[..., None] + rgb * (1 - a[..., None])
         alpha = a + alpha * (1 - a)
     a8 = np.clip(np.round(alpha * 255), 0, 255)
+    a8 = np.where(hit > 0.5, np.maximum(a8, 1), a8)   # never 0 inside the click target
     c8 = np.minimum(np.clip(np.round(rgb), 0, 255), a8[..., None])
     return np.dstack([c8[..., 2], c8[..., 1], c8[..., 0], a8]).astype(np.uint8).tobytes()
 
@@ -287,6 +300,7 @@ MK_LBUTTON, MA_NOACTIVATE, SPI_SETWORKAREA = 0x0001, 3, 0x002F
 WS_POPUP = 0x80000000
 WS_EX_TOPMOST, WS_EX_TOOLWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE = 0x00000008, 0x00000080, 0x00080000, 0x08000000
 SWP_NOSIZE, SWP_NOMOVE, SWP_NOZORDER, SWP_NOACTIVATE = 0x0001, 0x0002, 0x0004, 0x0010
+GW_HWNDPREV, GA_ROOTOWNER, DWMWA_CLOAKED, WS_EX_TRANSPARENT = 3, 3, 14, 0x00000020
 SW_HIDE, SW_SHOWNOACTIVATE, SW_RESTORE = 0, 4, 9
 GWL_EXSTYLE, IDC_HAND, LOGPIXELSX = -20, 32649, 88
 MF_STRING, MF_SEPARATOR = 0x0000, 0x0800
@@ -415,6 +429,16 @@ def win32():
     fn(user32, "GetSystemMetrics", I, I)
     fn(user32, "MessageBoxW", I, H, W.LPCWSTR, W.LPCWSTR, U)
     fn(user32, "GetDpiForWindow", U, H, optional=True)
+    fn(user32, "GetWindow", H, H, U)
+    fn(user32, "GetAncestor", H, H, U)
+    fn(user32, "GetDoubleClickTime", U)
+    try:
+        dwmapi = ctypes.WinDLL("dwmapi")
+    except OSError:
+        dwmapi = None
+    a.DwmGetWindowAttribute = None
+    if dwmapi is not None:
+        fn(dwmapi, "DwmGetWindowAttribute", ctypes.c_long, H, W.DWORD, W.LPVOID, W.DWORD, optional=True)
     fn(user32, "SetThreadDpiAwarenessContext", W.LPVOID, W.LPVOID, optional=True)
     fn(kernel32, "GetModuleHandleW", W.HMODULE, W.LPCWSTR)
     fn(kernel32, "CreateMutexW", W.HANDLE, W.LPVOID, B, W.LPCWSTR)
@@ -468,11 +492,65 @@ def window_state(hwnd) -> dict:
 
 
 def bring_to_front(hwnd) -> None:
-    """Restore a minimized window and make it the active one (allowed: the user just clicked our icon)."""
+    """Restore a minimized window, raise it above the other windows and make it the active one (allowed: the user
+    just clicked our icon)."""
     a = win32()
     if a.IsIconic(hwnd):
         a.ShowWindow(hwnd, SW_RESTORE)
+    a.SetWindowPos(hwnd, None, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)   # None = HWND_TOP
     a.SetForegroundWindow(hwnd)
+
+
+def _rect(hwnd) -> tuple[int, int, int, int]:
+    a = win32()
+    r = a.W.RECT()
+    a.GetWindowRect(hwnd, a.ctypes.byref(r))
+    return r.left, r.top, r.right, r.bottom
+
+
+def _cloaked(hwnd) -> bool:
+    """A window on another virtual desktop or a suspended app: 'visible' but not on the screen."""
+    a = win32()
+    if a.DwmGetWindowAttribute is None:
+        return False
+    v = a.W.DWORD()
+    return a.DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, a.ctypes.byref(v), a.ctypes.sizeof(v)) == 0 and bool(v.value)
+
+
+def in_front(hwnd, ignore=()) -> bool:
+    """Is this top-level window visible and in front: the active window (or the owner of the active dialog), or
+    not covered by any other normal window? Always-on-top windows (the taskbar, our own icon), click-through
+    overlays and hidden or cloaked windows do not count as covering it."""
+    a = win32()
+    if not hwnd or not a.IsWindowVisible(hwnd) or a.IsIconic(hwnd):
+        return False
+    fg = a.GetForegroundWindow()
+    if fg and (fg == hwnd or a.GetAncestor(fg, GA_ROOTOWNER) == hwnd):
+        return True
+    left, top, right, bottom = _rect(hwnd)
+    skip = {int(h) for h in ignore if h}
+    w = a.GetWindow(hwnd, GW_HWNDPREV)
+    for _ in range(5000):  # walk up the z-order, from just above the window to the top
+        if not w:
+            return True
+        ex = a.GetWindowLongW(w, GWL_EXSTYLE) & 0xFFFFFFFF
+        if int(w) not in skip and a.IsWindowVisible(w) and not a.IsIconic(w) and \
+                not ex & (WS_EX_TOPMOST | WS_EX_TRANSPARENT) and not _cloaked(w) and \
+                a.GetAncestor(w, GA_ROOTOWNER) != hwnd:
+            l2, t2, r2, b2 = _rect(w)
+            if min(right, r2) - max(left, l2) > 8 and min(bottom, b2) - max(top, t2) > 8:
+                return False
+        w = a.GetWindow(w, GW_HWNDPREV)
+    return True
+
+
+def double_click_seconds() -> float:
+    if os.name != "nt":
+        return 0.5
+    try:
+        return max(0.2, min(win32().GetDoubleClickTime() / 1000.0, 1.0))
+    except Exception:
+        return 0.5
 
 
 def system_dpi() -> int:

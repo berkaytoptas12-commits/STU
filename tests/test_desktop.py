@@ -96,9 +96,9 @@ class FakeLauncher:
     def set_companion(self, hwnd):
         pass
 
-    # what the user does with the icon
+    # what the user does with the icon (the real one calls on_click = DesktopApp.toggle_chat)
     def click(self):
-        self.desk.open_chat()
+        self.desk.toggle_chat()
 
     def menu(self, cmd):
         self.desk.command(cmd)
@@ -206,10 +206,10 @@ def test_icon_first_then_click_opens_the_one_chat_window(gui):
         base, token = w.url.split("/?token=")
         assert httpx.get(f"{base}/api/info", headers={"Authorization": f"Bearer {token}"}).status_code == 200
         assert httpx.get(f"{base}/api/info").status_code == 401
-        for _ in range(3):  # repeated clicks: the same window, the same backend
+        for _ in range(3):  # a double (triple) click opens it once: the same window, the same backend
             icon.click()
         assert desk.idle()
-        assert w.visible and w.calls == ["show"] * 3 and desk.stats["opened"] == 3
+        assert w.visible and w.calls == ["show"] and desk.stats["opened"] == 1 and desk.stats["double_clicks"] == 2
         assert any("setVisible(true)" in s for s in w.scripts)
         icon.menu(L.IDM_QUIT)
 
@@ -222,6 +222,68 @@ def test_icon_first_then_click_opens_the_one_chat_window(gui):
     icon_calls = FakeLauncher.instances[0].calls
     assert icon_calls[:2] == ["start", "close"], "the icon goes at once: a new start then waits for this one to end"
     assert [x[0] for x in FakeGuard.log] == ["acquire", "release"]
+
+
+def test_click_toggles_the_chat_window(gui):
+    def scenario(w, icon, desk):
+        desk.double_click = 0.0
+        front = {"value": True}
+        desk.front = lambda: front["value"]
+        icon.click()                                   # hidden -> shown
+        assert desk.idle() and w.visible and w.calls == ["show"]
+        chat_state = "window.__chat = 'kept'"
+        w.evaluate_js(chat_state)
+        job = desk.jobs.create("ingest")
+        job["status"] = "running"
+        icon.click()                                   # shown and in front -> hidden
+        assert desk.idle() and not w.visible and w.calls == ["show", "hide"] and desk.stats["toggled_hidden"] == 1
+        assert not desk.quitting and desk.jobs.running(), "hiding is not quitting: indexing goes on"
+        assert "destroy" not in w.calls and any("setVisible(false)" in s for s in w.scripts)
+        icon.click()                                   # hidden -> shown again, the same page
+        assert desk.idle() and w.visible and w.calls == ["show", "hide", "show"]
+        front["value"] = False                         # minimized or behind another window
+        icon.click()
+        assert desk.idle() and w.visible and w.calls[-1] == "show", "brought to the front, not hidden"
+        front["value"] = True
+        icon.menu(L.IDM_OPEN)                          # the menu's "Open chat" never hides it
+        assert desk.idle() and w.visible
+        for _ in range(25):                            # many fast clicks: one window, a consistent state
+            icon.click()
+        assert desk.idle() and len(gui.seen["windows"]) == 1
+        assert w.visible == (w.calls[-1] == "show") == desk.visible
+        job["status"] = "done"
+        icon.menu(L.IDM_QUIT)
+
+    assert _run(gui, scenario) == 0
+
+
+def test_double_click_opens_and_keeps_the_window_open(gui):
+    def scenario(w, icon, desk):
+        desk.front = lambda: desk.visible
+        desk.double_click = 30.0                       # every click below is "the second click"
+        icon.click()
+        icon.click()
+        assert desk.idle() and w.visible and w.calls == ["show"] and desk.stats["double_clicks"] == 1
+        desk.double_click = 0.0
+        icon.click()                                   # a later single click hides it
+        assert desk.idle() and not w.visible
+        icon.menu(L.IDM_QUIT)
+
+    assert _run(gui, scenario) == 0
+
+
+def test_the_real_launcher_click_is_the_toggle(monkeypatch):
+    seen = {}
+
+    class Spy:
+        def __init__(self, *a, **kw):
+            seen.update(kw)
+
+    monkeypatch.setattr(L, "Launcher", Spy)
+    desk = types.SimpleNamespace(lang=lambda: "tr", toggle_chat=object(), open_chat=object(), command=None,
+                                 activate=None, icon_moved=None, session_end=None, request_quit=None)
+    desktop._make_launcher("k", desk, L.DesktopState("/nonexistent/desktop.json"))
+    assert seen["on_click"] is desk.toggle_chat and seen["on_activate"] is desk.activate
 
 
 def test_close_button_hides_and_keeps_the_page(gui):
