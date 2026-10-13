@@ -1315,7 +1315,8 @@ function qIssue(it) {
 function qRunHtml(run) {
   const q = run.summary || {};
   const v = q.vlm || {}, tb = q.tables || {}, st = q.stage_failures || {}, em = q.embedding || {};
-  const pct = tb.rows ? ` (%${Math.round((100 * tb.rows_verified) / tb.rows)})` : "";
+  const n = tb.rows ? Math.round((100 * tb.rows_verified) / tb.rows) : 0;
+  const pct = tb.rows ? (LANG === "tr" ? ` (%${n})` : ` (${n}%)`) : "";
   const lines = [t("qDocsLine", q.processed || 0, q.added || 0, q.updated || 0, q.skipped_unchanged || 0, q.reused || 0,
     q.partial || 0, q.failed || 0, q.unreachable || 0, q.missing || 0)];
   if (v.enabled === false) lines.push(t("qVlmOff"));

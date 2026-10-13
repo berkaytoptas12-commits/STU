@@ -84,7 +84,7 @@ body.narrow .viewer { position: fixed; z-index: 21; right: 8px; top: 52px; botto
 .hint { font-size: 12.5px; color: var(--muted); margin: 6px 0 10px; }
 
 .sources { display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
-.src-actions { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; }
+.src-actions { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
 #btn-rescan { font-size: 15px; padding: 2px 9px; }
 .src-actions button { font-size: 12.5px; padding: 4px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .doc-filter { width: 100%; font-size: 12.5px; padding: 4px 8px; }
