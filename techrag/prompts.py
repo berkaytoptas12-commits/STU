@@ -91,9 +91,6 @@ MESSAGES = {
                          "dışındaki belgelerle cevap verilmedi.",
         "outside_scope": "Seçimin dışında bulunanlar: {docs}. Kapsamı genişletip yeniden sorabilirsiniz.",
         "partial_missing": "Not: {missing} için yüklü doküman yok; cevap yalnızca {found} kaynaklarına dayanıyor.",
-        "clarify": "Soru birden fazla standart/sürümle eşleşiyor ve değerler sürüme göre farklı olabilir: {options}. "
-                   "Hangisini kastettiğinizi belirtir misiniz?",
-        "clarify_all": "Hepsini karşılaştır",
         "incomplete": "Doğrulama tamamlanamadı (bağımsız denetçi geçerli sonuç vermedi), bu yüzden doğrulanmamış "
                       "taslak cevap olarak gösterilmiyor.",
         "removed_all": "(Üretilen ifadeler kaynaklarla doğrulanamadığı için kaldırıldı.)",
@@ -108,9 +105,6 @@ MESSAGES = {
                          "selection); documents outside the selection were not used.",
         "outside_scope": "Outside the selection: {docs}. Widen the scope and ask again.",
         "partial_missing": "Note: no document is loaded for {missing}; the answer relies only on {found} sources.",
-        "clarify": "The question matches several standards/versions whose values may differ: {options}. "
-                   "Which one do you mean?",
-        "clarify_all": "Compare all",
         "incomplete": "Verification could not be completed (the independent judge returned no valid result), so "
                       "the unverified draft is not shown as the answer.",
         "removed_all": "(The generated statements could not be verified against the sources and were removed.)",
