@@ -25,9 +25,10 @@ PLANNER_SYSTEM = """You turn a user's question into a retrieval plan for a libra
 Return ONLY a JSON object with these keys:
 - "standalone_question": the question made fully self-contained using the history, in the SAME language as the user.
 - "english_question": faithful English version using the exact terminology of the relevant standard.
-- "search_queries": 2-4 short English search queries (different phrasings, expanded acronyms, likely section/table names).
+- "search_queries": 2-5 short English search queries (different phrasings, expanded acronyms, likely section/table names). Standards state requirements in their own normative terms, not in the words of design practice. When the question is about a design choice or practice ("is X needed", how to route, lay out, terminate or choose a component, how long or how far), think which requirements of the standard govern it - limits, timing or electrical parameters the design must satisfy - and include queries for those in the standard's own terms (for example, a pull-up resistor value is governed by the rise time, bus capacitance and sink current limits).
 - "keywords": 3-10 exact terms likely to appear verbatim (parameter/signal/register/state names, symbols, acronyms and expansions).
-- "parameters": names or symbols of numeric parameters the question asks for (e.g. ["tRFC", "VOD", "rise time"]), else [].
+- "parameters": names or symbols of numeric parameters the question asks for or that govern it (e.g. ["tRFC", "VOD", "rise time"]), else [].
+- "spec_phrasing": one or two sentences written the way the standard itself would state the requirement that answers or governs the question, in its normative terminology, with X in place of every number. Used only to find passages; never shown to the user.
 - "question_type": one of lookup | numeric | comparison | procedure | multi_part | other.
 - "needs_reasoning": true if answering requires combining several facts, comparing standards/versions, or calculations.
 - "compatibility": true only if the user asks whether specific devices, signals or interfaces can be connected or work together electrically; else false.
@@ -38,7 +39,7 @@ PLANNER_EXAMPLE_USER = """History:
 user: DDR4 için tRFC nedir?
 Question: Peki DDR5'te 16Gb yoğunluk için değeri ne?"""
 
-PLANNER_EXAMPLE_ASSISTANT = """{"standalone_question": "DDR5'te 16Gb yoğunluklu bir cihaz için tRFC (Refresh Cycle Time) değeri nedir?", "english_question": "What is the tRFC (refresh cycle time) value for a 16Gb DDR5 SDRAM device?", "search_queries": ["DDR5 tRFC1 refresh cycle time 16Gb", "DDR5 refresh timing parameters by density table", "tRFC1 tRFC2 tRFCsb 16 Gb"], "keywords": ["tRFC", "tRFC1", "tRFC2", "tRFCsb", "Refresh Cycle Time", "16Gb", "REFab"], "parameters": ["tRFC1", "tRFC2", "tRFCsb"], "question_type": "numeric", "needs_reasoning": false, "compatibility": false, "missing_conditions": []}"""
+PLANNER_EXAMPLE_ASSISTANT = """{"standalone_question": "DDR5'te 16Gb yoğunluklu bir cihaz için tRFC (Refresh Cycle Time) değeri nedir?", "english_question": "What is the tRFC (refresh cycle time) value for a 16Gb DDR5 SDRAM device?", "search_queries": ["DDR5 tRFC1 refresh cycle time 16Gb", "DDR5 refresh timing parameters by density table", "tRFC1 tRFC2 tRFCsb 16 Gb"], "keywords": ["tRFC", "tRFC1", "tRFC2", "tRFCsb", "Refresh Cycle Time", "16Gb", "REFab"], "parameters": ["tRFC1", "tRFC2", "tRFCsb"], "spec_phrasing": "The refresh cycle time tRFC1 of an X Gb DDR5 SDRAM device shall be at least X ns.", "question_type": "numeric", "needs_reasoning": false, "compatibility": false, "missing_conditions": []}"""
 
 
 def detect_language(text: str) -> str:
@@ -66,15 +67,17 @@ class QueryPlan:
     compatibility: bool = False
     missing_conditions: list[str] = field(default_factory=list)   # compatibility conditions not stated
     carried_entities: list[str] = field(default_factory=list)     # standard taken over from the conversation
+    spec_phrasing: str = ""         # how the standard would word the governing requirement (dense search only)
 
     def bm25_queries(self) -> list[str]:
         qs = [" ".join([self.standalone, *self.expansions]),
               self.english if self.english != self.standalone else "",
-              " ".join(self.keywords), *self.search_queries[:3]]
+              " ".join(self.keywords), *self.search_queries[:5]]
         return _dedupe(q for q in qs if q.strip())
 
     def dense_queries(self) -> list[str]:
-        return _dedupe(q for q in [self.standalone, self.english, *self.search_queries[:3]] if q.strip())
+        return _dedupe(q for q in [self.standalone, self.english, *self.search_queries[:4], self.spec_phrasing]
+                       if q.strip())
 
     @property
     def rerank_query(self) -> str:
@@ -86,6 +89,15 @@ class QueryPlan:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+def _no_values(text: str) -> str:
+    """A value the planner put into its phrasing anyway is replaced by X: it is a search aid, not a source."""
+    from techrag.units import find_quantities
+
+    for q in find_quantities(text):
+        text = text.replace(q.text, "X", 1)
+    return text
 
 
 def _dedupe(items) -> list[str]:
@@ -181,7 +193,7 @@ class QueryPlanner:
              {"role": "user", "content": PLANNER_EXAMPLE_USER},
              {"role": "assistant", "content": PLANNER_EXAMPLE_ASSISTANT},
              {"role": "user", "content": user}],
-            json_mode=True, max_tokens=500, temperature=0.0, thinking=False)
+            json_mode=True, max_tokens=700, temperature=0.0, thinking=False)
         obj = parse_json_object(res.content)
         if not obj:
             raise ValueError(f"planner returned no JSON: {res.content[:200]!r}")
@@ -201,7 +213,8 @@ class QueryPlanner:
         if history and text("standalone_question"):
             plan.standalone = text("standalone_question")
         plan.english = text("english_question") or plan.standalone
-        plan.search_queries = items("search_queries", 4)
+        plan.search_queries = items("search_queries", 5)
+        plan.spec_phrasing = _no_values(text("spec_phrasing"))[:400]
         plan.keywords = items("keywords", 12)
         plan.parameters = items("parameters", 8)
         qt = text("question_type").lower()

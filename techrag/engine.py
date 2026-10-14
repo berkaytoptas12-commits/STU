@@ -28,7 +28,7 @@ from techrag.ingest.quality import scrub
 from techrag.ingest.vlm import render_page as _render
 from techrag.llm import LLMClient, ToolsUnsupported, image_part, parse_json_object
 from techrag.prompts import (JUDGE_SYSTEM, NOT_FOUND, REGENERATE_PROMPT, answer_system_prompt,
-                             answer_user_prompt, judge_user_prompt, message)
+                             answer_user_prompt, judge_user_prompt, message, search_before_not_found)
 from techrag.query import QueryPlan, QueryPlanner
 from techrag.reranker import Reranker, create_reranker
 from techrag.retrieval import DocCatalog, RetrievalResult, Retriever, Scope
@@ -449,6 +449,7 @@ class RAGEngine:
         t = time.time()
         yield {"type": "status", "stage": "answering"}
         round_no = 0
+        nudged = not self.cfg.answer.search_before_not_found
         while True:
             use_tools = tools if round_no < max_rounds else None
             try:
@@ -480,6 +481,15 @@ class RAGEngine:
                     messages.append({"role": "user", "content": [{"type": "text", "text": "Requested page image(s):"}]
                                      + [image_part(p) for p in pngs]})
                 yield {"type": "draft_reset"}
+                continue
+            content = (result.content if result else "") or ""
+            if not nudged and tools is not None and round_no < max_rounds and is_not_found(content):
+                # One more chance: the standard may state the governing requirement in its own terms.
+                nudged = True
+                messages.append({"role": "assistant", "content": content})
+                messages.append({"role": "user", "content": search_before_not_found(lang)})
+                yield {"type": "draft_reset"}
+                yield {"type": "status", "stage": "searching_more"}
                 continue
             break
         draft = (result.content if result else "").strip()

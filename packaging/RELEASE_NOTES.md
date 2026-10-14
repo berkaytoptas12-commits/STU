@@ -1,5 +1,28 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.7.2 — tasarım sorularını standardın gereksinimine bağlama
+Standartlar gereksinimleri kendi terimleriyle yazar; kullanıcı ise çoğu zaman tasarım diliyle sorar. Örneğin
+"length matching gerekir mi?" sorusunun cevabı standartta intra/inter-pair skew sınırı olarak yazar. Önceki
+sürümde arama sorudaki kelimeyle yapıldığı için bu bağ kurulamıyor, model "bulunamadı" diyordu. Bu sürümde bağı
+soru veya standart bazında bir eşleme tablosuyla değil, LLM kurar:
+- **Planlayıcı:** sorulan kavramı standartta hangi gereksinimin (sınır, zamanlama, elektriksel parametre, zorunlu
+  prosedür) belirlediğini düşünür ve onlar için de standardın terimleriyle arama sorgusu üretir. Ayrıca
+  "standart bunu nasıl yazardı" diye, sayıların yerine X konan bir cümle yazar; bu cümle yalnızca anlamsal
+  aramada kullanılır, kanıt olmaz ve gösterilmez. Ek model çağrısı yok.
+- **İkinci şans:** cevap modeli "bulunamadı" derse bir kez, ilgili gereksinimi araçlarla standardın kendi
+  terimleriyle araması istenir (araç çağırma açıksa; yalnızca bu cevaplarda bir model turu daha). Sohbette
+  "Doğrudan bulunamadı — standardın ilgili gereksinimi aranıyor…" görünür. Ayarlar → Gelişmiş'ten kapatılabilir.
+- **Cevap kuralı:** gereksinim atıfla verilir, tasarım sonucu "Mühendislik yorumu" bölümünde açıklanır.
+  Kaynakta olmayan bir değere dayanan sayısal dönüşüm (ör. ps → mm için kartın mm başına gecikmesi) sayı olarak
+  verilmez, neye bağlı olduğu söylenir; o değeri soruda verirseniz hesap sizin varsayımınız olarak yapılır.
+- Doğrulama gevşetilmedi: yorum cümleleri dayandıkları kaynağa atıf yapmak zorunda, kaynaksız sayılar çıkarılır.
+  Cevabı kütüphanede gerçekten olmayan sorular yine "bulunamadı" ile biter.
+- Yeniden indeksleme gerekmez.
+- Doğrulanan: sahte model sunucusuyla mekanizma testleri (hatırlatmanın yalnızca bir kez ve yalnızca araç
+  çağırma açıkken yapılması, değersiz arama cümlesi, cevapsız soruların "bulunamadı" kalması). Gerçek modelin
+  bu bağı ne sıklıkta kurduğu ölçülmedi; Değerlendirme penceresinde birkaç tasarım-dili sorusuyla önce/sonra
+  karşılaştırılabilir.
+
 ### 0.7.1 — tablo eşleştirme ve okuma yardımı
 Gerçek bir kütüphanede VLM tablolarının yalnızca %14'ü, parametre satırlarının %10'u PDF metniyle hücre hücre
 eşleşebiliyordu; eşleşmeyenler cevapta kullanılamıyordu ve aramanın bulduğu temiz tablo yerine modele karışık

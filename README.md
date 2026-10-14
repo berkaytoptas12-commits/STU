@@ -57,6 +57,7 @@ flowchart TB
 | Hesap hatası / kaynaksız girdi | Hesaplar `calculate` aracıyla yapılır; ifadedeki her sayı bir kaynağa veya kullanıcı girdisine **izlenir**. Kaynaksız girdi içeren hesap, aritmetiği doğru olsa da doğrulanmış ifadeyi desteklemez. |
 | Yine de hatalı ifade | **Deterministik kontrol** (atıf var mı, sayı+birim atıf yapılan kaynakta mı — 0,35 µs = 350 ns) → **bağımsız denetçi** (taze bağlam: yalnızca iddia + atıf yapılan kaynak). Denetçinin yalnızca o iddia kimliği için açık ve geçerli bir "supported" kararı onay sayılır; zaman aşımı, API hatası, bozuk/eksik/tekrarlı karar, token sınırında kesilmiş yanıt **onay değildir**. Denetçi istekleri modelin bağlam uzunluğuna (ayar veya sunucunun bildirdiği `max_model_len`, hangisi küçükse) yanıt payıyla birlikte sığacak şekilde gruplanır; başarısız bir istek ifade ifade, bağlam aşımı veya kesik yanıtta daha kısa alıntılarla yeniden denenir. Teknik bir denetçi hatası "doğrulanamadı" olarak, denetçinin "desteklenmiyor" kararından ayrı gösterilir. Desteklenmeyen ifadeler bir kez yeniden ürettirilir; cevap yalnızca **doğrulanmış ifadelerden** yeniden kurulur. |
 | Yanlış atıf (değer doğru, köşeli parantezdeki kaynak yanlış) | Bir ifadenin **tek** sorunu değerlerinin atıf yaptığı kaynakta olmaması ise ve cevapla birlikte verilen başka bir doğrulanmış kaynak bu değerlerin **hepsini** yazıyorsa, o kaynağın atfı mevcut atfın yanına eklenir (önce aynı belgeden kaynak). İfade baştan yeniden kontrol edilir ve **denetçinin onayı yine gerekir**; metnin geri kalanı değişmez. Düzeltme ifade ayrıntılarında "atıf düzeltildi" olarak gösterilir. Başka bir sorun varsa (atıfsız ifade, var olmayan kaynak, kaynakta hiç olmayan değer) düzeltme yapılmaz. |
+| Soru tasarım dilinde, standart gereksinimi kendi terimleriyle yazıyor ("length matching gerekir mi?" ↔ intra/inter-pair skew sınırı) | Bunu bir eşleme tablosu değil LLM kurar, iki noktada: (1) planlayıcı, sorulan kavramı standartta hangi gereksinimin (sınır, zamanlama, elektriksel parametre, zorunlu prosedür) belirlediğini düşünüp onlar için de standardın terimleriyle arama sorgusu ve "standart bunu nasıl yazardı" diye değersiz (sayılar X) bir cümle üretir; bu cümle yalnızca anlamsal aramada kullanılır, kanıt olmaz ve gösterilmez. Ek model çağrısı yoktur. (2) Cevap modeli "bulunamadı" derse bir kez, ilgili gereksinimi araçlarla standardın terimleriyle araması istenir (araç çağırma açıksa; yalnızca bu cevaplarda bir model turu daha). Cevap kuralı: gereksinim atıfla verilir, tasarım sonucu "Mühendislik yorumu" bölümünde açıklanır; kaynakta olmayan bir değere dayanan sayısal dönüşüm (ör. ps → mm için kartın mm başına gecikmesi) sayı olarak verilmez — kullanıcı o değeri soruda verirse hesap onun varsayımı olarak yapılır. Doğrulama aynı. |
 | Kanıt başka tabloda / bölümde ("bkz. Tablo 4-12") | Bulunan bir pasaj "Table 4-12", "Section 3.2", "clause 5.4.1", "§ 4.5" diye başka bir tabloya/bölüme başvuruyorsa, o tablo (başlık satırından bulunur; düz metindeki bir anma değil) veya bölüm **aynı belgeden** ayrı bir kaynak olarak eklenir — en fazla 3 başvuru, her biri ~1200 token; kaynak listesinde "↪ başvurulan Tablo 4-12" diye işaretlenir. Kapsam dışına çıkılmaz (başvuru belgesinin kendisindedir). |
 
 ### Doğrulama durumları
@@ -80,7 +81,8 @@ yapılmaz; konumlar indekslemede bir kez çıkarılır.
 
 **Soru başına LLM çağrısı (doğruluk öncelikli mod):** planlayıcı 1 + cevap 1 (+ araç turları, en fazla 4) +
 denetçi: bağlama sığan bir veya birkaç istek (paralel; başarısız istekteki ifadeler tek tek, bağlam aşımı veya
-kesik yanıtta bir kez daha kısa alıntılarla) + gerekirse yeniden üretim 1 + yeniden denetim. Embedding 1, rerank 1 istek (karşılaştırma sorularında standart başına 1). Standart yüklü
+kesik yanıtta bir kez daha kısa alıntılarla) + gerekirse yeniden üretim 1 + yeniden denetim. Model ilk turda
+"bulunamadı" derse bir tur daha (ilgili gereksinimi arama hatırlatması; araç turu sınırı içinde). Embedding 1, rerank 1 istek (karşılaştırma sorularında standart başına 1). Standart yüklü
 değilse veya netleştirici soru soruluyorsa cevap modeli hiç çağrılmaz.
 
 ---
@@ -125,7 +127,8 @@ Sunucu araç çağrısını desteklemiyorsa uygulama bunu fark eder ve araçsız
   `chat_template` (Qwen `enable_thinking`) veya `reasoning_effort`.
 * Doğrulanamayan iddialar: **Kaldır** (varsayılan) veya **İşaretle**.
 * **Gelişmiş:** model bağlam uzunluğu (token; sunucunun bildirdiği değer yanında gösterilir, küçük olan
-  kullanılır), denetçinin bir istekte göreceği en fazla ifade, yanlış atıf düzeltmesi (açık/kapalı), izlenecek
+  kullanılır), denetçinin bir istekte göreceği en fazla ifade, yanlış atıf düzeltmesi (açık/kapalı), "bulunamadı"
+  demeden önce ilgili gereksinimi bir kez daha aratma (açık/kapalı), izlenecek
   tablo/bölüm başvurusu sayısı (0 = kapalı), VLM tablo sayfası eşiği ve belge başına VLM sayfa sınırı. Değerler
   aralık denetiminden geçer. VLM eşiği veya sayfa sınırı değişirse belgeler bir sonraki taramada yeniden işlenir
   (daha önce okunan sayfalar önbellekten gelir).
@@ -549,6 +552,10 @@ girerek açıyorsa model sunucuları için **"Sistem proxy ayarlarını kullan"*
 * Okuma yardımı yalnızca aramanın bulduğu eşleşmeyen tablolar için eklenir; PDF metninde tablo değerleri birimden
   ayrı ve karışık sırada geliyorsa doğru değer bile "doğrulanamadı" olarak çıkarılabilir. Yeniden puanlama, bu
   durum olduğunda reranker'a bir istek daha gönderir.
+* Tasarım dilindeki bir soruyu standardın gereksinimine bağlamak modelin bilgisine ve muhakemesine dayanır;
+  sahte model sunucusuyla mekanizma test edildi, gerçek modelin bu bağı ne sıklıkta kurduğu ölçülmedi. Denetçi,
+  dayandığı gereksinim kaynakta açıkça yazmayan bir sonucu yine "desteklenmiyor" bulabilir (bu durumda gösterilmez).
+  Kütüphanede gerçekten cevabı olmayan sorularda hatırlatma bir model turu ekler; cevap yine "bulunamadı" olur.
 * Denetçi istek boyutu için token sayısı karakter sayısından tahmin edilir (bilinçli olarak tutucu); sunucu
   `max_model_len` bildirmiyorsa ayardaki bağlam uzunluğu kullanılır.
 

@@ -99,12 +99,14 @@ const I18N = {
     rc_judge_no_verdict: "Denetleyici bu ifade için geçerli bir karar döndürmedi (teknik sorun; ifade yanlış bulunmadı, doğrulanamadı).",
     rc_judge_error: "Denetleyiciye ulaşılamadı ya da yanıtı tamamlanmadı (teknik sorun; ifade yanlış bulunmadı, doğrulanamadı).",
     refTable: "başvurulan Tablo {0}", refSection: "başvurulan Bölüm {0}",
+    stSearchingMore: "Doğrudan bulunamadı — standardın ilgili gereksinimi aranıyor…",
     rcDetail: "gerekçe: {0}", rcTechnical: "teknik ayrıntı: {0}",
     citeFixed: "atıf düzeltildi: {0} eklendi ({1} bu kaynakta geçiyor)", vCiteFixed: "{0} ifadede atıf düzeltildi",
     evaluation: "Değerlendirme", advanced: "Gelişmiş",
     advContext: "Model bağlam uzunluğu (token)", ctxInfo: "sunucunun bildirdiği: {0} · kullanılan: {1}",
     ctxUnknown: "sunucu bağlam uzunluğunu bildirmiyor; bu değer kullanılır",
     advJudgeBatch: "Denetleyici: bir istekte en fazla ifade", advRepair: "Yanlış atıfı düzelt (değer, verilen başka bir kaynakta geçiyorsa)",
+    advSearchMore: "\"Bulunamadı\" demeden önce modele ilgili gereksinimi bir kez daha arat",
     advRefs: "İzlenecek tablo / bölüm başvurusu (0 = kapalı)", advPageScore: "VLM tablo sayfası eşiği", advMaxPages: "Belge başına en fazla VLM sayfası",
     advHint: "Bağlam uzunluğu sunucunun bildirdiğinden büyük girilirse sunucunun değeri kullanılır. VLM eşiği veya sayfa sınırı değişirse belgeler bir sonraki taramada yeniden işlenir (daha önce okunan sayfalar önbellekten gelir).",
     fbUp: "Doğru / faydalı", fbDown: "Yanlış veya eksik — düzeltme ekle", fbSaved: "geri bildirim kaydedildi",
@@ -285,12 +287,14 @@ const I18N = {
     rc_judge_no_verdict: "The checker returned no valid verdict for this statement (technical problem; the statement was not found wrong, it could not be verified).",
     rc_judge_error: "The checker could not be reached or its reply was incomplete (technical problem; the statement was not found wrong, it could not be verified).",
     refTable: "referenced Table {0}", refSection: "referenced Section {0}",
+    stSearchingMore: "Not found directly — searching for the standard's governing requirement…",
     rcDetail: "reason: {0}", rcTechnical: "technical detail: {0}",
     citeFixed: "citation repaired: {0} added ({1} appears in that source)", vCiteFixed: "citation repaired in {0} statement(s)",
     evaluation: "Evaluation", advanced: "Advanced",
     advContext: "Model context length (tokens)", ctxInfo: "server reports: {0} · used: {1}",
     ctxUnknown: "the server does not report its context length; this value is used",
     advJudgeBatch: "Checker: statements per request (max)", advRepair: "Repair wrong citations (value found in another given source)",
+    advSearchMore: "Before a \"not found\" answer, let the model search once more for the governing requirement",
     advRefs: "Table / section references to follow (0 = off)", advPageScore: "VLM table page threshold", advMaxPages: "Max VLM pages per document",
     advHint: "A context length larger than the server reports is capped at the server's value. Changing the VLM threshold or page limit re-processes documents on the next scan (pages read before come from the cache).",
     fbUp: "Correct / helpful", fbDown: "Wrong or incomplete — add a correction", fbSaved: "feedback saved",
@@ -1054,7 +1058,8 @@ function renderVerification(el, v, confidence) {
 
 function stageText(ev) {
   return { planning: t("stPlanning"), answering: t("stAnswering"), verifying: t("stVerifying"),
-    regenerating: t("stRegenerating", ev.failed || ""), tools_unsupported: t("stNoTools") }[ev.stage] || "";
+    regenerating: t("stRegenerating", ev.failed || ""), tools_unsupported: t("stNoTools"),
+    searching_more: t("stSearchingMore") }[ev.stage] || "";
 }
 
 // A clarifying question waits for the user's reply: the next message is merged into the question it belongs to
@@ -1831,6 +1836,7 @@ async function openSettings() {
   $("#set-context").value = SETTINGS.llm.context_tokens;
   $("#set-judge-batch").value = SETTINGS.answer.judge_batch;
   $("#set-repair-cites").checked = SETTINGS.answer.repair_citations !== false;
+  $("#set-search-more").checked = SETTINGS.answer.search_before_not_found !== false;
   $("#set-follow-refs").value = SETTINGS.retrieval.follow_references ?? 3;
   $("#set-page-score").value = SETTINGS.vision.min_page_score;
   $("#set-max-pages").value = SETTINGS.vision.max_pages_per_doc;
@@ -1861,7 +1867,7 @@ async function saveSettings(e) {
   patch.vision = Object.assign(patch.vision || {}, { enabled: $("#set-vision-enabled").checked });
   const num = (id, int) => { const v = int ? parseInt($(id).value, 10) : parseFloat($(id).value); return Number.isFinite(v) ? v : undefined; };
   const adv = { llm: { context_tokens: num("#set-context", true) }, answer: { judge_batch: num("#set-judge-batch", true),
-    repair_citations: $("#set-repair-cites").checked }, retrieval: { follow_references: num("#set-follow-refs", true) },
+    repair_citations: $("#set-repair-cites").checked, search_before_not_found: $("#set-search-more").checked }, retrieval: { follow_references: num("#set-follow-refs", true) },
     vision: { min_page_score: num("#set-page-score"), max_pages_per_doc: num("#set-max-pages", true) } };
   for (const [sec, vals] of Object.entries(adv)) {
     for (const [k, v] of Object.entries(vals)) if (v !== undefined) (patch[sec] = patch[sec] || {})[k] = v;

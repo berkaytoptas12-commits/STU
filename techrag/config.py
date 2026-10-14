@@ -208,6 +208,9 @@ class AnswerConfig:
     judge_batch: int = 8
     regenerate: bool = True         # one regeneration pass for failing claims
     repair_citations: bool = True   # add the citation of the given source that states a claim's values
+    # Before a "not found" answer the model is asked once to search for the requirement that governs the question
+    # in the standard's own terms (needs tool calling; one more model turn only for such answers).
+    search_before_not_found: bool = True
     failed_claims: str = "strip"    # strip | flag  (after the regeneration pass)
     history_turns: int = 3
 

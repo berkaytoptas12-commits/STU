@@ -47,6 +47,7 @@ class FakeOpenAI:
         # override the judge: return the response text, an httpx.Response, or raise (e.g. httpx.ReadTimeout)
         self.judge: Optional[Callable[[list], object]] = None
         self.vlm: Optional[Callable[[str], dict]] = None  # override VLM table extraction (page text -> JSON)
+        self.plan_extra: dict = {}  # fields merged into every retrieval plan (e.g. spec_phrasing)
         self.reasoning = ""
         self.rate_limited = 0      # answer this many embedding requests with HTTP 429 first
         self.retry_after = "2"
@@ -140,7 +141,7 @@ class FakeOpenAI:
         return json.dumps({"standalone_question": q, "english_question": q, "search_queries": [q],
                            "keywords": params or q.split()[:4], "parameters": params, "question_type": qtype,
                            "needs_reasoning": qtype == "comparison", "compatibility": compat,
-                           "missing_conditions": missing})
+                           "missing_conditions": missing, **self.plan_extra})
 
     def _meta(self, msgs) -> str:
         txt = _text(msgs[-1]["content"])
