@@ -302,3 +302,51 @@ def test_judge_sees_the_rows_a_claim_relies_on():
     out = judge_excerpt(table, "tX550 is 650 ns [1]", 6000)
     assert len(out) <= 6000 and "| tX550 | 650 ns |" in out and out.startswith("Table 5 Timing")
     assert judge_excerpt("short", "x", 6000) == "short"
+
+
+# ------------------------------------------------------------------------------ values printed in tables
+
+def _det(source_text: str, claim: str, param=None) -> list[str]:
+    from techrag.store import ParameterRow
+
+    reg = SourceRegistry()
+    if param:
+        reg.add_parameter(ParameterRow(1, 1, None, "ddr", 12, "", "Table 6 Recommended DC operating conditions",
+                                       "Supply voltage", "VDD", *param, "V", "", "", True, "JESD79-4C",
+                                       "grounded"), {})
+    else:
+        reg.add_passage(Passage(1, "JESD79-4C", "d.pdf", "ddr", "s", 12, 12, "text", source_text, 1.0, [1], [1]))
+    claims = parse_answer(claim).claims
+    deterministic_check(claims, reg)
+    return claims[0].reasons
+
+
+@pytest.mark.parametrize("source, claim", [
+    ("Supply Voltage VDD 1.14 1.2 1.26 V", "VDD typ 1.2 V'tur [1]."),
+    ("Parameter Symbol Min Typ Max Unit\nSupply Voltage VDD 1.14 1.2 1.26 V", "VDD en az 1.14 V'tur [1]."),
+    ("Symbol | Min | Typ | Max | Units\nVDD | 1.14 | 1.20 | 1.26 | V", "VDD tipik 1,2 V'tur [1]."),
+    ("Supply Voltage\nVDD\n1.14\n1.2\n1.26\nV", "VDD max 1.26 V and min 1.14 V [1]."),
+    ("| Parameter | Min (V) | Max (V) |\n|---|---|---|\n| VDD | 1.14 | 1.26 |", "VDD max is 1.26 V [1]."),
+    ("The differential output swing is 800 mVpp minimum.", "The swing is at least 800 mV [1]."),
+    ("Supports 1.2-V and 1.8-V signaling.", "1.2 V signaling is supported [1]."),
+    ("VDD = 1.2 V ± 0.06 V", "VDD is 1200 mV ± 60 mV [1]."),
+])
+def test_values_whose_unit_stands_in_its_own_table_cell_are_found(source, claim):
+    assert _det(source, claim) == []
+
+
+@pytest.mark.parametrize("source, claim", [
+    ("Symbol | Min | Typ | Max | Units\nVDD | 1.14 | 1.20 | 1.26 | V", "VDD tipik 1.25 V'tur [1]."),
+    ("Symbol | Min | Typ | Max | Units\nVDD | 1.14 | 1.20 | 1.26 | V", "VDD tipik 1.2 ns'dir [1]."),
+    ("Section 3.2 describes VDD.", "VDD 3.2 V'tur [1]."),
+    ("tRFC 350 ns\nVDD 1.2 V", "VDD 350 V'tur [1]."),
+])
+def test_table_reading_does_not_accept_other_values(source, claim):
+    assert any("not found in the cited sources" in r for r in _det(source, claim))
+
+
+def test_verified_parameter_row_values_are_found_with_their_unit():
+    row = ("1.14", "1.2", "1.26")
+    assert _det("", "VDD typ değeri 1.2 V'tur [1].", row) == []
+    assert _det("", "VDD 1140 mV ile 1260 mV arasındadır [1].", row) == []
+    assert _det("", "VDD typ değeri 1.3 V'tur [1].", row)

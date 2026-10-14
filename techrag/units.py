@@ -36,9 +36,12 @@ _fixed = [u for u in _units_sorted if not BASES[u][2]]
 UNIT_RE = (r"(?:" + "|".join(re.escape(u) for u in _fixed) + r"|(?:[pnuµμmkKMGT])?(?:"
            + "|".join(re.escape(u) for u in _prefixable) + r"))")
 NUM_RE = r"[-+±]?\d+(?:[.,]\d+)*"
+# Voltage/current spellings with a qualifier glued to the unit: 800 mVpp, 5 VDC, 3.3Vaux, 1 Arms. The number and
+# its unit are what the verifier compares; whether "peak-to-peak" was kept is the judge's question.
+_SUFFIX = r"(?P<suf>pp|p-p|ppd|PP|P-P|dc|DC|ac|AC|rms|RMS|pk|PK|aux)?"
 _QTY = re.compile(
     r"(?<![\w.,])(?P<a>" + NUM_RE + r")(?:\s*(?:–|-|to|ile|~|\.\.\.?)\s*(?P<b>" + NUM_RE + r"))?"
-    r"\s?(?P<u>" + UNIT_RE + r")(?![A-Za-z0-9])"
+    r"(?:\s?|-)(?P<u>" + UNIT_RE + r")" + _SUFFIX + r"(?![A-Za-z0-9])"   # "1.2 V", "1.2V", "1.2-V signaling"
 )
 
 
@@ -116,6 +119,8 @@ def find_quantities(text: str) -> list[Quantity]:
         if not info:
             continue
         base, factor = info
+        if m.group("suf") and base not in ("V", "A"):
+            continue
         for key in ("a", "b"):
             num = m.group(key)
             if not num:
@@ -123,6 +128,69 @@ def find_quantities(text: str) -> list[Quantity]:
             vals = tuple(v * factor for v in parse_number(num))
             if vals:
                 out.append(Quantity(m.group(0), num, m.group("u"), base, vals))
+    return out
+
+
+_CELL_SPLIT = re.compile(r"[\s|;]+")
+_KEYED = re.compile(r"^(?:min|typ|max|nom|minimum|typical|maximum|nominal)[=:]", re.I)
+_PLAIN = re.compile(r"^[-+±−–]?\d+(?:[.,]\d+)*$")
+_HEAD_UNIT = re.compile(r"[\(\[]\s*(" + UNIT_RE + r")\s*[\)\]]")
+
+
+def _unit_token(tok: str) -> Optional[str]:
+    t = tok.strip(" .,:()[]")
+    m = re.fullmatch(r"(" + UNIT_RE + r")" + _SUFFIX, t)
+    if not m or unit_info(m.group(1)) is None:
+        return None
+    if m.group("suf") and unit_info(m.group(1))[0] not in ("V", "A"):
+        return None
+    return m.group(1)
+
+
+def _quantity(num: str, unit: str) -> Optional[Quantity]:
+    info = unit_info(unit)
+    vals = tuple(v * info[1] for v in parse_number(num)) if info else ()
+    return Quantity(f"{num} {unit}", num, unit, info[0], vals) if vals else None
+
+
+def table_quantities(text: str) -> list[Quantity]:
+    """Values whose unit is written in its own table cell or column header, as standards print them:
+    "VDD | 1.14 | 1.2 | 1.26 | V", "Min Typ Max Unit" rows, one cell per line, "min=1.14 | typ=1.2 ; V",
+    "| Min (V) | Max (V) |". Only a run of plain numbers directly followed by a unit cell gets that unit;
+    find_quantities() still covers "1.2 V" written together."""
+    out: list[Quantity] = []
+    text = normalize_signs(text)
+    run: list[str] = []
+    for tok in _CELL_SPLIT.split(text):
+        if not tok:
+            continue
+        val = _KEYED.sub("", tok)
+        if _PLAIN.match(val):
+            run.append(val)
+            continue
+        unit = _unit_token(tok)
+        if unit and run:
+            out += [q for q in (_quantity(n, unit) for n in run[-8:]) if q]
+        run = []
+    # markdown tables with the unit in the column header: "| Parameter | Min (V) | Max (V) |"
+    cols: dict[int, str] = {}
+    for line in text.split("\n"):
+        s = line.strip()
+        if not s.startswith("|"):
+            cols = {}
+            continue
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        if all(re.fullmatch(r":?-{2,}:?", c) for c in cells if c):
+            continue
+        head = {i: m.group(1) for i, c in enumerate(cells) for m in [_HEAD_UNIT.search(c)] if m}
+        if head and not any(_PLAIN.match(_KEYED.sub("", c)) for c in cells):
+            cols = head
+            continue
+        for i, unit in cols.items():
+            if i < len(cells) and _PLAIN.match(cells[i]):
+                q = _quantity(cells[i], unit)
+                if q:
+                    out.append(q)
     return out
 
 

@@ -24,7 +24,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Callable, Optional, Sequence
 
 from techrag.prompts import HEADINGS, NOT_FOUND
-from techrag.units import find_quantities
+from techrag.units import _quantity, find_quantities, table_quantities
 
 SUPPORTED, UNSUPPORTED, UNVERIFIED, NOT_CHECKED = "supported", "unsupported", "unverified", "not_checked"
 VERDICTS = ("supported", "partial", "unsupported")
@@ -308,12 +308,28 @@ def _user_marked(text: str, value: str) -> bool:
     return bool(_USER_MARK.search(text[start:m.start() if m else len(text)]))
 
 
+def _source_quantities(src, text: str) -> list:
+    """Every value a source states, with its unit: written together ("1.2 V"), in a table whose unit stands in its
+    own cell or column header, and - for a verified parameter row - its min/typ/max with the row's unit."""
+    out = find_quantities(text) + table_quantities(text)
+    if src.kind == "parameter":
+        p = (src.extra or {}).get("param") or {}
+        for key in ("min", "typ", "max"):
+            v = str(p.get(key) or "").strip()
+            if v and p.get("unit"):
+                for num in re.findall(r"[-+±−]?\d+(?:[.,]\d+)*", v):
+                    q = _quantity(num, str(p["unit"]).strip())
+                    if q:
+                        out.append(q)
+    return out
+
+
 def deterministic_check(claims: list[Claim], registry) -> None:
     """Sets status/reasons/values on each claim in place (registry: tools.SourceRegistry). Only what a claim
     CITES counts as its evidence; the user's question is a separate 'user input' source."""
     pools_all = {s.n: _evidence(s) for s in registry.items}          # incl. page/section: for references
     pools_val = {s.n: _value_evidence(s) for s in registry.items}    # for values
-    qty_all = {n: find_quantities(t) for n, t in pools_val.items()}
+    qty_all = {s.n: _source_quantities(s, pools_val[s.n]) for s in registry.items}
     for c in claims:
         c.reasons, c.values = [], []
         unverifiable = False

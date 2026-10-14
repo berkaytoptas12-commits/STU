@@ -1,5 +1,17 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.6.1 — tablodaki değerler doğrulamada bulunuyor
+- **Düzeltme:** birimi ayrı sütunda yazan tablolardaki değerler ("Min Typ Max Unit", "VDD | 1.14 | 1.2 | 1.26 | V",
+  hücreleri ayrı satırda gelen tablolar, "Min (V)" gibi başlıkta birim) ve doğrulanmış parametre satırları
+  doğrulamada kaynakta bulunamıyordu; bu yüzden özellikle gerilim değerleri içeren doğru ifadeler "kaynaklarla
+  doğrulanamadı" diye cevaptan çıkarılıyordu. Artık değer, satırındaki veya sütun başlığındaki birimle okunuyor.
+  "800 mVpp", "5 VDC", "3.3Vaux", "1.2-V" yazımları da tanınıyor; 1200 mV = 1,2 V gibi birim çevrimleri eskisi
+  gibi geçerli.
+- Doğrulama kuralı gevşetilmedi: değer yine atıf yapılan kaynakta, aynı birimle (veya eşdeğer çevrimiyle) yazıyor
+  olmalı ve bağımsız denetçi ifadeyi ayrıca onaylamalı. Kaynakta olmayan değer (ör. tabloda 1.26 V varken 1.25 V),
+  başka birimle yazılmış değer veya bölüm numarası ("3.2") değer kanıtı sayılmıyor.
+- Yeniden indeksleme gerekmez; düzeltme cevap doğrulamasında.
+
 ### 0.6.0 — netleştirici sorular, kalite raporu, mikroçip simgesi, paragraf cevaplar
 - **Netleştirici sorular:** cevap, soruda belirtilmeyen bir koşula göre gerçekten değişiyorsa cevap yerine en
   fazla üç kısa soru sorulur — kanıt birden çok standart/sürümden geliyorsa sürüm; doğrulanmış tablo satırları
