@@ -31,7 +31,6 @@ from techrag.units import (NON_SI_UNITS, base_unit, find_quantities, number_ambi
 
 PROMPT_VERSION = "vlm-tables-v1"
 
-_CAPTION = re.compile(r"^\s*(?:table|tablo)\s+[A-Z]?[\d.\-–]+", re.I | re.M)
 _FIGURE = re.compile(r"^\s*(?:figure|fig\.|şekil)\s+[A-Z]?[\d.\-–]+", re.I | re.M)
 _HINTS = re.compile(r"\b(min(?:imum)?|max(?:imum)?|typ(?:ical)?|nom(?:inal)?|parameter|symbol|units?|"
                     r"conditions?|notes?|description|value|default|range)\b", re.I)
@@ -109,11 +108,104 @@ def _cell(v) -> str:
 
 # ------------------------------------------------------------------------------ page selection
 
-def page_table_score(text: str, drawings: int = 0, pdf_tables: int = 0) -> float:
-    score = 3.0 * min(len(_CAPTION.findall(text)), 2)
+# A table caption starts its line and is followed by a title, a dash/colon or nothing - not by running text
+# ("Table 4-2 shows ..." in a wrapped paragraph is a reference, not a caption).
+_CAPTION_START = re.compile(r"^\s*(?:table|tablo)\s+[A-Z]?\d+(?:[.\-–]\d+)*[a-z]?\s*", re.I)
+
+
+def table_captions(text: str) -> int:
+    n = 0
+    for line in text.splitlines():
+        m = _CAPTION_START.match(line)
+        if not m:
+            continue
+        rest = line[m.end():]
+        if not rest or rest[0] in "—–:.-(" or rest[0].isupper() or rest[0].isdigit():
+            n += 1
+    return n
+
+
+def _rendered_words(geom) -> list[tuple[float, float, float, float]]:
+    """Word boxes as the page is shown (rotation applied); sideways text is turned so that lines run along x."""
+    a, b, c, d, e, f = geom.matrix
+    boxes = []
+    for w in geom.words:
+        xs = (a * w.x0 + c * w.y0 + e, a * w.x1 + c * w.y1 + e)
+        ys = (b * w.x0 + d * w.y0 + f, b * w.x1 + d * w.y1 + f)
+        boxes.append((min(xs), min(ys), max(xs), max(ys), len(w.text)))
+    tall = sum(1 for x0, y0, x1, y1, n in boxes if n >= 3 and (y1 - y0) > 1.5 * (x1 - x0))
+    wide = sum(1 for x0, y0, x1, y1, n in boxes if n >= 3 and (x1 - x0) > (y1 - y0))
+    if tall > wide:   # a table printed sideways on the page
+        return [(y0, x0, y1, x1) for x0, y0, x1, y1, _ in boxes]
+    return [(x0, y0, x1, y1) for x0, y0, x1, y1, _ in boxes]
+
+
+def aligned_rows(geom, min_cells: int = 3) -> int:
+    """Text lines that sit in a grid of columns shared with other lines: a table without ruling lines.
+
+    A line is split into cells where the gap between two words is wider than about one line height (word
+    spacing in running text is a fraction of that). Each cell's left edge, centre and right edge are anchors;
+    an anchor used by three or more lines is a column. A line counts when at least three of its cells stand on
+    a column. Running text, also in two-column layouts, has no such lines."""
+    if geom is None or len(getattr(geom, "words", ()) or ()) < 9:
+        return 0
+    lines: list[list] = []
+    for x0, y0, x1, y1 in sorted(_rendered_words(geom), key=lambda b: ((b[1] + b[3]) / 2, b[0])):
+        h, cy = max(y1 - y0, 1.0), (y0 + y1) / 2
+        if lines and abs(cy - lines[-1][0]) <= 0.45 * h:
+            lines[-1][1].append((x0, x1, h))
+        else:
+            lines.append([cy, [(x0, x1, h)]])
+    rows: list[list[tuple[float, float]]] = []
+    for _, words in lines:
+        words.sort()
+        hs = sorted(w[2] for w in words)
+        gap = max(hs[len(hs) // 2] * 1.0, 6.0)
+        cells = [[words[0][0], words[0][1]]]
+        for x0, x1, _ in words[1:]:
+            if x0 - cells[-1][1] > gap:
+                cells.append([x0, x1])
+            else:
+                cells[-1][1] = max(cells[-1][1], x1)
+        if len(cells) >= min_cells:
+            rows.append([(c0, c1) for c0, c1 in cells])
+    if len(rows) < 3:
+        return 0
+    support: dict[tuple[int, int], set[int]] = {}
+    for i, cells in enumerate(rows):
+        for c0, c1 in cells:
+            for kind, x in ((0, c0), (1, (c0 + c1) / 2), (2, c1)):
+                b = int(round(x / 4.0))
+                for k in (b - 1, b, b + 1):
+                    support.setdefault((kind, k), set()).add(i)
+    count = 0
+    for i, cells in enumerate(rows):
+        on_column = 0
+        for c0, c1 in cells:
+            if any(len(support.get((kind, int(round(x / 4.0))), ())) >= 3
+                   for kind, x in ((0, c0), (1, (c0 + c1) / 2), (2, c1))):
+                on_column += 1
+        if on_column >= min_cells:
+            count += 1
+    return count if count >= 3 else 0
+
+
+def table_signal(text: str, pdf_tables: int = 0, aligned: int = 0) -> bool:
+    """A page goes to the VLM only with a sign of a real table: a table caption, a table found by the PDF table
+    detector, or text aligned in columns. Values and words like 'min/max' in running text are not enough."""
+    return bool(pdf_tables) or aligned >= 3 or table_captions(text) > 0
+
+
+def page_table_score(text: str, drawings: int = 0, pdf_tables: int = 0, aligned: int = 0) -> float:
+    """Cheap score that ranks table pages; 0 for a page without a table signal (see table_signal)."""
+    if not table_signal(text, pdf_tables, aligned):
+        return 0.0
+    score = 3.0 * min(table_captions(text), 2)
     score += min(len({m.lower()[:3] for m in _HINTS.findall(text)}), 6) * 0.75
     score += min(len(find_quantities(text)) / 4.0, 5.0)
     score += 3.0 * min(pdf_tables, 1)
+    if aligned >= 3:
+        score += 3.0 + min(aligned / 4.0, 2.0)
     if drawings >= 20:
         score += 1.0
     return score
@@ -123,20 +215,29 @@ def is_figure_page(text: str, drawings: int, images: int) -> bool:
     return bool(_FIGURE.search(text)) and (images > 0 or drawings >= 30)
 
 
-def page_candidates(page_texts: dict[int, str], page_stats: dict, min_score: float) -> list[int]:
-    """Pages whose cheap table score reaches the threshold, best first."""
+def page_candidates(page_texts: dict[int, str], page_stats: dict, min_score: float,
+                    geoms: Optional[dict] = None) -> list[int]:
+    """Pages with a table signal whose cheap table score reaches the threshold, best first."""
     scored = []
     for page, text in page_texts.items():
         st = page_stats.get(page)
-        s = page_table_score(text, getattr(st, "drawings", 0), getattr(st, "pdf_tables", 0))
+        pdf_tables = getattr(st, "pdf_tables", 0)
+        aligned = 0
+        if geoms and not pdf_tables:
+            try:
+                aligned = aligned_rows(geoms.get(page))
+            except Exception:   # a page geometry that cannot be read only loses this signal
+                aligned = 0
+        s = page_table_score(text, getattr(st, "drawings", 0), pdf_tables, aligned)
         if s >= min_score:
             scored.append((s, page))
     scored.sort(reverse=True)
     return [p for _, p in scored]
 
 
-def select_pages(page_texts: dict[int, str], page_stats: dict, min_score: float, max_pages: int) -> list[int]:
-    return sorted(page_candidates(page_texts, page_stats, min_score)[:max_pages])
+def select_pages(page_texts: dict[int, str], page_stats: dict, min_score: float, max_pages: int,
+                 geoms: Optional[dict] = None) -> list[int]:
+    return sorted(page_candidates(page_texts, page_stats, min_score, geoms)[:max_pages])
 
 
 # ------------------------------------------------------------------------------ validation

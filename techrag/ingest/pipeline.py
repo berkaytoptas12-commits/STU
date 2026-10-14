@@ -556,7 +556,7 @@ class Ingestor:
             q.vlm = {"enabled": False, "off_reason": "disabled"}
             q.issue("vlm_disabled", "vlm")
         else:
-            cands = page_candidates(texts, doc.page_stats, cfg.vision.min_page_score)
+            cands = page_candidates(texts, doc.page_stats, cfg.vision.min_page_score, doc.pages)
             pages = sorted(cands[:cfg.vision.max_pages_per_doc])
             over = sorted(cands[cfg.vision.max_pages_per_doc:])
             q.vlm = {"enabled": True, "selected": pages, "over_limit": over,

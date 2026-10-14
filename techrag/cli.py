@@ -117,19 +117,16 @@ def cmd_purge_missing(cfg: Config, args) -> int:
 def cmd_inspect(cfg: Config, args) -> int:
     from techrag.ingest.pipeline import build_chunks, page_texts
     from techrag.ingest.structure import SECTION_SEP
-    from techrag.ingest.vlm import page_table_score
+    from techrag.ingest.vlm import page_candidates
 
     doc, blocks, chunks = build_chunks(cfg, Path(args.file))
     _print(f"{doc.title}: {doc.n_pages} pages, {len(doc.toc)} outline entries, {len(blocks)} blocks, {len(chunks)} chunks")
     for w in doc.warnings:
         _print(f"  warning: {w}")
     if args.table_pages:
-        texts = page_texts(blocks)
-        scored = sorted(((page_table_score(texts[p], doc.page_stats.get(p).drawings if p in doc.page_stats else 0,
-                                           doc.page_stats.get(p).pdf_tables if p in doc.page_stats else 0), p)
-                         for p in texts), reverse=True)
-        sel = [p for s, p in scored if s >= cfg.vision.min_page_score]
-        _print(f"  VLM table pages (score >= {cfg.vision.min_page_score}): {len(sel)} -> {sorted(sel)[:60]}")
+        sel = page_candidates(page_texts(blocks), doc.page_stats, cfg.vision.min_page_score, doc.pages)
+        _print(f"  VLM table pages (table signal, score >= {cfg.vision.min_page_score}): {len(sel)} -> "
+               f"{sorted(sel)[:60]}")
     for c in chunks[args.start:args.start + args.limit]:
         _print(f"\n--- chunk {c.ordinal} [{c.kind}] p.{c.page_start}-{c.page_end} ~{c.tokens} tok")
         _print(f"    section: {SECTION_SEP.join(c.section) or '-'}")
