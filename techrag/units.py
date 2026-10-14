@@ -111,9 +111,17 @@ def normalize_signs(text: str) -> str:
     return re.sub(r"(?<![\w.,])[–—](?=\d)", "-", text)
 
 
+# A footnote mark set apart at extraction: "295⁽1⁾" is the value 295 with footnote 1.
+_FOOTNOTE_MARK = re.compile(r"⁽[^⁾\s]{1,6}⁾")
+
+
+def strip_marks(text: str) -> str:
+    return _FOOTNOTE_MARK.sub("", text)
+
+
 def find_quantities(text: str) -> list[Quantity]:
     out: list[Quantity] = []
-    text = normalize_signs(text)
+    text = strip_marks(normalize_signs(text))
     for m in _QTY.finditer(text):
         info = unit_info(m.group("u"))
         if not info:
@@ -159,7 +167,7 @@ def table_quantities(text: str) -> list[Quantity]:
     "| Min (V) | Max (V) |". Only a run of plain numbers directly followed by a unit cell gets that unit;
     find_quantities() still covers "1.2 V" written together."""
     out: list[Quantity] = []
-    text = normalize_signs(text)
+    text = strip_marks(normalize_signs(text))
     run: list[str] = []
     for tok in _CELL_SPLIT.split(text):
         if not tok:
@@ -168,6 +176,8 @@ def table_quantities(text: str) -> list[Quantity]:
         if _PLAIN.match(val):
             run.append(val)
             continue
+        if run and val.lower() in _EMPTY_VALUES:
+            continue            # an empty cell ("-", "n/a") inside the row: "tRFC | 295 | - | ns"
         unit = _unit_token(tok)
         if unit and run:
             out += [q for q in (_quantity(n, unit) for n in run[-8:]) if q]

@@ -1,5 +1,33 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.7.1 — tablo eşleştirme ve okuma yardımı
+Gerçek bir kütüphanede VLM tablolarının yalnızca %14'ü, parametre satırlarının %10'u PDF metniyle hücre hücre
+eşleşebiliyordu; eşleşmeyenler cevapta kullanılamıyordu ve aramanın bulduğu temiz tablo yerine modele karışık
+PDF metni gidiyordu ("rerank %98 ama bulunamadı"). Bu sürüm standartların üç yaygın dizgi biçimini tanıyor ve
+eşleşmeyen tabloyu okuma yardımı olarak veriyor. Doğrulama kuralı gevşetilmedi.
+- **Alt simgeli semboller:** "t" + alt simge "RFC" (metin katmanında iki kelime) artık "tRFC" olarak bulunuyor.
+- **İki satıra taşan parametre adı:** ad satır satır, aynı hücrede alt alta aranıyor; ikinci satır doğru satırı
+  belirliyor ("… for 8Gb devices" ile "… for 16Gb devices" karışmıyor).
+- **Dipnot işaretleri:** değerden sonra yükseltilmiş işaret ("295" + üst simge "1") metin katmanında "2951" diye
+  birleşiyordu; artık ayrılıyor ve değer sayılmıyor. Metinde ve tablolarda "295⁽1⁾", on üzeri gösterimler
+  "10^-12" olarak yazılıyor — model ve doğrulama 2951 okumuyor. "2951" artık basılı değer kabul edilmiyor.
+- **Okuma yardımı:** arama PDF metniyle eşleşmeyen bir VLM tablosu bulursa model sayfanın PDF metnini ve yanında
+  o tabloyu "atıf yapılamaz okuma yardımı" olarak alıyor. Doğrulama, denetçi ve kanıt konumu yalnızca PDF metnine
+  bakıyor; yalnızca okuma yardımında geçen değer "doğrulanamadı" sayılıyor.
+- **Rerank puanı:** gösterilen puan artık modele verilen metnin puanı (önceden modelin hiç görmediği temiz
+  tablonun puanı gösterilebiliyordu).
+- **Doğrulama, boş hücreli tablo satırlarını okuyor:** "| tRFC | 295 | - | ns |" gibi satırlarda (Max boş, birim
+  ayrı sütunda) 295 değeri ns birimiyle eşleşmiyordu; doğru "tRFC 295 ns" ifadesi kaldırılabiliyordu. Artık "-",
+  "n/a" gibi boş hücreler değerle birimi ayırmıyor; "295⁽1⁾" 295 olarak okunuyor. Bu düzeltme yeniden
+  indeksleme gerektirmez.
+- **Mevcut kütüphane için:** iyileştirmeler yeni indekslenen belgelere uygulanır. Hepsine uygulamak için
+  Kütüphane → "yeniden oluştur" işaretli → "Tümünü yeniden tara". VLM cevapları önbellekten gelir (yeniden VLM
+  çağrısı yapılmaz), metni değişmeyen parçaların embedding'i korunur. Önce ve sonra kalite raporundaki tablo ve
+  parametre satırı oranlarını, Değerlendirme penceresinde aynı soru setinin sonuçlarını karşılaştırabilirsiniz.
+- Doğrulanan: sentetik PDF'lerle (alt simge, taşan ad, dipnot işareti, I²C/1st/mm² gibi değişmemesi gerekenler,
+  min/max yer değişimi ve yanlış satır gibi olumsuz durumlar) ve sahte model sunucusuyla testler. Gerçek standart
+  PDF'lerinde eşleşme oranının ne kadar artacağı ölçülmedi.
+
 ### 0.7.0 — doğruluk ve ölçüm iyileştirmeleri
 **Doğruluk / güvenilirlik**
 - **Denetçi istekleri bağlama sığıyor:** denetçiye gönderilen istekler modelin bağlam uzunluğuna (ayardaki değer

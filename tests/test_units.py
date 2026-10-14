@@ -42,3 +42,17 @@ def test_signs_and_separators_are_kept_apart():
     q = find_quantities("−40 °C to 85 °C; 1–5 ns; –3.3 V")
     assert [v for x in q for v in x.values] == [-40.0, 85.0, 1e-9, 5e-9, -3.3]
     assert value_kind("−40") == "number" and to_si("−40", "V") == -40.0
+
+
+def test_table_values_with_empty_cells_and_footnote_marks():
+    from techrag.units import find_quantities, table_quantities
+
+    def q(text):
+        return [x.text for x in table_quantities(text)]
+    assert q("| tRFC | 295 | - | ns |") == ["295 ns"], "an empty Max cell does not cut the value from its unit"
+    assert q("| tREFI | - | 7.8 | us |") == ["7.8 us"]
+    assert q("| tRFC | 295⁽1⁾ | - | ns |") == ["295 ns"], "295 with footnote 1"
+    assert q("| tRFC | 2951 | - | ns |") == ["2951 ns"], "a different number stays different"
+    assert q("| tXS | 5 | n/a | tCK |") == [], "clock cycles have no SI unit"
+    assert q("| tA | 5 | - |\n| tB | - | ns |") == [], "a row label in between cuts the run"
+    assert [x.text for x in find_quantities("tRFC is 295⁽1⁾ ns")] == ["295 ns"]
