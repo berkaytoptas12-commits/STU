@@ -202,6 +202,7 @@ class AnswerConfig:
     judge: bool = True              # fresh-context entailment judge per claim (extra LLM calls)
     judge_batch: int = 8
     regenerate: bool = True         # one regeneration pass for failing claims
+    repair_citations: bool = True   # add the citation of the given source that states a claim's values
     failed_claims: str = "strip"    # strip | flag  (after the regeneration pass)
     history_turns: int = 3
 

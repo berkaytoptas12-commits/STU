@@ -435,3 +435,28 @@ def test_quality_report_dialog(ui):
     assert not ui.evaluate("() => document.querySelector('#dlg-quality').open")
     ui.wait_for_function("() => /Sayfa 6/.test((document.querySelector('#tab-source .pv-label') || {}).textContent || '')")
     _wait_img(ui)
+
+
+def test_removal_reasons_in_turkish_and_citation_repair_note(ui, fake, cfg):
+    from fakeserver import sources_in
+
+    cfg.answer.regenerate = False
+
+    def answer(msgs, tools):
+        src = sources_in(msgs)
+        right = next(k for k in sorted(src) if "295" in src[k])
+        wrong = next(k for k in sorted(src) if "295" not in src[k] and k != right)
+        return {"content": f"For an 8Gb DDR5 device tRFC is 295 ns [{wrong}]. The wake-up time is 999 ns [{right}]."}
+    fake.answer = answer
+    _ask(ui, "DDR5 tRFC değeri nedir?")
+    ui.click(".msg.assistant .verify details >> nth=0")
+    ui.click(".msg.assistant .verify details >> nth=1")
+    verify = ui.inner_text(".msg.assistant .verify")
+    assert "'999 ns' değeri atıf yapılan kaynaklarda bulunamadı." in verify, verify
+    assert "not found in the cited sources" not in verify, "the English reason text is not shown in Turkish"
+    assert "atıf düzeltildi" in verify and "1 ifadede atıf düzeltildi" in verify, verify
+    ui.click(".lang[data-lang=en]")
+    _ask(ui, "DDR5 tRFC value?")
+    last = ui.locator(".msg.assistant .verify").last
+    last.locator("details").first.click()
+    assert "Value '999 ns' was not found in the cited sources." in last.inner_text()

@@ -81,6 +81,25 @@ const I18N = {
     qOpenReport: "Kalite raporu",
     vRegenerated: "Cevap bir kez düzeltilerek yeniden üretildi.",
     judgeDone: "bağımsız denetçi tamamlandı", judgeFailed: "bağımsız denetçi tamamlanamadı", judgeOff: "bağımsız denetçi kapalı", judgeNone: "denetçi gerekmedi",
+    rc_invalid_citation: "Var olmayan kaynağa atıf: {sources}.",
+    rc_no_citation: "Atıf yok: teknik bir ifade dayandığı kaynağı göstermeli.",
+    rc_no_citation_inf: "Atıf yok: bir mühendislik yorumu, öncüllerinin geldiği kaynakları göstermeli.",
+    rc_unverified_source: "Yalnızca doğrulanmamış bir çıkarıma ({sources}) dayanıyor; kanıt olarak kullanılamaz.",
+    rc_calc_input_unsourced: "Hesaplama [{source}], hiçbir kaynakta bulunmayan girdi kullanıyor: {values}.",
+    rc_calc_no_input: "Hesaplama [{source}] kaynaktan alınmış bir girdi içermiyor.",
+    rc_value_unverified_extraction: "'{value}' değeri yalnızca doğrulanmamış bir çıkarımda geçiyor.",
+    rc_value_image_only: "'{value}' değeri yalnızca sayfa görüntüsünün okunmasında geçiyor, PDF'in metin katmanında yok.",
+    rc_value_not_found: "'{value}' değeri atıf yapılan kaynaklarda bulunamadı.",
+    rc_value_elsewhere: "'{value}' değeri atıf yapılan kaynaklarda yok; {elsewhere} kaynağında geçiyor (yanlış atıf).",
+    rc_number_unverified_extraction: "'{value}' sayısı yalnızca doğrulanmamış bir çıkarımda geçiyor.",
+    rc_number_not_found: "'{value}' sayısı atıf yapılan kaynaklarda bulunamadı.",
+    rc_user_value_as_documented: "Soruda kullanıcının verdiği bir değer, belgede yazıyormuş gibi sunulmuş; kullanıcı girdisi / varsayım olduğu belirtilmeli.",
+    rc_judge_unsupported: "Bağımsız denetleyici: atıf yapılan kaynaklar bu ifadeyi desteklemiyor.",
+    rc_judge_partial: "Bağımsız denetleyici: kaynaklar ifadeyi yalnızca kısmen destekliyor.",
+    rc_judge_no_verdict: "Denetleyici bu ifade için geçerli bir karar döndürmedi (teknik sorun; ifade yanlış bulunmadı, doğrulanamadı).",
+    rc_judge_error: "Denetleyiciye ulaşılamadı ya da yanıtı tamamlanmadı (teknik sorun; ifade yanlış bulunmadı, doğrulanamadı).",
+    rcDetail: "gerekçe: {0}", rcTechnical: "teknik ayrıntı: {0}",
+    citeFixed: "atıf düzeltildi: {0} eklendi ({1} bu kaynakta geçiyor)", vCiteFixed: "{0} ifadede atıf düzeltildi",
     removedList: "Çıkarılan / işaretlenen ifadeler", claimDetails: "İfade ayrıntıları", usesUser: "kullanıcı girdisi içerir", usesCalc: "hesap içerir",
     st_supported: "destekleniyor", st_unsupported: "desteklenmiyor", st_unverified: "doğrulanamadı", st_not_checked: "uygulanmadı",
     prev: "‹ Önceki", next: "Sonraki ›", zoom: "Yakınlaştır", zoomIn: "Yakınlaştır", zoomOut: "Uzaklaştır", openOriginal: "Orijinal dosyayı aç",
@@ -218,6 +237,25 @@ const I18N = {
     qOpenReport: "Quality report",
     vRegenerated: "The answer was corrected and regenerated once.",
     judgeDone: "independent judge completed", judgeFailed: "independent judge NOT completed", judgeOff: "independent judge off", judgeNone: "judge not needed",
+    rc_invalid_citation: "Cites a source that does not exist: {sources}.",
+    rc_no_citation: "No citation: a technical statement must cite the source it comes from.",
+    rc_no_citation_inf: "No citation: an engineering inference must cite the sources its premises come from.",
+    rc_unverified_source: "Cites only an unverified extraction ({sources}); not usable as evidence.",
+    rc_calc_input_unsourced: "Calculation [{source}] uses input(s) found in no source: {values}.",
+    rc_calc_no_input: "Calculation [{source}] has no input taken from a source.",
+    rc_value_unverified_extraction: "Value '{value}' appears only in an unverified extraction.",
+    rc_value_image_only: "Value '{value}' appears only in a reading of the page image, not in the PDF text layer.",
+    rc_value_not_found: "Value '{value}' was not found in the cited sources.",
+    rc_value_elsewhere: "Value '{value}' is not in the cited sources; it appears in {elsewhere} (wrong citation).",
+    rc_number_unverified_extraction: "Number '{value}' appears only in an unverified extraction.",
+    rc_number_not_found: "Number '{value}' was not found in the cited sources.",
+    rc_user_value_as_documented: "A value given by the user in the question is presented as documented; say it is the user's input / an assumption.",
+    rc_judge_unsupported: "Independent checker: the cited sources do not support this statement.",
+    rc_judge_partial: "Independent checker: the sources support the statement only partly.",
+    rc_judge_no_verdict: "The checker returned no valid verdict for this statement (technical problem; the statement was not found wrong, it could not be verified).",
+    rc_judge_error: "The checker could not be reached or its reply was incomplete (technical problem; the statement was not found wrong, it could not be verified).",
+    rcDetail: "reason: {0}", rcTechnical: "technical detail: {0}",
+    citeFixed: "citation repaired: {0} added ({1} appears in that source)", vCiteFixed: "citation repaired in {0} statement(s)",
     removedList: "Removed / flagged statements", claimDetails: "Statement details", usesUser: "uses user input", usesCalc: "uses a calculation",
     st_supported: "supported", st_unsupported: "unsupported", st_unverified: "unverified", st_not_checked: "not applied",
     prev: "‹ Prev", next: "Next ›", zoom: "Zoom", zoomIn: "Zoom in", zoomOut: "Zoom out", openOriginal: "Open original file",
@@ -887,6 +925,28 @@ function renderChips(el) {
   }
 }
 
+// Why a statement was removed, in the interface language. The verifier sends reason codes; the English reason
+// texts are the fallback for answers saved by an older version.
+const citeRefs = (ns) => (ns || []).map((n) => `[${n}]`).join(", ");
+function claimReasons(c) {
+  if (!c.codes || !c.codes.length) return (c.reasons || []).concat(c.judge && c.judge.error ? [c.judge.error] : []);
+  return c.codes.map((k) => {
+    let key = "rc_" + k.code;
+    if (k.code === "no_citation" && k.inference) key = "rc_no_citation_inf";
+    if (k.code === "value_not_found" && (k.elsewhere || []).length) key = "rc_value_elsewhere";
+    const vals = { value: k.value ?? "", sources: citeRefs(k.sources), source: k.source ?? "", elsewhere: citeRefs(k.elsewhere),
+      values: (k.values || []).join(", ") };
+    let s = t(key);
+    if (s === key) return k.detail || k.code;
+    s = s.replace(/\{(\w+)\}/g, (_, n) => vals[n] ?? "");
+    if (k.detail) s += " " + t(k.code === "judge_error" || k.code === "judge_no_verdict" ? "rcTechnical" : "rcDetail", k.detail);
+    return s;
+  });
+}
+function citeFixText(c) {
+  return t("citeFixed", `[${c.citation_fix.added}]`, (c.citation_fix.values || []).join(", "));
+}
+
 function renderVerification(el, v, confidence) {
   const box = $(".verify", el);
   if (!v) { box.hidden = true; return; }
@@ -905,6 +965,7 @@ function renderVerification(el, v, confidence) {
   if (v.status !== "clarify") {
     notes.push(!j.enabled ? t("judgeOff") : j.completed ? t("judgeDone") : j.called ? t("judgeFailed") : t("judgeNone"));
     if (v.regenerated) notes.push(t("vRegenerated"));
+    if (v.citation_fixes) notes.push(t("vCiteFixed", v.citation_fixes));
     if (confidence != null) notes.push(`rerank ${(confidence * 100).toFixed(0)}%`);
   }
   html += `<div class="small">${notes.map(esc).join(" · ")}</div>`;
@@ -912,13 +973,14 @@ function renderVerification(el, v, confidence) {
   const failed = (v.details || []).filter((c) => c.outcome === "removed" || c.outcome === "flagged");
   if (failed.length) {
     html += `<details><summary>${t("removedList")} (${failed.length})</summary><ul>${failed.map((c) =>
-      `<li><span class="badge st-${c.status}">${esc(t("st_" + c.status))}</span> ${esc(c.text)}<br><span class="small">${esc((c.reasons || []).concat(c.judge && c.judge.error ? [c.judge.error] : []).join("; "))}</span></li>`).join("")}</ul></details>`;
+      `<li><span class="badge st-${c.status}">${esc(t("st_" + c.status))}</span> ${esc(c.text)}<br><span class="small">${esc(claimReasons(c).join(" "))}</span>${c.citation_fix && c.citation_fix.added ? `<br><span class="small muted">${esc(citeFixText(c))}</span>` : ""}</li>`).join("")}</ul></details>`;
   }
   const kept = (v.details || []).filter((c) => c.outcome === "kept" || c.outcome === "flagged");
   if (kept.length) {
     html += `<details><summary>${t("claimDetails")} (${kept.length})</summary><ul>${kept.map((c) => {
       const extra = [c.uses_user_input ? t("usesUser") : "", c.uses_calculation ? t("usesCalc") : ""].filter(Boolean).join(", ");
-      return `<li><span class="badge st-${c.status}">${esc(t("st_" + c.status))}</span> ${esc(c.text)}${extra ? ` <span class="small muted">(${esc(extra)})</span>` : ""}</li>`;
+      const fix = c.citation_fix && c.citation_fix.added ? `<br><span class="small muted">${esc(citeFixText(c))}</span>` : "";
+      return `<li><span class="badge st-${c.status}">${esc(t("st_" + c.status))}</span> ${esc(c.text)}${extra ? ` <span class="small muted">(${esc(extra)})</span>` : ""}${fix}</li>`;
     }).join("")}</ul></details>`;
   }
   box.innerHTML = html;

@@ -24,6 +24,7 @@ from techrag.domains import DomainRegistry
 from techrag.embeddings import Embedder, create_embedder
 from techrag.evidence import EvidenceLocator
 from techrag.ingest.metadata import AMENDING_TYPES
+from techrag.ingest.quality import scrub
 from techrag.ingest.vlm import render_page as _render
 from techrag.llm import LLMClient, ToolsUnsupported, image_part, parse_json_object
 from techrag.prompts import (JUDGE_SYSTEM, NOT_FOUND, REGENERATE_PROMPT, answer_system_prompt,
@@ -35,7 +36,7 @@ from techrag.store import Store
 from techrag.tools import TOOL_SCHEMAS, SourceRegistry, ToolExecutor, parameter_conflicts
 from techrag.verify import (CITATION, NOT_CHECKED, SUPPORTED, UNSUPPORTED, UNVERIFIED, Claim, ParsedAnswer,
                             Verification, apply_verdict, deterministic_check, is_not_found, judge_failed,
-                            parse_answer, parse_citations, parse_verdicts, render)
+                            parse_answer, parse_citations, parse_verdicts, render, repair_citations)
 
 _UNSET = object()
 PAGE_DESCRIBE_PROMPT = ("Transcribe this page of a technical standard for an engineer. For figures, timing diagrams, "
@@ -535,6 +536,8 @@ class RAGEngine:
                 c.status = NOT_CHECKED
             return v, parsed
         deterministic_check(v.claims, registry)
+        if self.cfg.answer.repair_citations:
+            v.citation_fixes = [c.id for c in repair_citations(parsed, registry)]
         pending = [c for c in v.claims if c.status == "pending"]
         if not self.cfg.answer.judge:
             for c in pending:
@@ -641,7 +644,7 @@ class RAGEngine:
                     try:
                         verdicts = fut.result()
                     except Exception as exc:
-                        err = f"judge error: {exc.__class__.__name__}: {str(exc)[:160]}"
+                        err = f"judge error: {exc.__class__.__name__}: {scrub(exc, 160)}"
                         v.judge_errors.append(err)
                         if isinstance(exc, JudgeCutOff) or _CONTEXT_ERROR.search(str(exc)):
                             too_big.update(c.id for c in batch)

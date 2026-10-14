@@ -140,12 +140,14 @@ class Claim:
     kind: str = "fact"              # fact | inference
     status: str = "pending"         # supported | unsupported | unverified | not_checked
     reasons: list[str] = field(default_factory=list)
+    codes: list[dict] = field(default_factory=list)    # the reasons as {code, ...} (the UI words them in TR/EN)
     deterministic: str = "not_run"  # pass | fail | not_run
     judge: dict = field(default_factory=lambda: {"required": False, "called": False, "completed": False,
                                                  "verdict": "", "reason": "", "error": ""})
     values: list[dict] = field(default_factory=list)   # provenance of each value: document | calculation | user
     evidence: list[dict] = field(default_factory=list)  # locations, filled by the engine
     outcome: str = ""               # kept | flagged | removed
+    citation_fix: dict = field(default_factory=dict)  # {added: n, values: [...]} when a citation was repaired
 
     @property
     def uses_user_input(self) -> bool:
@@ -331,30 +333,41 @@ def deterministic_check(claims: list[Claim], registry) -> None:
     pools_val = {s.n: _value_evidence(s) for s in registry.items}    # for values
     qty_all = {s.n: _source_quantities(s, pools_val[s.n]) for s in registry.items}
     for c in claims:
-        c.reasons, c.values = [], []
+        c.reasons, c.codes, c.values = [], [], []
         unverifiable = False
+
+        def fail(code: str, reason: str, **kw) -> None:
+            c.reasons.append(reason)
+            c.codes.append(dict(code=code, **kw))
+
         invalid = [n for n in c.citations if registry.get(n) is None]
         if invalid:
-            c.reasons.append("cites non-existent source(s) " + ", ".join(f"[{n}]" for n in invalid))
+            fail("invalid_citation", "cites non-existent source(s) " + ", ".join(f"[{n}]" for n in invalid),
+                 sources=invalid)
         cited = [registry.get(n) for n in dict.fromkeys(c.citations) if registry.get(n) is not None]
         if not cited:
-            c.reasons.append("no citation: a technical statement must cite the source it comes from"
-                             if c.kind == "fact" else
-                             "no citation: an engineering inference must cite the sources its premises come from")
+            fail("no_citation", "no citation: a technical statement must cite the source it comes from"
+                 if c.kind == "fact" else
+                 "no citation: an engineering inference must cite the sources its premises come from",
+                 inference=c.kind != "fact")
         docs = [s for s in cited if s.kind not in ("calc", "user")]
         good_docs = [s for s in docs if s.verified]
         weak_docs = [s for s in docs if not s.verified]
         calcs = [s for s in cited if s.kind == "calc"]
         users = [s for s in cited if s.kind == "user"]
         if docs and not good_docs and not calcs and not users:
-            c.reasons.append("cites only unverified extraction(s) " + ", ".join(f"[{s.n}]" for s in weak_docs)
-                             + " - not usable as evidence")
+            fail("unverified_source", "cites only unverified extraction(s) "
+                 + ", ".join(f"[{s.n}]" for s in weak_docs) + " - not usable as evidence",
+                 sources=[s.n for s in weak_docs])
             unverifiable = True
         for s in calcs:
             if not s.extra.get("traceable"):
                 bad = [i["value"] for i in s.extra.get("inputs", []) if not i.get("sources")]
-                c.reasons.append(f"calculation [{s.n}] uses input(s) not found in any source: {', '.join(bad)}" if bad
-                                 else f"calculation [{s.n}] has no input taken from a source")
+                if bad:
+                    fail("calc_input_unsourced", f"calculation [{s.n}] uses input(s) not found in any source: "
+                         f"{', '.join(bad)}", source=s.n, values=bad)
+                else:
+                    fail("calc_no_input", f"calculation [{s.n}] has no input taken from a source", source=s.n)
         # A calculation fed by a value from the question gives a user value, not a documented one.
         user_calcs = [s for s in calcs if any("user" in i.get("kinds", []) for i in s.extra.get("inputs", []))]
         pools = [("document", good_docs), ("user", users + user_calcs),
@@ -371,18 +384,21 @@ def deterministic_check(claims: list[Claim], registry) -> None:
             if origin:
                 c.values.append(origin)
                 continue
+            value = q.text.strip()
             if any(any(q.matches(x) for x in qty_all[s.n]) for s in weak_docs):
-                c.reasons.append(f"value '{q.text.strip()}' appears only in an unverified extraction")
+                fail("value_unverified_extraction", f"value '{value}' appears only in an unverified extraction",
+                     value=value)
                 unverifiable = True
                 continue
             if any(s.evidence_text and any(q.matches(x) for x in find_quantities(s.text)) for s in good_docs):
-                c.reasons.append(f"value '{q.text.strip()}' appears only in a page-image transcription "
-                                 "(unverified extraction), not in the page's text layer")
+                fail("value_image_only", f"value '{value}' appears only in a page-image transcription "
+                     "(unverified extraction), not in the page's text layer", value=value)
                 unverifiable = True
                 continue
             elsewhere = [n for n, qs in qty_all.items() if n not in c.citations and any(q.matches(x) for x in qs)]
             note = f" (it appears in [{elsewhere[0]}]: wrong citation)" if elsewhere else ""
-            c.reasons.append(f"value '{q.text.strip()}' not found in the cited sources{note}")
+            fail("value_not_found", f"value '{value}' not found in the cited sources{note}", value=value,
+                 elsewhere=elsewhere[:3])
         qty_numbers = {q.number.lstrip("±+-") for q in quantities}
         for num in _bare_numbers(text):
             if num.lstrip("-") in qty_numbers:
@@ -399,13 +415,15 @@ def deterministic_check(claims: list[Claim], registry) -> None:
                 c.values.append(origin)
             elif any(_value_present(num, hay[s.n]) for s in weak_docs) or \
                     any(s.evidence_text and _value_present(num, s.text) for s in good_docs):
-                c.reasons.append(f"number '{num}' appears only in an unverified extraction")
+                fail("number_unverified_extraction", f"number '{num}' appears only in an unverified extraction",
+                     value=num)
                 unverifiable = True
             else:
-                c.reasons.append(f"number '{num}' not found in the cited sources")
+                fail("number_not_found", f"number '{num}' not found in the cited sources", value=num,
+                     reference=hay is pools_all)
         if c.kind == "fact" and any(v["from"] == "user" and not _user_marked(text, v["text"]) for v in c.values):
-            c.reasons.append("a value from the user's question is presented as documented; say it is the "
-                             "user's input/assumption")
+            fail("user_value_as_documented", "a value from the user's question is presented as documented; say "
+                 "it is the user's input/assumption")
         c.deterministic = "fail" if c.reasons else "pass"
         if c.reasons:
             # Only-unverifiable evidence is "cannot be verified", not "contradicted".
@@ -414,6 +432,75 @@ def deterministic_check(claims: list[Claim], registry) -> None:
             c.status = UNVERIFIED if only_unverifiable else UNSUPPORTED
         else:
             c.status = "pending"
+
+
+_VALUE_CODES = ("value_not_found", "number_not_found")
+
+
+def _states_all(src, codes: list[dict]) -> bool:
+    """The source states every value the claim could not find in its own citations."""
+    hay = _value_evidence(src)
+    qty = None
+    for k in codes:
+        value = str(k.get("value") or "")
+        if k["code"] == "value_not_found":
+            qs = find_quantities(value)
+            if not qs:
+                return False
+            if qty is None:
+                qty = _source_quantities(src, hay)
+            if not any(qs[0].matches(x) for x in qty):
+                return False
+        elif not _value_present(value, _evidence(src) if k.get("reference") else hay):
+            return False
+    return True
+
+
+def _insert_citation(text: str, n: int) -> str:
+    marks = list(CITATION.finditer(text))
+    if not marks:
+        return text
+    end = marks[-1].end()
+    return f"{text[:end]}[{n}]{text[end:]}"
+
+
+def repair_citations(parsed: ParsedAnswer, registry) -> list[Claim]:
+    """Wrong-citation repair. A claim whose ONLY problem is that its values are not in the sources it cites,
+    while another verified document source given with the answer states every one of them, gets that source's
+    citation added next to its own (the original citation stays). The claim is then checked again from the start
+    and still needs the judge's verdict; nothing else in its text changes. Preference: a source from the same
+    document as the claim's own citations, then the better ranked source. Returns the repaired claims."""
+    docs = [s for s in registry.items if s.kind not in ("calc", "user") and s.verified]
+    order = {s.n: i for i, s in enumerate(registry.items)}
+    fixed = []
+    for c in parsed.claims:
+        if c.status != UNSUPPORTED or not c.citations or not c.codes:
+            continue
+        if any(k["code"] not in _VALUE_CODES for k in c.codes):
+            continue
+        own_docs = {registry.get(n).doc_id for n in c.citations if registry.get(n) is not None}
+        cands = [s for s in docs if s.n not in c.citations and _states_all(s, c.codes)]
+        if not cands:
+            continue
+        best = min(cands, key=lambda s: (s.doc_id not in own_docs, order[s.n]))
+        old = (c.text, list(c.citations))
+        values = [k["value"] for k in c.codes]
+        c.text = _insert_citation(c.text, best.n)
+        c.citations = parse_citations(c.text)
+        deterministic_check([c], registry)
+        if c.deterministic != "pass":   # should not happen; never show a changed text that still fails
+            c.text, c.citations = old
+            deterministic_check([c], registry)
+            continue
+        c.citation_fix = {"added": best.n, "values": values}
+        for ln in parsed.lines:
+            for seg in ln.segments:
+                if seg.claim == c.id:
+                    seg.text = _insert_citation(seg.text, best.n)
+                    if ln.kind == "table_head":
+                        ln.raw = _insert_citation(ln.raw, best.n)
+        fixed.append(c)
+    return fixed
 
 
 # ----------------------------------------------------------------------------------- judge
@@ -465,14 +552,20 @@ def apply_verdict(c: Claim, verdict: str, reason: str) -> None:
         c.judge.update(completed=True, error="")
         c.status = UNSUPPORTED
         c.reasons.append(f"judge: {verdict}" + (f" - {reason}" if reason else ""))
+        c.codes.append({"code": f"judge_{verdict}", "detail": reason[:300]})
     else:
         c.judge.update(completed=False, error=reason or verdict)
         c.status = UNVERIFIED
+        c.codes.append({"code": "judge_no_verdict", "detail": (reason or verdict)[:300]})
 
 
 def judge_failed(c: Claim, error: str) -> None:
+    """The judge could not be asked (server/network error, context too long, reply cut off): a technical
+    failure, not a verdict on the claim."""
     c.judge.update(called=True, completed=False, verdict="", error=error)
     c.status = UNVERIFIED
+    c.codes = [k for k in c.codes if not k["code"].startswith("judge_")]
+    c.codes.append({"code": "judge_error", "detail": error[:300]})
 
 
 # ------------------------------------------------------------------------------ verification
@@ -490,6 +583,7 @@ class Verification:
     judge_completed: bool = False    # every claim that needed the judge got a valid verdict
     judge_errors: list[str] = field(default_factory=list)
     parse_failed: bool = False       # an answer with no checkable statements
+    citation_fixes: list[int] = field(default_factory=list)   # claims whose citation was repaired
     clarify: bool = False
     status: str = "pending"
 
@@ -508,6 +602,7 @@ class Verification:
             "kept": sum(1 for c in self.claims if c.outcome in ("kept", "flagged")),
             "removed": self.removed, "flagged": self.flagged, "regenerated": self.regenerated,
             "not_found": self.not_found, "parse_failed": self.parse_failed, "clarify": self.clarify,
+            "citation_fixes": len(self.citation_fixes),
             "deterministic": {"enabled": self.enabled},
             "judge": {"enabled": self.judge_enabled, "called": self.judge_called,
                       "completed": self.judge_completed, "errors": self.judge_errors[:5]},
