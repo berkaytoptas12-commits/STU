@@ -98,6 +98,8 @@ class LLMClient:
         self._send_effort = cfg.thinking_control == "reasoning_effort"
         self._json_mode_ok = True
         self.tools_supported: Optional[bool] = None if cfg.tools == "auto" else cfg.tools == "on"
+        self._context: Optional[int] = None
+        self._context_probed = False
 
     # ------------------------------------------------------------------ payload
     def _payload(self, messages, tools, thinking, json_mode, max_tokens, temperature) -> dict:
@@ -226,6 +228,21 @@ class LLMClient:
 
     def list_models(self) -> list[str]:
         return self.api.list_models()
+
+    def context_window(self) -> Optional[int]:
+        """The model's context length as the server reports it (vLLM: max_model_len), asked once; None when the
+        server does not say (then llm.context_tokens from the settings is used)."""
+        if not self._context_probed:
+            self._context_probed = True
+            try:
+                for m in self.api.model_entries():
+                    if m.get("id") == self.model:
+                        n = m.get("max_model_len") or m.get("context_length") or m.get("max_context_length")
+                        if isinstance(n, int) and n > 0:
+                            self._context = n
+            except Exception:
+                self._context = None
+        return self._context
 
 
 def parse_json_object(text: str) -> Optional[dict]:

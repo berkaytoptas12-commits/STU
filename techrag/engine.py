@@ -45,6 +45,14 @@ PAGE_DESCRIBE_PROMPT = ("Transcribe this page of a technical standard for an eng
                         "that is not visible.")
 MAX_FIGURES = 2
 JUDGE_SOURCE_CHARS = 6000
+JUDGE_MIN_SOURCE_CHARS = 700        # the shortest excerpt a source is cut to when a request must fit
+JUDGE_REPLY_BASE, JUDGE_REPLY_PER_CLAIM = 300, 160
+_CONTEXT_ERROR = re.compile(r"context length|context window|maximum context|max_model_len|too long|too many tokens|"
+                            r"exceeds|prompt is too|input length", re.I)
+
+
+class JudgeCutOff(RuntimeError):
+    """The judge's reply ended at the token limit: its JSON is incomplete."""
 _CLAUSE_REF = re.compile(r"(?:section|clause|§|sec\.)\s*(\d+(?:\.\d+)+)", re.I)
 
 
@@ -159,7 +167,8 @@ class RAGEngine:
         plan = self.planner.plan(question, history)
         plan_time = time.time() - t
         self.check_index_compatibility()
-        res = self.retriever.search(plan, domains=domains, doc_ids=doc_ids, top_k=top_k, buckets=buckets)
+        res = self.retriever.search(plan, domains=domains, doc_ids=doc_ids, top_k=top_k, buckets=buckets,
+                                    budget_tokens=int(self.context_tokens() * 0.6))
         res.timings["plan"] = round(plan_time, 3)
         return res
 
@@ -545,38 +554,97 @@ class RAGEngine:
         v.judge_completed = bool(pending) and all(c.judge["completed"] for c in pending)
         return v, parsed
 
-    def _judge_batch(self, batch: list[Claim], registry: SourceRegistry) -> dict:
-        items = []
-        for c in batch:
-            srcs = []
-            for n in dict.fromkeys(c.citations):
-                s = registry.get(n)
-                if s is not None:
-                    srcs.append((n, f"{s.header()}\n{judge_excerpt(s.evidence(), c.text, JUDGE_SOURCE_CHARS)}"))
-            items.append({"id": c.id, "type": c.kind, "claim": c.text, "sources": srcs})
+    def context_tokens(self) -> int:
+        """The prompt size the chat model can take: the setting, or less when the server reports a smaller
+        context (vLLM max_model_len)."""
+        server = None
+        try:
+            server = self.llm.context_window()
+        except Exception:
+            server = None
+        own = max(2000, int(self.cfg.llm.context_tokens or 16000))
+        return min(own, server) if server else own
+
+    @staticmethod
+    def _tokens(text: str) -> int:
+        return len(text) // 3 + 1   # conservative for technical text (numbers, symbols, Turkish)
+
+    def _judge_item(self, c: Claim, registry: SourceRegistry, limit: int) -> dict:
+        srcs = []
+        for n in dict.fromkeys(c.citations):
+            s = registry.get(n)
+            if s is not None:
+                srcs.append((n, f"{s.header()}\n{judge_excerpt(s.evidence(), c.text, limit)}"))
+        return {"id": c.id, "type": c.kind, "claim": c.text, "sources": srcs}
+
+    def _judge_batches(self, claims: list[Claim], registry: SourceRegistry, size: int,
+                       limit: int) -> list[tuple[list[Claim], list[dict]]]:
+        """Claims packed into requests that fit the model's context together with the reply: at most `size`
+        claims each; a claim whose sources alone are too long gets shorter (claim-focused) excerpts."""
+        ctx = self.context_tokens()
+        fixed = self._tokens(JUDGE_SYSTEM) + 50
+        batches: list[tuple[list[Claim], list[dict]]] = []
+        cur: list[Claim] = []
+        cur_items: list[dict] = []
+        used = 0
+        for c in claims:
+            item = self._judge_item(c, registry, limit)
+            cost = self._tokens(judge_user_prompt([item]))
+            room = ctx - fixed - JUDGE_REPLY_BASE - JUDGE_REPLY_PER_CLAIM
+            if cost > room:  # alone it does not fit: cut each source to its share of the room
+                share = max(JUDGE_MIN_SOURCE_CHARS, int(limit * room / cost))
+                item = self._judge_item(c, registry, share)
+                cost = self._tokens(judge_user_prompt([item]))
+            need = fixed + used + cost + JUDGE_REPLY_BASE + JUDGE_REPLY_PER_CLAIM * (len(cur) + 1)
+            if cur and (len(cur) >= size or need > ctx):
+                batches.append((cur, cur_items))
+                cur, cur_items, used = [], [], 0
+            cur.append(c)
+            cur_items.append(item)
+            used += cost
+        if cur:
+            batches.append((cur, cur_items))
+        return batches
+
+    def _judge_batch(self, batch: list[Claim], registry: SourceRegistry,
+                     items: Optional[list[dict]] = None) -> dict:
+        items = items or [self._judge_item(c, registry, JUDGE_SOURCE_CHARS) for c in batch]
+        reply = JUDGE_REPLY_BASE + JUDGE_REPLY_PER_CLAIM * len(batch)
         res = self.llm.chat([{"role": "system", "content": JUDGE_SYSTEM},
                              {"role": "user", "content": judge_user_prompt(items)}],
-                            json_mode=True, temperature=0.0, thinking=False, max_tokens=1500)
+                            json_mode=True, temperature=0.0, thinking=False, max_tokens=reply)
+        if res.finish_reason == "length":
+            raise JudgeCutOff(f"the judge's reply was cut off at {reply} tokens")
         return parse_verdicts(parse_json_object(res.content), [c.id for c in batch])
 
     def _judge(self, claims: list[Claim], registry: SourceRegistry, v: Verification) -> None:
         """Strict: only an explicit 'supported' for the claim's id approves it. Anything else (error, timeout,
-        malformed output, missing/duplicate id, unknown verdict) leaves it unverified; such claims get one retry."""
+        malformed or cut-off output, missing/duplicate id, unknown verdict) leaves it unverified.
+
+        Requests are sized to the model's context. A request that fails does not fail its claims for good: they
+        are asked again one by one, and once more with shorter excerpts when the failure was the request's size
+        (context exceeded, reply cut off)."""
         size = max(1, self.cfg.answer.judge_batch)
-        for attempt in range(2):
+        too_big: set[int] = set()
+        plans = [(size, JUDGE_SOURCE_CHARS), (1, JUDGE_SOURCE_CHARS), (1, JUDGE_SOURCE_CHARS // 3)]
+        for attempt, (batch_size, limit) in enumerate(plans):
             todo = claims if attempt == 0 else [c for c in claims if not c.judge["completed"]
                                                 and c.status != UNSUPPORTED]
+            if attempt == 2:
+                todo = [c for c in todo if c.id in too_big]
             if not todo:
                 return
-            batches = [todo[i:i + size] for i in range(0, len(todo), size)]
+            batches = self._judge_batches(todo, registry, batch_size, limit)
             with ThreadPoolExecutor(max_workers=min(4, len(batches))) as pool:
-                futures = [(b, pool.submit(self._judge_batch, b, registry)) for b in batches]
+                futures = [(b, pool.submit(self._judge_batch, b, registry, items)) for b, items in batches]
                 for batch, fut in futures:
                     try:
                         verdicts = fut.result()
                     except Exception as exc:
                         err = f"judge error: {exc.__class__.__name__}: {str(exc)[:160]}"
                         v.judge_errors.append(err)
+                        if isinstance(exc, JudgeCutOff) or _CONTEXT_ERROR.search(str(exc)):
+                            too_big.update(c.id for c in batch)
                         for c in batch:
                             judge_failed(c, err)
                         continue

@@ -122,6 +122,20 @@ class APIClient:
             return r.json()
         raise APIError("unreachable")  # pragma: no cover
 
+    def model_entries(self) -> list[dict]:
+        """The raw /models entries (vLLM adds max_model_len to each)."""
+        if not self.base:
+            raise APIError("endpoint base URL is not configured", code="config")
+        try:
+            r = self.http.get(self.url("models"), timeout=15)
+        except httpx.ConnectError as exc:
+            raise connect_error(exc, self.base) from exc
+        if r.status_code >= 400:
+            raise APIError(f"HTTP {r.status_code}: {r.text[:300]}", r.status_code, r.text, code="http")
+        data = r.json()
+        items = data.get("data", data.get("models", [])) if isinstance(data, dict) else data
+        return [m for m in items or [] if isinstance(m, dict)]
+
     def list_models(self) -> list[str]:
         if not self.base:
             raise APIError("endpoint base URL is not configured", code="config")
