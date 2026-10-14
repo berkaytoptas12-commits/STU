@@ -98,6 +98,7 @@ const I18N = {
     rc_judge_partial: "Bağımsız denetleyici: kaynaklar ifadeyi yalnızca kısmen destekliyor.",
     rc_judge_no_verdict: "Denetleyici bu ifade için geçerli bir karar döndürmedi (teknik sorun; ifade yanlış bulunmadı, doğrulanamadı).",
     rc_judge_error: "Denetleyiciye ulaşılamadı ya da yanıtı tamamlanmadı (teknik sorun; ifade yanlış bulunmadı, doğrulanamadı).",
+    refTable: "başvurulan Tablo {0}", refSection: "başvurulan Bölüm {0}",
     rcDetail: "gerekçe: {0}", rcTechnical: "teknik ayrıntı: {0}",
     citeFixed: "atıf düzeltildi: {0} eklendi ({1} bu kaynakta geçiyor)", vCiteFixed: "{0} ifadede atıf düzeltildi",
     removedList: "Çıkarılan / işaretlenen ifadeler", claimDetails: "İfade ayrıntıları", usesUser: "kullanıcı girdisi içerir", usesCalc: "hesap içerir",
@@ -254,6 +255,7 @@ const I18N = {
     rc_judge_partial: "Independent checker: the sources support the statement only partly.",
     rc_judge_no_verdict: "The checker returned no valid verdict for this statement (technical problem; the statement was not found wrong, it could not be verified).",
     rc_judge_error: "The checker could not be reached or its reply was incomplete (technical problem; the statement was not found wrong, it could not be verified).",
+    refTable: "referenced Table {0}", refSection: "referenced Section {0}",
     rcDetail: "reason: {0}", rcTechnical: "technical detail: {0}",
     citeFixed: "citation repaired: {0} added ({1} appears in that source)", vCiteFixed: "citation repaired in {0} statement(s)",
     removedList: "Removed / flagged statements", claimDetails: "Statement details", usesUser: "uses user input", usesCalc: "uses a calculation",
@@ -784,6 +786,11 @@ function pageViewer(container, docId, page, nPages, opts = {}) {
   return box;
 }
 
+// A source added because another source refers to it ("see Table 4-12").
+function refLabel(r) {
+  const m = /^(Table|Section) (.+)$/.exec(r);
+  return m ? t(m[1] === "Table" ? "refTable" : "refSection", m[2]) : r;
+}
 function kindLabel(s) {
   return { parameter: t("parameter"), table: t("table"), page: t("pageKind"), calc: t("calc"), user: t("userKind") }[s.kind] || "";
 }
@@ -918,7 +925,8 @@ function renderChips(el) {
     b.className = "cite-chip" + (s.cited === false ? " uncited" : "");
     const where = s.kind === "calc" ? s.text.split("\n")[0] : s.kind === "user" ? t("loc_user").split(" — ")[0]
       : `${s.doc_title}${s.section ? " — " + s.section.split(" > ").pop() : ""} — ${t("page")} ${s.page_start}`;
-    b.innerHTML = `<b>[${s.n}]</b> ${kindLabel(s) ? `<i>${esc(kindLabel(s))}</i> ` : ""}${esc(where)}`;
+    const ref = s.extra && s.extra.referenced_as ? refLabel(s.extra.referenced_as) : "";
+    b.innerHTML = `<b>[${s.n}]</b> ${kindLabel(s) ? `<i>${esc(kindLabel(s))}</i> ` : ""}${esc(where)}${ref ? ` <span class="small muted">↪ ${esc(ref)}</span>` : ""}`;
     b.title = s.text.slice(0, 400);
     b.addEventListener("click", () => { showSource(s, el); b.classList.add("active"); });
     wrap.append(b);

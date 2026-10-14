@@ -194,6 +194,10 @@ class RetrievalConfig:
     # from sibling standards/versions (DDR4 and DDR5 ...) whose values may differ.
     clarify_ambiguous: bool = True
     parameter_rows: int = 12        # typed parameter rows pre-fetched for numeric questions
+    # Tables / sections a retrieved passage refers to ("see Table 4-12", "Section 3.2") are added from the same
+    # document: at most this many, each cut to reference_tokens (0 = off).
+    follow_references: int = 3
+    reference_tokens: int = 1200
 
 
 @dataclass

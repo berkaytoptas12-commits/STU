@@ -22,6 +22,7 @@ from typing import Optional, Sequence
 from techrag.config import Config
 from techrag.embeddings import Embedder
 from techrag.ingest.chunker import estimate_tokens
+from techrag.ingest.structure import SECTION_SEP
 from techrag.ingest.metadata import AMENDING_TYPES, amended_targets, doc_series
 from techrag.query import QueryPlan
 from techrag.reranker import Reranker
@@ -29,6 +30,28 @@ from techrag.store import ChunkRow, DocumentRow, ParameterRow, Store
 
 _FIGURE_REF = re.compile(r"\b(figure|fig\.|şekil|timing diagram|waveform|eye diagram|pin ?out|pinout|"
                          r"block diagram|state diagram)\b", re.I)
+
+
+# "Table 4-12", "see Section 3.2", "clause 5.4.1", "§ 4.5" in a passage's text
+_XREF = re.compile(r"\b(?:table|tablo)\s+(?P<table>[A-Z]?\d+(?:[.\-–]\d+)*[a-z]?)(?![\w.\-–]*\d)|"
+                   r"\b(?:section|sec\.|clause|subclause|bölüm|madde)\s+(?P<section>\d+(?:\.\d+)+)(?![.\d]*\d)|"
+                   r"§\s*(?P<para>\d+(?:\.\d+)+)(?![.\d]*\d)", re.I)
+
+
+def _label_pattern(label: str) -> str:
+    """'4-12' also matches '4–12' (the PDF may print either dash)."""
+    return "[\\-–]".join(re.escape(part) for part in re.split(r"[\-–]", label))
+
+
+def _caption_line(label: str) -> re.Pattern:
+    """A line that is the caption of table `label` (not a reference to it inside running text)."""
+    return re.compile(r"^\s*(?i:table|tablo)\s+" + _label_pattern(label) + r"(?![\w.\-–]*\d)\s*(?:$|[—–:.\-(]|[A-Z0-9])",
+                      re.M)
+
+
+def _section_number(section: str, number: str) -> bool:
+    last = section.split(SECTION_SEP)[-1].strip() if section else ""
+    return bool(re.match(re.escape(number) + r"(?![.\d]*\d)(?:\s|$|[:.)\-–])", last))
 
 
 @dataclass
@@ -49,6 +72,7 @@ class Passage:
     doc_type: str = "base"
     revision: str = ""
     figure_page: Optional[int] = None
+    referenced_as: str = ""         # "Table 4-12" / "Section 3.2": added because another passage refers to it
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -272,6 +296,19 @@ def _same_document(d: DocumentRow) -> tuple:
     return doc_series(d), d.version, tuple(sorted(e.lower() for e in d.entities))
 
 
+def _groups(included: dict[tuple[int, int], ChunkRow]) -> list[list[ChunkRow]]:
+    """Consecutive chunks of the same section form one passage."""
+    groups: list[list[ChunkRow]] = []
+    for key in sorted(included):
+        row = included[key]
+        last = groups[-1][-1] if groups else None
+        if last and last.doc_id == row.doc_id and last.ordinal + 1 == row.ordinal and last.section == row.section:
+            groups[-1].append(row)
+        else:
+            groups.append([row])
+    return groups
+
+
 class Retriever:
     def __init__(self, cfg: Config, store: Store, embedder: Embedder, reranker: Optional[Reranker],
                  catalog: Optional[DocCatalog] = None):
@@ -343,7 +380,7 @@ class Retriever:
                 n += len(ranked)
                 if conf is not None:
                     confidence = conf if confidence is None else min(confidence, conf)
-            passages = self.build_passages(selected, budget)
+            passages = self.with_references(self.build_passages(selected, budget), budget)
             params: list[ParameterRow] = []
             if with_parameters and plan.wants_parameters:
                 for ids in scope.per_entity.values():
@@ -360,7 +397,7 @@ class Retriever:
                                          "searched the whole library"]
             scope = wider
             ranked, confidence = self._rank(plan, scope, timings)
-        passages = self.build_passages(ranked[:k], budget)
+        passages = self.with_references(self.build_passages(ranked[:k], budget), budget)
         params = []
         if with_parameters and plan.wants_parameters:
             params = self.parameters(plan, scope)
@@ -426,33 +463,119 @@ class Retriever:
                 included[nkey] = nb
                 used += t
 
-        groups: list[list[ChunkRow]] = []
-        for key in sorted(included):
-            row = included[key]
-            last = groups[-1][-1] if groups else None
-            if last and last.doc_id == row.doc_id and last.ordinal + 1 == row.ordinal and last.section == row.section:
-                groups[-1].append(row)
-            else:
-                groups.append([row])
-
-        passages = []
-        for g in groups:
-            hits = [r for r in g if (r.doc_id, r.ordinal) in hit_score]
-            first = g[0]
-            doc = docs.get(first.doc_id)
-            text = join_chunks(g)
-            fig_pages = set((doc.metadata.get("figure_pages") or []) if doc else [])
-            fig = None
-            if fig_pages and _FIGURE_REF.search(text):
-                fig = next((p for r in g for p in range(r.page_start, r.page_end + 1) if p in fig_pages), None)
-            passages.append(Passage(
-                doc_id=first.doc_id, doc_title=first.doc_title, doc_path=first.doc_path, domain=first.domain,
-                section=first.section, page_start=min(r.page_start for r in g), page_end=max(r.page_end for r in g),
-                kind="table" if all(r.kind == "table" for r in g) else "text", text=text,
-                score=float(max((hit_score[(r.doc_id, r.ordinal)] for r in hits), default=0.0)),
-                chunk_ids=[r.id for r in g], hit_chunk_ids=[r.id for r in hits],
-                entities=list(doc.entities) if doc else [], doc_type=doc.doc_type if doc else "base",
-                revision=doc.revision if doc else "", figure_page=fig,
-            ))
+        passages = [self._passage(g, hit_score, docs) for g in _groups(included)]
         passages.sort(key=lambda p: -p.score)
         return passages
+
+    @staticmethod
+    def _passage(g: list[ChunkRow], hit_score: dict, docs: dict, referenced_as: str = "",
+                 score: Optional[float] = None) -> Passage:
+        hits = [r for r in g if (r.doc_id, r.ordinal) in hit_score]
+        first = g[0]
+        doc = docs.get(first.doc_id)
+        text = join_chunks(g)
+        fig_pages = set((doc.metadata.get("figure_pages") or []) if doc else [])
+        fig = None
+        if fig_pages and _FIGURE_REF.search(text):
+            fig = next((p for r in g for p in range(r.page_start, r.page_end + 1) if p in fig_pages), None)
+        return Passage(
+            doc_id=first.doc_id, doc_title=first.doc_title, doc_path=first.doc_path, domain=first.domain,
+            section=first.section, page_start=min(r.page_start for r in g), page_end=max(r.page_end for r in g),
+            kind="table" if all(r.kind == "table" for r in g) else "text", text=text,
+            score=float(score if score is not None else
+                        max((hit_score[(r.doc_id, r.ordinal)] for r in hits), default=0.0)),
+            chunk_ids=[r.id for r in g], hit_chunk_ids=[r.id for r in hits],
+            entities=list(doc.entities) if doc else [], doc_type=doc.doc_type if doc else "base",
+            revision=doc.revision if doc else "", figure_page=fig, referenced_as=referenced_as,
+        )
+
+    # ------------------------------------------------------- cross-references
+    def _table_rows(self, doc_id: int, label: str) -> list[ChunkRow]:
+        cap = _caption_line(label)
+        found: dict[int, ChunkRow] = {}
+        for needle in dict.fromkeys([label, label.replace("-", "–"), label.replace("–", "-")]):
+            for r in self.store.chunks_containing(doc_id, needle):
+                if cap.search(r.text):
+                    found[r.ordinal] = r
+        rows = [found[o] for o in sorted(found)]
+        if rows:
+            last = rows[-1]
+            tail = [ln for ln in last.text.split("\n") if ln.strip()][-3:]
+            if any(cap.search(ln) for ln in tail):   # the caption ends its chunk: the table is in the next one
+                rows += [r for r in self.store.neighbors(doc_id, last.ordinal + 1, last.ordinal + 1)
+                         if r.section == last.section]
+        return rows
+
+    def _section_rows(self, doc_id: int, number: str) -> list[ChunkRow]:
+        section = next((s for s in self.store.doc_sections(doc_id) if _section_number(s, number)), None)
+        return self.store.section_chunks(doc_id, section) if section else []
+
+    def follow_references(self, passages: list[Passage]) -> list[tuple[int, Passage]]:
+        """Tables and sections the passages refer to, from the passage's own document (so always inside the
+        scope that produced it): [(index of the referring passage, passage)], at most
+        retrieval.follow_references, each cut to retrieval.reference_tokens. Already included text is skipped."""
+        rc = self.cfg.retrieval
+        if rc.follow_references <= 0 or not passages:
+            return []
+        have = {cid for p in passages for cid in p.chunk_ids}
+        docs = self.catalog.docs()
+        out: list[tuple[int, Passage]] = []
+        seen: set[tuple] = set()
+        for i, p in enumerate(passages):
+            for m in _XREF.finditer(p.text):
+                if len(out) >= rc.follow_references:
+                    return out
+                if m.group("table"):
+                    kind, label = "table", m.group("table").rstrip(".")
+                else:
+                    kind, label = "section", (m.group("section") or m.group("para")).rstrip(".")
+                key = (p.doc_id, kind, label.lower())
+                if key in seen:
+                    continue
+                seen.add(key)
+                rows = self._table_rows(p.doc_id, label) if kind == "table" else self._section_rows(p.doc_id, label)
+                rows = [r for r, _ in self._evidence_rows([(r, 0.0) for r in rows])]
+                if not rows or all(r.id in have for r in rows):
+                    continue
+                taken, used = [], 0
+                for r in rows:
+                    t = estimate_tokens(r.text)
+                    if taken and used + t > rc.reference_tokens:
+                        break
+                    taken.append(r)
+                    used += t
+                taken = [r for r in taken if r.id not in have]
+                if not taken:
+                    continue
+                have.update(r.id for r in taken)
+                name = f"{'Table' if kind == 'table' else 'Section'} {label}"
+                for g in _groups({(r.doc_id, r.ordinal): r for r in taken}):
+                    out.append((i, self._passage(g, {}, docs, referenced_as=name, score=p.score * 0.9)))
+        return out
+
+    def with_references(self, passages: list[Passage], budget: int) -> list[Passage]:
+        """The passages plus what they refer to. When the token budget is full, the lowest ranked passages that
+        no reference came from make room; a reference that still does not fit is left out."""
+        refs = self.follow_references(passages)
+        if not refs:
+            return passages
+        keep = list(range(len(passages)))
+        parents = {i for i, _ in refs}
+
+        def used() -> int:
+            return sum(estimate_tokens(passages[i].text) for i in keep)
+
+        added: list[Passage] = []
+        for parent, ref in refs:
+            over = used() + sum(estimate_tokens(a.text) for a in added) + estimate_tokens(ref.text) - budget
+            drop: list[int] = []
+            for i in sorted((i for i in keep if i not in parents and passages[i].score < ref.score),
+                            key=lambda i: passages[i].score):
+                if over <= 0:
+                    break
+                drop.append(i)
+                over -= estimate_tokens(passages[i].text)
+            if over <= 0:       # it fits (after making room); otherwise nothing is dropped for it
+                keep = [i for i in keep if i not in drop]
+                added.append(ref)
+        return [passages[i] for i in keep] + added

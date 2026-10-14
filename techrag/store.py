@@ -976,6 +976,22 @@ class Store:
                 (doc_id, section, limit)).fetchall()
         return [self._chunk(r) for r in rows]
 
+    def chunks_containing(self, doc_id: int, needle: str, limit: int = 40) -> list[ChunkRow]:
+        """Chunks of one document whose text contains `needle` (ASCII case-insensitive), in reading order."""
+        pattern = "%" + needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        with self.connect() as con:
+            rows = con.execute(
+                f"{self._CHUNK_SELECT} WHERE c.doc_id=? AND c.text LIKE ? ESCAPE '\\' ORDER BY c.ordinal LIMIT ?",
+                (doc_id, pattern, limit)).fetchall()
+        return [self._chunk(r) for r in rows]
+
+    def doc_sections(self, doc_id: int) -> list[str]:
+        """The section paths of one document, in reading order."""
+        with self.connect() as con:
+            rows = con.execute("SELECT section, MIN(ordinal) AS o FROM chunks WHERE doc_id=? GROUP BY section "
+                               "ORDER BY o", (doc_id,)).fetchall()
+        return [r["section"] or "" for r in rows]
+
     def page_chunks(self, doc_id: int, page: int, evidence_only: bool = True) -> list[ChunkRow]:
         with self.connect() as con:
             rows = con.execute(

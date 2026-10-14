@@ -73,6 +73,8 @@ class Source:
         if self.section:
             bits.append(f"Section: {self.section}")
         bits.append(pages)
+        if self.extra.get("referenced_as"):
+            bits.append(f"({self.extra['referenced_as']}, referred to by another source)")
         if self.kind != "passage":
             bits.append(f"({self.kind}{'' if self.verified else ', UNVERIFIED extraction - not citable as evidence'})")
         return " | ".join(bits)
@@ -108,7 +110,9 @@ class SourceRegistry:
         meta = {"entities": p.entities, "doc_type": p.doc_type, "revision": p.revision, **(doc_meta or {})}
         return self._add(key, kind="table" if p.kind == "table" else "passage", text=p.text, doc_id=p.doc_id,
                          doc_title=p.doc_title, domain=p.domain, section=p.section, page_start=p.page_start,
-                         page_end=p.page_end, score=p.score, extra={"chunk_ids": list(p.chunk_ids)}, **meta)
+                         page_end=p.page_end, score=p.score,
+                         extra={"chunk_ids": list(p.chunk_ids),
+                                **({"referenced_as": p.referenced_as} if p.referenced_as else {})}, **meta)
 
     def add_parameter(self, r: ParameterRow, doc_meta: dict) -> tuple[Source, bool]:
         caption = f"{r.caption} — " if r.caption else ""
