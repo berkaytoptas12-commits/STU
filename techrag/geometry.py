@@ -83,9 +83,127 @@ class Word:
     x1: float
     y1: float
     text: str
+    sup: bool = False           # a raised footnote mark ("295" + superscript "1"), never a value of its own
 
     def box(self, i: int) -> Box:
         return Box(self.x0, self.y0, self.x1, self.y1, (i,))
+
+
+# ------------------------------------------------------------------------------ superscripts
+
+@dataclass
+class SupMark:
+    """A raised mark printed right after a word: a footnote mark (295 + superscript 1) or a power of ten
+    (10 + superscript -12). The PDF text layer runs it into the word ("2951", "10-12")."""
+    bbox: tuple                 # the mark (word space)
+    base: str                   # the characters it is glued to ("295")
+    text: str                   # the mark ("1")
+    kind: str                   # note | power
+    raw: str = ""               # base and mark as the text layer gives them ("2951", "10 -12")
+
+    @property
+    def rendered(self) -> str:
+        """How the text shows it: 295⁽1⁾ (a footnote mark set apart), 10^-12 (a power of ten)."""
+        return f"{self.base}^{self.text}" if self.kind == "power" else f"{self.base}⁽{self.text}⁾"
+
+
+@dataclass
+class SupLine:
+    bbox: tuple
+    raw: str                    # the line as the text layer gives it
+    rendered: str               # the same line with its marks set apart
+    marks: list[SupMark] = field(default_factory=list)
+
+
+_MARK_TEXT = re.compile(r"[0-9a-zA-Z*†‡,]{1,4}")
+_POWER = re.compile(r"[-−+]?\d{1,3}")
+_UNIT_BASE = re.compile(r"(?:[munpkMGTµ]?(?:m|s|Hz|V|A|W|F|H|Ω|ohm|g))")
+_NOT_MARKS = {"st", "nd", "rd", "th", "TM", "SM"}
+
+
+def superscript_lines(page) -> list[SupLine]:
+    """Lines of a PyMuPDF page with raised marks glued to the end of a word. A span is a mark when MuPDF flags it
+    as superscript, or when it is clearly smaller and raised above the line's baseline. A small space the text
+    layer puts between the word and the mark does not separate them. Not a mark: a raised character inside a
+    word (I²C), an ordinal (1st), TM, a unit exponent (mm²) or a mark that stands alone."""
+    out: list[SupLine] = []
+    try:
+        data = page.get_text("rawdict")
+    except Exception:
+        return out
+    for block in data.get("blocks", []):
+        for line in block.get("lines", []):
+            spans = [sp for sp in line.get("spans", []) if sp.get("chars")]
+            if len(spans) < 2:
+                continue
+            main = max(sp["size"] for sp in spans)
+            base_y = next(sp["origin"][1] for sp in spans if sp["size"] == main)
+            chars: list[tuple[str, float]] = []      # (char, size of its span)
+            ranges: list[tuple[int, int]] = []
+            for sp in spans:
+                ranges.append((len(chars), len(chars) + len(sp["chars"])))
+                chars += [(c["c"], sp["size"]) for c in sp["chars"]]
+            raw = "".join(c for c, _ in chars)
+            cuts: list[tuple[int, int, SupMark]] = []
+            for sp, (start, end) in zip(spans, ranges):
+                text = raw[start:end]
+                raised = (sp.get("flags", 0) & 1) or (sp["size"] <= 0.8 * main and sp["origin"][1] < base_y - 0.2 * main)
+                mark = text.strip()
+                if not raised or sp["size"] >= 0.95 * main or not mark or mark != text:
+                    continue
+                k = start
+                while k > 0 and raw[k - 1].isspace() and chars[k - 1][1] <= 0.8 * main and start - k < 2:
+                    k -= 1          # a small filler space between the word and its mark
+                b0 = k
+                while b0 > 0 and not raw[b0 - 1].isspace():
+                    b0 -= 1
+                base = raw[b0:k]
+                after = raw[end:end + 1]
+                if not base or (after and not after.isspace() and after not in ",.;:)"):
+                    continue          # stands alone, or sits inside a word (I²C)
+                if _POWER.fullmatch(mark) and base.endswith("10"):
+                    kind = "power"
+                elif mark in _NOT_MARKS or (_UNIT_BASE.fullmatch(base) and mark in ("2", "3")):
+                    continue
+                elif _MARK_TEXT.fullmatch(mark):
+                    kind = "note"
+                else:
+                    continue
+                cuts.append((b0, end, SupMark(tuple(sp["bbox"]), base, mark, kind, raw[b0:end])))
+            if not cuts:
+                continue
+            rendered, last = [], 0
+            for b0, end, m in cuts:
+                rendered.append(raw[last:b0] + m.rendered)
+                last = end
+            rendered.append(raw[last:])
+            out.append(SupLine(tuple(line["bbox"]), raw, "".join(rendered), [m for _, _, m in cuts]))
+    return out
+
+
+def _split_marks(words: list[Word], lines: list[SupLine]) -> list[Word]:
+    """Footnote marks become words of their own (sup=True): '2951' -> '295' + mark '1'. Powers of ten stay as
+    the text layer gives them."""
+    marks = [m for ln in lines for m in ln.marks if m.kind == "note"]
+    if not marks:
+        return words
+    out: list[Word] = []
+    for w in words:
+        hit = next((m for m in marks
+                    if m.bbox[0] >= w.x0 - 0.6 and m.bbox[2] <= w.x1 + 0.6
+                    and min(m.bbox[3], w.y1) > max(m.bbox[1], w.y0)), None)
+        if hit is None:
+            out.append(w)
+        elif w.text == hit.text:
+            out.append(Word(w.x0, w.y0, w.x1, w.y1, w.text, True))
+        elif w.text.endswith(hit.text) and w.text[:-len(hit.text)].endswith(hit.base[-1:]) \
+                and len(w.text) > len(hit.text):
+            cut = max(w.x0, min(hit.bbox[0], w.x1))
+            out.append(Word(w.x0, w.y0, cut, w.y1, w.text[:-len(hit.text)]))
+            out.append(Word(cut, hit.bbox[1], w.x1, hit.bbox[3], hit.text, True))
+        else:
+            out.append(w)
+    return out
 
 
 @dataclass
@@ -108,14 +226,17 @@ class PageGeom:
     rotation: int = 0
     words: list[Word] = field(default_factory=list)
     _tokens: Optional[tuple[list[str], list[int]]] = field(default=None, repr=False, compare=False)
+    _streams: Optional[list] = field(default=None, repr=False, compare=False)
+    _matches: dict = field(default_factory=dict, repr=False, compare=False)
 
     # ------------------------------------------------------------ build/encode
     @classmethod
-    def from_page(cls, page, page_no: int) -> "PageGeom":
+    def from_page(cls, page, page_no: int, sup_lines: Optional[list[SupLine]] = None) -> "PageGeom":
         words = []
         for w in page.get_text("words"):
             if str(w[4]).strip():
                 words.append(Word(float(w[0]), float(w[1]), float(w[2]), float(w[3]), str(w[4])))
+        words = _split_marks(words, superscript_lines(page) if sup_lines is None else sup_lines)
         try:
             label = page.get_label() or ""
         except Exception:
@@ -129,7 +250,8 @@ class PageGeom:
     def encode(self) -> tuple[str, bytes]:
         meta = {"w": round(self.width, 2), "h": round(self.height, 2), "m": [round(v, 4) for v in self.matrix],
                 "cb": [round(v, 2) for v in self.cropbox], "mbh": round(self.mediabox_h, 2), "rot": self.rotation}
-        rows = [[round(w.x0, 1), round(w.y0, 1), round(w.x1, 1), round(w.y1, 1), w.text] for w in self.words]
+        rows = [[round(w.x0, 1), round(w.y0, 1), round(w.x1, 1), round(w.y1, 1), w.text] + ([1] if w.sup else [])
+                for w in self.words]
         return json.dumps(meta), zlib.compress(json.dumps(rows, ensure_ascii=False, separators=(",", ":")).encode(), 6)
 
     @classmethod
@@ -138,7 +260,7 @@ class PageGeom:
         rows = json.loads(zlib.decompress(blob).decode()) if blob else []
         return cls(page, label or "", meta.get("w", 0.0), meta.get("h", 0.0), tuple(meta.get("m", (1, 0, 0, 1, 0, 0))),
                    tuple(meta.get("cb", (0, 0, 0, 0))), meta.get("mbh", 0.0), meta.get("rot", 0),
-                   [Word(r[0], r[1], r[2], r[3], r[4]) for r in rows])
+                   [Word(r[0], r[1], r[2], r[3], r[4], bool(r[5]) if len(r) > 5 else False) for r in rows])
 
     # ------------------------------------------------------------ transforms
     @property
@@ -164,14 +286,58 @@ class PageGeom:
 
     # ------------------------------------------------------------ tokens
     def tokens(self) -> tuple[list[str], list[int]]:
+        """The page's tokens in reading order with the word each comes from (footnote marks left out)."""
         if self._tokens is None:
             toks, owner = [], []
             for i, w in enumerate(self.words):
+                if w.sup:
+                    continue
                 for t in norm_tokens(w.text):
                     toks.append(t)
                     owner.append(i)
             self._tokens = (toks, owner)
         return self._tokens
+
+    def _glued(self, a: Word, b: Word) -> bool:
+        """b is printed directly after a with no space: a subscript (t + RFC) or a kerning split. Not a raised
+        footnote mark."""
+        h = max(a.y1 - a.y0, 1.0)
+        return (not a.sup and not b.sup and -0.5 <= b.x0 - a.x1 <= max(0.8, 0.12 * h)
+                and min(a.y1, b.y1) - max(a.y0, b.y0) > 0.3 * min(h, max(b.y1 - b.y0, 1.0)))
+
+    def streams(self) -> list[tuple[list[str], list[tuple[int, ...]]]]:
+        """Token streams to match phrases against, each token with the words it comes from:
+        1. as printed (footnote marks left out),
+        2. glued words joined: a symbol set as t + subscript RFC reads 'trfc',
+        3. footnote marks kept as tokens of their own: '295 (1)' finds 295 with its mark."""
+        if self._streams is None:
+            toks, owner = self.tokens()
+            plain = (toks, [(o,) for o in owner])
+            jt: list[str] = []
+            jo: list[tuple[int, ...]] = []
+            prev = None
+            for i, w in enumerate(self.words):
+                if w.sup:
+                    continue
+                ts = norm_tokens(w.text)
+                if not ts:
+                    continue
+                if prev is not None and jt and self._glued(self.words[prev], w):
+                    jt[-1] += ts[0]
+                    jo[-1] = jo[-1] + (i,)
+                    ts = ts[1:]
+                for t in ts:
+                    jt.append(t)
+                    jo.append((i,))
+                prev = i
+            ft: list[str] = []
+            fo: list[tuple[int, ...]] = []
+            for i, w in enumerate(self.words):
+                for t in norm_tokens(w.text):
+                    ft.append(t)
+                    fo.append((i,))
+            self._streams = [plain, (jt, jo), (ft, fo)]
+        return self._streams
 
     def box(self, word_ids: Iterable[int]) -> Box:
         return union(self.words[i].box(i) for i in word_ids)
@@ -189,17 +355,70 @@ class PageGeom:
                 lines.append([i])
         return [self.box(ln) for ln in lines]
 
-    def find_phrase(self, text: str) -> list[Box]:
-        """Exact token-sequence matches of text (each match as one box, in reading order)."""
+    def _match_tokens(self, want: list[str]) -> list[Box]:
+        key = tuple(want)
+        if key not in self._matches:
+            self._matches[key] = self._scan(want)
+        return self._matches[key]
+
+    def _scan(self, want: list[str]) -> list[Box]:
+        seen: dict[frozenset, Box] = {}
+        n = len(want)
+        for toks, owner in self.streams():
+            for i in range(len(toks) - n + 1):
+                if toks[i] == want[0] and toks[i:i + n] == want:
+                    ids = frozenset(w for o in owner[i:i + n] for w in o)
+                    if ids not in seen and not all(self.words[w].sup for w in ids):
+                        seen[ids] = self.box(ids)
+        return sorted(seen.values(), key=lambda b: min(b.words))
+
+    def find_phrase(self, text: str, label: bool = False) -> list[Box]:
+        """Exact token-sequence matches of text (each match as one box, in reading order). Glued words count as
+        one (t + subscript RFC = tRFC); a footnote mark is skipped ('295' finds 295 with a raised 1 after it)
+        but may also be named ('295 (1)'); a match is never a footnote mark alone.
+
+        label=True (row labels): a symbol written with a space ('t RFC', 'V DDQ') also finds the symbol as
+        printed in one piece."""
         want = norm_tokens(text)
         if not want:
             return []
-        toks, owner = self.tokens()
+        out = self._match_tokens(want)
+        if label and not out and len(want) == 2 and len(want[0]) == 1 and want[0].isalpha():
+            out = self._match_tokens([want[0] + want[1]])
+        return out
+
+    def find_wrapped(self, text: str, max_lines: int = 3) -> list[Box]:
+        """A row label printed over several lines of its cell ('Refresh cycle time for' / '8Gb devices'): the
+        first part on one line, each next part on the line directly below, starting at the same x (or centred
+        on the same axis). Returns one box per full match."""
+        want = norm_tokens(text)
+        if len(want) < 2:
+            return []
+        out: dict[frozenset, Box] = {}
+        for k in range(len(want) - 1, 0, -1):
+            for first in self._match_tokens(want[:k]):
+                for rest in self._below(want[k:], first, max_lines - 1):
+                    box = union([first, rest])
+                    out.setdefault(frozenset(box.words), box)
+        return sorted(out.values(), key=lambda b: min(b.words))
+
+    def _below(self, want: list[str], above: Box, lines: int) -> list[Box]:
+        if lines <= 0 or not want:
+            return []
+
+        def under(b: Box) -> bool:
+            return (above.y0 + 0.5 * above_h <= b.y0 <= above_y1 + 1.0 * above_h
+                    and (abs(b.x0 - above.x0) <= 3.0 or abs(b.cx - above.cx) <= 3.0))
+
+        above_h = max(min(self.words[i].y1 - self.words[i].y0 for i in above.words), 1.0)
+        above_y1 = max(self.words[i].y1 for i in above.words)
+        found = [b for b in self._match_tokens(want) if under(b)]
+        if found or lines == 1:
+            return found
         out = []
-        n = len(want)
-        for i in range(len(toks) - n + 1):
-            if toks[i] == want[0] and toks[i:i + n] == want:
-                out.append(self.box(set(owner[i:i + n])))
+        for k in range(len(want) - 1, 0, -1):
+            for mid in (b for b in self._match_tokens(want[:k]) if under(b)):
+                out += [union([mid, r]) for r in self._below(want[k:], mid, lines - 1)]
         return out
 
     def locate_text(self, text: str, min_cov: float = 0.8) -> TextMatch:
@@ -330,7 +549,10 @@ def ground_cell(geom: PageGeom, value: str, row_labels: Sequence[str], headers: 
     cands = geom.find_phrase(value)
     if not cands:
         return CellGrounding("not_found", reason=f"'{value}' is not in the text layer", page=geom.page)
-    labels = [b for lab in row_labels if lab for b in geom.find_phrase(lab)]
+    labels = []
+    for lab in row_labels:
+        if lab:
+            labels += geom.find_phrase(lab, label=True) or geom.find_wrapped(lab)
     head_toks = {t for h in headers for t in norm_tokens(h)}
     wanted = [b for h in headers for b in geom.find_phrase(h)]
     prev_wanted = [b for h in headers for b in prev.find_phrase(h)] if prev is not None and prev.has_text else []

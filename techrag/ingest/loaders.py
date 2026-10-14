@@ -74,11 +74,17 @@ def _overlap_ratio(a, b) -> float:
     return (x1 - x0) * (y1 - y0) / area
 
 
-def _table_markdown(table) -> str | None:
+def _table_markdown(table, marks=()) -> str | None:
     try:
         rows = table.extract()
     except Exception:
         return None
+    if marks:
+        try:
+            rows = [[_mark_cell(c, cb, marks) for c, cb in zip(row, table.rows[i].cells)]
+                    for i, row in enumerate(rows)]
+        except Exception:
+            pass                # cell boxes unavailable: the text stays as extracted
     rows = [[_cell(c) for c in row] for row in rows if row and any(c not in (None, "") for c in row)]
     if len(rows) < 2 or max(len(r) for r in rows) < 2:
         return None
@@ -88,6 +94,31 @@ def _table_markdown(table) -> str | None:
     lines = ["| " + " | ".join(header) + " |", "|" + "---|" * width]
     lines += ["| " + " | ".join(r) + " |" for r in body]
     return "\n".join(lines)
+
+
+def _inside(point, rect) -> bool:
+    return rect is not None and rect[0] - 0.5 <= point[0] <= rect[2] + 0.5 and rect[1] - 0.5 <= point[1] <= rect[3] + 0.5
+
+
+def _mark_cell(value, rect, marks):
+    """A footnote mark / power of ten inside this table cell is set apart as in the text ('295⁽1⁾', '10^-12')."""
+    if not value:
+        return value
+    for m in marks:
+        centre = ((m.bbox[0] + m.bbox[2]) / 2, (m.bbox[1] + m.bbox[3]) / 2)
+        if _inside(centre, rect) and m.raw and m.raw in value:
+            value = value.replace(m.raw, m.rendered, 1)
+    return value
+
+
+def _mark_text(text: str, bbox, lines) -> str:
+    """The lines of a text block with raised marks set apart: '2951' -> '295⁽1⁾' (295 with footnote 1),
+    '10-12' -> '10^-12'. A line that cannot be found as extracted is left unchanged."""
+    for ln in lines:
+        centre = ((ln.bbox[0] + ln.bbox[2]) / 2, (ln.bbox[1] + ln.bbox[3]) / 2)
+        if _inside(centre, bbox) and ln.raw in text:
+            text = text.replace(ln.raw, ln.rendered, 1)
+    return text
 
 
 def _cell(value) -> str:
@@ -107,7 +138,7 @@ def _drawing_count(page) -> int:
 def load_pdf(path: Path, extract_tables: bool = True) -> LoadedDocument:
     import pymupdf
 
-    from techrag.geometry import PageGeom
+    from techrag.geometry import PageGeom, superscript_lines
 
     getattr(pymupdf, "no_recommend_layout", lambda: None)()  # silence a stdout advert in newer versions
     doc = pymupdf.open(str(path))
@@ -119,7 +150,12 @@ def load_pdf(path: Path, extract_tables: bool = True) -> LoadedDocument:
     for index, page in enumerate(doc):
         page_no = index + 1
         try:
-            geoms[page_no] = PageGeom.from_page(page, page_no)
+            sup_lines = superscript_lines(page)
+        except Exception:
+            sup_lines = []
+        marks = [m for ln in sup_lines for m in ln.marks]
+        try:
+            geoms[page_no] = PageGeom.from_page(page, page_no, sup_lines)
         except Exception as exc:  # geometry is for highlighting/grounding only; never fail the document
             warnings.append(f"p.{page_no}: word positions unavailable ({exc.__class__.__name__})")
         tables = []
@@ -134,7 +170,7 @@ def load_pdf(path: Path, extract_tables: bool = True) -> LoadedDocument:
             try:
                 found = page.find_tables()
                 for t in found.tables:
-                    md = _table_markdown(t)
+                    md = _table_markdown(t, marks)
                     if md:
                         tables.append((tuple(t.bbox), md))
             except Exception as exc:  # table detection is best-effort
@@ -147,6 +183,8 @@ def load_pdf(path: Path, extract_tables: bool = True) -> LoadedDocument:
                 continue
             if any(_overlap_ratio((x0, y0, x1, y1), tb) > 0.5 for tb, _ in tables):
                 continue
+            if sup_lines:
+                text = _mark_text(text, (x0, y0, x1, y1), sup_lines)
             items.append((y0, Block(page_no, text, bbox=(x0, y0, x1, y1))))
         # Insert each table before the first text block that starts below it (reading order).
         for bbox, md in tables:
