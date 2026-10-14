@@ -1,5 +1,44 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.7.0 — doğruluk ve ölçüm iyileştirmeleri
+**Doğruluk / güvenilirlik**
+- **Denetçi istekleri bağlama sığıyor:** denetçiye gönderilen istekler modelin bağlam uzunluğuna (ayardaki değer
+  veya sunucunun bildirdiği `max_model_len`, hangisi küçükse) yanıt payıyla birlikte sığacak şekilde gruplanıyor;
+  uzun kaynaklarda ifade başına alıntı kısaltılıyor. Başarısız bir istek ifade ifade, bağlam aşımı veya token
+  sınırında kesilen yanıtta bir kez daha kısa alıntılarla yeniden deneniyor. Kesik yanıt hiçbir zaman karar
+  sayılmıyor. Teknik denetçi hatası ("doğrulanamadı") denetçinin "desteklenmiyor" kararından ayrı gösteriliyor.
+- **VLM sayfa filtresi:** VLM'e yalnızca gerçek bir tablo işareti olan sayfalar gidiyor — satır başında tablo
+  başlığı, PDF'in bulduğu çizgili tablo veya en az üç ortak sütunda hizalı satırlar (çizgisiz ve döndürülmüş
+  tablolar dahil). Değer ve "min/max" kelimeleriyle dolu düz metin sayfaları artık tek başına seçilmiyor (önceki
+  sürümde bu tür sayfalar eşiği rahatça geçiyordu). Mevcut indeks yeniden işlenmez; kural yeni/değişen belgelere
+  ve yeniden indekslemeye uygulanır.
+- **Yanlış atıf düzeltmesi:** değeri doğru ama atfı yanlış bir ifade — değerlerin hepsi cevapla verilen başka bir
+  doğrulanmış kaynakta yazıyorsa — o kaynağın atfı eklenerek yeniden kontrol ediliyor; denetçinin onayı yine
+  gerekiyor ve düzeltme "atıf düzeltildi" olarak gösteriliyor. Ayarlardan kapatılabilir.
+- **Kaldırma gerekçeleri Türkçe:** doğrulama kutusundaki gerekçeler artık arayüz dilinde ("'1.25 V' değeri atıf
+  yapılan kaynaklarda bulunamadı", "değer [4] kaynağında geçiyor (yanlış atıf)", "Bağımsız denetleyici: kaynaklar
+  bu ifadeyi desteklemiyor").
+- **Tablo / bölüm başvuruları izleniyor:** bulunan pasaj "Table 4-12", "Section 3.2", "clause 5.4.1" veya "§ 4.5"
+  diyorsa o tablo/bölüm aynı belgeden ayrı bir kaynak olarak ekleniyor (en fazla 3; kaynak listesinde
+  "↪ başvurulan Tablo 4-12"). Bütçe doluysa yer, başvuru yapılmamış en düşük sıralı pasajdan açılıyor.
+
+**Ölçüm**
+- **Cevap geri bildirimi:** her cevabın altında 👍 / 👎; 👎 doğru değer, birim, parametre, belge ve sayfa için kısa
+  bir form açar. Kayıtlar yalnızca bu bilgisayarda, kullanıcı klasöründe tutulur (kütüphaneye yazılmaz; salt
+  okunur paylaşılan kütüphanede de çalışır); kaynak metni, kütüphane yolu, sunucu adresi veya anahtar saklanmaz.
+- **Değerlendirme penceresi:** örnek soru seti (artık exe'nin içinde), geri bildirimden çıkan aday maddeler veya
+  kendi `.yaml` dosyanız arka planda çalıştırılır (ilerleme, durdurma). Her oran pay/payda ile gösterilir; paydası
+  0 olan oran "ölçülmedi" yazar. Raporlar kullanıcı klasörüne kaydedilir ve listelenir; hata metinlerinden sunucu
+  adresi ve anahtarlar silinir. Aday maddeler `status: candidate` olarak dışa aktarılır; bir mühendis kontrol
+  edene kadar benchmark sayılmaz. Komut satırında `eval` artık varsayılan olarak gömülü seti kullanır.
+- **Gelişmiş ayarlar:** model bağlam uzunluğu (sunucunun bildirdiği değerle), denetçi grup boyutu, atıf
+  düzeltmesi, izlenecek başvuru sayısı, VLM sayfa eşiği ve sayfa sınırı — aralık denetimiyle.
+
+- Yeniden indeksleme gerekmez. Ayarlar, API anahtarları ve kütüphane aynen kullanılır.
+- Doğrulanan: tüm birim/arayüz testleri (sahte model sunucusuyla), self-test. Gerçek model sunucusuyla denetçi
+  istek boyutları, gerçek standart PDF'lerinde tablo işareti/başvuru takibi ve atıf düzeltmesinin sıklığı
+  ölçülmedi.
+
 ### 0.6.1 — tablodaki değerler doğrulamada bulunuyor
 - **Düzeltme:** birimi ayrı sütunda yazan tablolardaki değerler ("Min Typ Max Unit", "VDD | 1.14 | 1.2 | 1.26 | V",
   hücreleri ayrı satırda gelen tablolar, "Min (V)" gibi başlıkta birim) ve doğrulanmış parametre satırları
@@ -190,8 +229,9 @@ kaynaklara bağlı, cevabı göstermeden önce doğrulayan asistan. Modeller kur
    listeden seçin, **Test et**.
 2. **Belge klasörü ekle**: belgelerinizin ana klasörünü seçin; alt klasörler bucket olur, belgeler yerinde okunur.
    İndeksleme sonucu 📋 kalite raporunda görünür.
-3. Soru sorun. Komut satırı da aynı exe ile çalışır: `SayisalTasarimUzmani.exe doctor`, `... rescan`,
-   `... quality`, `... docs`.
+3. Soru sorun; cevap yanlış veya eksikse 👎 ile doğru değeri ve sayfasını ekleyin. **Değerlendirme**
+   penceresinden örnek seti veya kendi soru dosyanızı çalıştırabilirsiniz. Komut satırı da aynı exe ile çalışır:
+   `SayisalTasarimUzmani.exe doctor`, `... rescan`, `... quality`, `... docs`, `... eval`.
 
 Kütüphane varsayılan olarak `%USERPROFILE%\SayisalTasarimUzmani\library` altındadır; ayarlar
 `%APPDATA%\SayisalTasarimUzmani\settings.json` (eski `TechRAG` klasörleri varsa onlar kullanılır).
@@ -200,6 +240,7 @@ Ayrıntılar: depodaki `README.md`.
 ### Bilinen sınırlamalar
 - Testler sahte bir OpenAI uyumlu sunucu ve üretilmiş PDF'lerle yapıldı; gerçek model sunucularına ve gerçek
   standart PDF'lerine karşı doğruluk ölçülmedi. VLM tablo eşiği ve rerank ayarlarının kendi dokümanlarınızla
-  `SayisalTasarimUzmani.exe eval --retrieval-only` kullanılarak ayarlanması gerekir. Kaynaklara bağlı doğruluk
+  (Değerlendirme penceresi, "yalnızca erişim" veya `SayisalTasarimUzmani.exe eval --retrieval-only`)
+  ayarlanması gerekir. Kaynaklara bağlı doğruluk
   garanti edilmez; doğrulama yanlışların bir kısmını yakalar.
 - Exe imzasızdır; Windows SmartScreen ilk açılışta uyarı verebilir ("Daha fazla bilgi → Yine de çalıştır").

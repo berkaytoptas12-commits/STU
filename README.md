@@ -54,7 +54,9 @@ flowchart TB
 | Model "biliyorum" diye uyduruyor | Cevap sözleşmesi: giriş cümlesi dahil her teknik ifade [n] atıflı; mühendislik yorumu dayandığı kaynakları ve varsayımlarını gösterir. Atıfsız teknik ifade (başlıktan önce veya sonra, sayılı veya sayısız) denetimden kaçamaz. |
 | Sorudaki değerin "standart değeri" gibi sunulması | Kullanıcının verdiği değerler ayrı bir **kullanıcı girdisi** kaynağıdır; belgeye dayanan ifadeler yalnızca atıf yapılan belge metniyle doğrulanır. Kullanıcı değeri hesapta kullanılabilir ama standart değeri gibi sunulamaz. |
 | Hesap hatası / kaynaksız girdi | Hesaplar `calculate` aracıyla yapılır; ifadedeki her sayı bir kaynağa veya kullanıcı girdisine **izlenir**. Kaynaksız girdi içeren hesap, aritmetiği doğru olsa da doğrulanmış ifadeyi desteklemez. |
-| Yine de hatalı ifade | **Deterministik kontrol** (atıf var mı, sayı+birim atıf yapılan kaynakta mı — 0,35 µs = 350 ns) → **bağımsız denetçi** (taze bağlam: yalnızca iddia + atıf yapılan kaynak). Denetçinin yalnızca o iddia kimliği için açık ve geçerli bir "supported" kararı onay sayılır; zaman aşımı, API hatası, bozuk/eksik/tekrarlı karar **onay değildir** (bir kez yeniden denenir). Desteklenmeyen ifadeler bir kez yeniden ürettirilir; cevap yalnızca **doğrulanmış ifadelerden** yeniden kurulur. |
+| Yine de hatalı ifade | **Deterministik kontrol** (atıf var mı, sayı+birim atıf yapılan kaynakta mı — 0,35 µs = 350 ns) → **bağımsız denetçi** (taze bağlam: yalnızca iddia + atıf yapılan kaynak). Denetçinin yalnızca o iddia kimliği için açık ve geçerli bir "supported" kararı onay sayılır; zaman aşımı, API hatası, bozuk/eksik/tekrarlı karar, token sınırında kesilmiş yanıt **onay değildir**. Denetçi istekleri modelin bağlam uzunluğuna (ayar veya sunucunun bildirdiği `max_model_len`, hangisi küçükse) yanıt payıyla birlikte sığacak şekilde gruplanır; başarısız bir istek ifade ifade, bağlam aşımı veya kesik yanıtta daha kısa alıntılarla yeniden denenir. Teknik bir denetçi hatası "doğrulanamadı" olarak, denetçinin "desteklenmiyor" kararından ayrı gösterilir. Desteklenmeyen ifadeler bir kez yeniden ürettirilir; cevap yalnızca **doğrulanmış ifadelerden** yeniden kurulur. |
+| Yanlış atıf (değer doğru, köşeli parantezdeki kaynak yanlış) | Bir ifadenin **tek** sorunu değerlerinin atıf yaptığı kaynakta olmaması ise ve cevapla birlikte verilen başka bir doğrulanmış kaynak bu değerlerin **hepsini** yazıyorsa, o kaynağın atfı mevcut atfın yanına eklenir (önce aynı belgeden kaynak). İfade baştan yeniden kontrol edilir ve **denetçinin onayı yine gerekir**; metnin geri kalanı değişmez. Düzeltme ifade ayrıntılarında "atıf düzeltildi" olarak gösterilir. Başka bir sorun varsa (atıfsız ifade, var olmayan kaynak, kaynakta hiç olmayan değer) düzeltme yapılmaz. |
+| Kanıt başka tabloda / bölümde ("bkz. Tablo 4-12") | Bulunan bir pasaj "Table 4-12", "Section 3.2", "clause 5.4.1", "§ 4.5" diye başka bir tabloya/bölüme başvuruyorsa, o tablo (başlık satırından bulunur; düz metindeki bir anma değil) veya bölüm **aynı belgeden** ayrı bir kaynak olarak eklenir — en fazla 3 başvuru, her biri ~1200 token; kaynak listesinde "↪ başvurulan Tablo 4-12" diye işaretlenir. Kapsam dışına çıkılmaz (başvuru belgesinin kendisindedir). |
 
 ### Doğrulama durumları
 
@@ -76,8 +78,8 @@ yaklaşık 4–8 KB yer kaplar (1000 sayfalık bir standart ≈ 5–8 MB). Vurgu
 yapılmaz; konumlar indekslemede bir kez çıkarılır.
 
 **Soru başına LLM çağrısı (doğruluk öncelikli mod):** planlayıcı 1 + cevap 1 (+ araç turları, en fazla 4) +
-denetçi 1–2 (paralel; geçerli karar gelmeyen iddialar için en fazla 1 tekrar) + gerekirse yeniden üretim 1 +
-yeniden denetim. Embedding 1, rerank 1 istek (karşılaştırma sorularında standart başına 1). Standart yüklü
+denetçi: bağlama sığan bir veya birkaç istek (paralel; başarısız istekteki ifadeler tek tek, bağlam aşımı veya
+kesik yanıtta bir kez daha kısa alıntılarla) + gerekirse yeniden üretim 1 + yeniden denetim. Embedding 1, rerank 1 istek (karşılaştırma sorularında standart başına 1). Standart yüklü
 değilse veya netleştirici soru soruluyorsa cevap modeli hiç çağrılmaz.
 
 ---
@@ -121,6 +123,11 @@ Sunucu araç çağrısını desteklemiyorsa uygulama bunu fark eder ve araçsız
 * Düşünme modu: `auto` (karşılaştırma / çok parçalı sorularda açık), `on`, `off`; kontrol yöntemi
   `chat_template` (Qwen `enable_thinking`) veya `reasoning_effort`.
 * Doğrulanamayan iddialar: **Kaldır** (varsayılan) veya **İşaretle**.
+* **Gelişmiş:** model bağlam uzunluğu (token; sunucunun bildirdiği değer yanında gösterilir, küçük olan
+  kullanılır), denetçinin bir istekte göreceği en fazla ifade, yanlış atıf düzeltmesi (açık/kapalı), izlenecek
+  tablo/bölüm başvurusu sayısı (0 = kapalı), VLM tablo sayfası eşiği ve belge başına VLM sayfa sınırı. Değerler
+  aralık denetiminden geçer. VLM eşiği veya sayfa sınırı değişirse belgeler bir sonraki taramada yeniden işlenir
+  (daha önce okunan sayfalar önbellekten gelir).
 
 Ayarlar `%APPDATA%\SayisalTasarimUzmani\settings.json` dosyasına yazılır; API anahtarları **Windows DPAPI** ile kullanıcı
 hesabına bağlı şifrelenir.
@@ -192,7 +199,8 @@ değildir.
 * **Son çalıştırma özeti:** işlenen (yeni/güncellenen), değişmediği için atlanan, yeniden kullanılan (taşınmış/kopya),
   kısmen işlenen, başarısız, erişilemeyen ve kaynağı olmayan belge sayıları; VLM için incelenen sayfa (kaçı
   önbellekten), tablo bulunan sayfa, **incelenip tablo bulunmayan** sayfa, **VLM'in başarısız olduğu** sayfa,
-  tablo filtresinin altında kalan (incelenmeyen) ve sayfa sınırı yüzünden incelenmeyen sayfalar; çıkarılan,
+  tablo işareti bulunmayan veya eşiğin altında kalan (incelenmeyen) ve sayfa sınırı yüzünden incelenmeyen
+  sayfalar (bkz. "VLM'e hangi sayfalar gider"); çıkarılan,
   PDF metniyle hücre hücre eşleşen ve eşleşmeyen tablolar; doğrulanan/doğrulanamayan parametre satırları (oran
   her zaman paydasıyla: "4/4 doğrulandı (%100) — payda: VLM'in çıkardığı satırlar"); embedding ve indeks yazma
   hataları. VLM kapalıysa bu açıkça yazılır ("tablolar yalnızca PDF metninden okundu").
@@ -217,6 +225,14 @@ değildir.
 Her belge tek bir SQLite işleminde (kalite kaydıyla birlikte) yazılır. **Başarısız bir deneme mevcut indeksi
 silmez**; daha fazla başarısız sayfayla biten bir deneme de yazılmaz ("sonuç daha iyi değil, mevcut indeks
 korundu"). Komut satırı: `quality` ve `retry`.
+
+**VLM'e hangi sayfalar gider:** yalnızca gerçek bir tablo işareti olan sayfalar — satır başında bir tablo
+başlığı ("Table 4-12 DC characteristics"; düz metinde geçen "Table 4-2 shows …" sayılmaz), PDF tablo
+algılayıcısının bulduğu çizgili tablo veya kelime konumlarından bulunan, en az üç ortak sütunda hizalı satırlar
+(çizgisiz tablo; döndürülmüş sayfalar dahil). Değerler ve "min/max/typical" kelimeleriyle dolu düz metin tek
+başına yeterli değildir. Bu sayfalar arasında puan (başlık, tablo sözcükleri, değer sayısı) sıralama ve eşik
+(`vision.min_page_score`) için kullanılır. Bu kural 0.7.0'da geldi; daha önce indekslenmiş belgeler yeniden
+işlenmez (mevcut tablolar korunur), yeni/değişen belgelere ve yeniden indekslemeye uygulanır.
 
 ### 3.4 Kütüphane klasörü ve tek dosya ekleme
 
@@ -332,7 +348,15 @@ kullanıcıların onu açması önerilir (açıkken üzerine yazmayın).
   çağrıları ve isteğe bağlı model düşünmesi listelenir. Doğrulama bitince yalnızca doğrulanmış ifadelerden
   kurulan son cevap gösterilir.
 * **Doğrulama kutusu:** cevap durumu, denetçinin tamamlanıp tamamlanmadığı, çıkarılan/işaretlenen ifadeler
-  (gerekçesiyle) ve "İfade ayrıntıları" (her ifadenin durumu; kullanıcı girdisi / hesap içerip içermediği).
+  (gerekçesi arayüz dilinde: "'1.25 V' değeri atıf yapılan kaynaklarda bulunamadı", "Bağımsız denetleyici:
+  kaynaklar bu ifadeyi desteklemiyor", "Denetleyiciye ulaşılamadı … (teknik sorun; ifade yanlış bulunmadı)") ve
+  "İfade ayrıntıları" (her ifadenin durumu; kullanıcı girdisi / hesap içerip içermediği; "atıf düzeltildi").
+* **Geri bildirim:** her cevabın altında 👍 (doğru/faydalı, hemen kaydedilir) ve 👎 (yanlış/eksik). 👎 kısa bir
+  form açar: doğru değer, birim, parametre, belge, sayfa, not ve "belgeler bu soruyu cevaplamıyor". Kayıtlar
+  yalnızca bu bilgisayarda kullanıcı klasöründe (`%APPDATA%\SayisalTasarimUzmani\feedback.json`) tutulur;
+  kütüphaneye yazılmaz (salt okunur paylaşılan kütüphanede de çalışır). Kaynak metni, kütüphane yolu, sunucu
+  adresi veya anahtar saklanmaz. **Değerlendirme** penceresinden aday değerlendirme maddeleri olarak dışa
+  aktarılabilir.
 
 ### PDF'de kanıt vurgulama
 
@@ -375,7 +399,7 @@ SayisalTasarimUzmani.exe inspect dosya.pdf --table-pages   :: parçalama ve VLM'
 SayisalTasarimUzmani.exe search "DDR5 tRFC 16Gb"   :: yalnızca arama (kapsam, pasajlar, parametre satırları)
 SayisalTasarimUzmani.exe ask "PCIe 5.0 LTSSM Polling alt durumları?"
 SayisalTasarimUzmani.exe publish \\sunucu\paylasim\kutuphane-2026-10
-SayisalTasarimUzmani.exe eval eval\questions.yaml  :: değerlendirme
+SayisalTasarimUzmani.exe eval                     :: değerlendirme (gömülü örnek set; kendi dosyanız: eval sorular.yaml)
 ```
 
 Kaynak koddan: `pip install -r requirements-desktop.txt` → `python -m techrag.desktop` (pencere) veya
@@ -386,12 +410,25 @@ anahtarıyla, `?token=…` ile yazdırılır; anahtarsız istekler reddedilir).
 
 ## 5. Doğruluğu ölçme
 
+**Değerlendirme penceresi** (üst çubuk): bir soru setini mevcut kütüphaneye karşı arka planda çalıştırır
+(ilerleme çubuğu, "Durdur"; pencere kullanılabilir kalır). Set seçimi: uygulamayla gelen **örnek set** (39 taslak
+soru), **geri bildirimden aday maddeler** veya **kendi `.yaml` dosyanız**; "yalnızca erişim" seçeneği model
+cevabı üretmeden recall@k/MRR ölçer. Sonuç tablosunda her oran **pay/payda** ile gösterilir ("1/1, %100");
+paydası 0 olan oran "ölçülmedi" yazar (0 sayılmaz). Raporlar kullanıcı klasörüne
+(`%APPDATA%\SayisalTasarimUzmani\eval_reports`) kaydedilir ve pencerede listelenir; kütüphaneye yazılmaz, hata
+metinlerinden sunucu adresi ve anahtarlar silinir. Aynı anda bir değerlendirme çalışır; uygulama kapanırken
+durur. Aynı pencerede geri bildirim özeti ve **aday maddeleri dışa aktar (.yaml)** bulunur: 👍 verilen cevaptaki
+değerler beklenen anahtar kelimeler, 👎 ile girilen doğru değer (parametre verildiyse olgu) olur; maddeler
+`status: candidate` olarak çıkar ve bir mühendis belgeye karşı kontrol edip `expert_verified` yapana kadar
+benchmark sayılmaz. 👎 verilip doğru değer girilmeyen kayıt madde üretmez.
+
 ```bat
 SayisalTasarimUzmani.exe eval --retrieval-only     :: LLM'siz: recall@1/3/5/8, MRR (doğru doküman/sayfa geldi mi?)
 SayisalTasarimUzmani.exe eval                      :: + cevap metrikleri
 ```
 
-Soru şeması (`eval/questions.yaml`, ayrıntı `techrag/evaluation.py`): doküman, revizyon, fiziksel sayfa ve
+Soru şeması (örnek set: `techrag/resources/eval/questions.yaml`, exe'nin içinde gömülü; ayrıntı
+`techrag/evaluation.py`): doküman, revizyon, fiziksel sayfa ve
 **olgular** (parametre, değer, birim, min/typ/max, koşullar). `answerable: false` ile cevabı kütüphanede
 olmayan sorular eklenir; bunlarda doğru davranış cevap vermemektir. Rapor ayrı ayrı verir:
 
@@ -402,7 +439,7 @@ olmayan sorular eklenir; bunlarda doğru davranış cevap vermemektir. Rapor ayr
 * doğru kaynak, doğru sayfa ve **kanıt konumu** doğruluğu,
 * sistemin kendi doğrulama geçiş oranı — ayrı ve açıkça "bağımsız doğruluk değildir" notuyla.
 
-Depodaki `eval/questions.yaml` **doğrulanmış bir benchmark değildir**: maddeler `status: draft`'tır, değerler
+Örnek set **doğrulanmış bir benchmark değildir**: maddeler `status: draft`'tır, değerler
 kamuya açık bilgilerdir ama sizin doküman revizyonlarınıza karşı kontrol edilmemiştir; rapor bunu
 (`"benchmark": false`) belirtir. Gerçek ölçüm için mühendislerin gerçek sorularından, kendi PDF'lerinize karşı
 uzman tarafından kontrol edilmiş (`status: expert_verified`) birkaç yüz soruluk bir set hazırlayın; önce
@@ -493,6 +530,16 @@ girerek açıyorsa model sunucuları için **"Sistem proxy ayarlarını kullan"*
   belgeler için bilgi yoktur.
 * Değerlendirme betiğindeki olgu eşleştirme sezgiseldir (parametre adı, değer+birim, koşul kelimeleri,
   olumsuzlama); şüpheli durumlarda yanlış sayar.
+* VLM sayfa filtresinin "hizalı sütun" işareti kelime konumlarına dayanır; sentetik çizgili/çizgisiz/döndürülmüş
+  tablolar ve iki sütunlu düz metinle test edildi. Gerçek standartlarda tablo başlığı olmayan, sütunları dar
+  aralıklı bir tablo kaçabilir; zamanlama diyagramındaki hizalı etiketler sayfayı aday yapabilir (VLM o sayfada
+  tablo bulamaz).
+* Başvuru takibi yalnızca İngilizce/Türkçe kalıpları ("Table/Tablo 4-12", "Section/Bölüm 3.2", "clause",
+  "§ 4.5") ve yalnızca aynı belgeyi kapsar; başka bir belgeye yapılan başvuru ("JESD79-5'teki Table 4-12")
+  izlenmez. Yanlış atıf düzeltmesi aynı değeri yazan birden çok kaynak varsa aynı belgedeki, sonra en üst
+  sıradaki kaynağı seçer; doğru bağlamda olup olmadığına denetçi karar verir.
+* Denetçi istek boyutu için token sayısı karakter sayısından tahmin edilir (bilinçli olarak tutucu); sunucu
+  `max_model_len` bildirmiyorsa ayardaki bağlam uzunluğu kullanılır.
 
 ---
 
@@ -519,12 +566,13 @@ techrag/
                    quality (kalite raporu kayıtları, gizli bilgi temizliği)
   store.py         SQLite indeks (şema v5 + yerinde geçiş), belge klasörleri, parametre deposu, sayfa geometrisi,
                    yayımlama (klasör belgelerini pakete kopyalar)
-  evaluation.py    olgu tabanlı değerlendirme şeması ve metrikler
+  evaluation.py    olgu tabanlı değerlendirme şeması, metrikler (pay/payda), raporlar
+  feedback.py      cevap geri bildirimi (kullanıcı klasöründe) ve aday değerlendirme maddeleri
   api.py, llm.py, embeddings.py, reranker.py   OpenAI uyumlu istemciler (vLLM)
   units.py         nicelik ayrıştırma ve SI normalizasyonu (bilinmeyen birim / ifade / belirsiz sayı ayrı)
   config.py, settings.py   katmanlı ayarlar, DPAPI ile şifreli API anahtarları
   web/             çevrimdışı arayüz (TR/EN, bucket paneli, yeniden boyutlanan kaynak paneli, PDF vurgu katmanı)
-  resources/domains.yaml
+  resources/       domains.yaml, eval/questions.yaml (örnek soru seti, exe'ye gömülü)
 packaging/         PyInstaller spec + giriş;  .github/workflows/windows-build.yml
 deploy/            vLLM örnek komutları
 tests/             sentetik PDF'ler + sahte OpenAI uyumlu sunucu; Playwright ile arayüz testi (Chromium varsa)

@@ -124,6 +124,21 @@ def test_page_info_and_migrate_endpoint(client):
     assert st["status"] == "done" and st["report"]["documents"] == 0, "nothing to migrate in a current index"
 
 
+def test_failed_migration_is_reported(client, monkeypatch):
+    import techrag.ingest.pipeline as pipeline
+
+    def broken(*a, **kw):
+        raise RuntimeError("disk full")
+    monkeypatch.setattr(pipeline, "migrate_index", broken)
+    job = client.post("/api/library/migrate").json()["job"]
+    for _ in range(200):
+        st = client.get(f"/api/jobs/{job}").json()
+        if st["status"] in ("done", "failed"):
+            break
+        time.sleep(0.05)
+    assert st["status"] == "failed" and st["messages"][-1] == "ERROR: disk full"
+
+
 def _wait_job(client, job):
     for _ in range(400):
         st = client.get(f"/api/jobs/{job}").json()

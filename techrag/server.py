@@ -737,8 +737,6 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 except Exception as exc:
                     job["messages"].append(f"ERROR: {exc}")
                     job["status"] = "failed"
-                    if ing is not None:
-                        ing.abort_run("failed")
 
         threading.Thread(target=run, daemon=True).start()
         return {"job": job["id"]}

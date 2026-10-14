@@ -158,7 +158,7 @@ def update_settings(cfg: Config, patch: dict) -> Config:
     # --library, TECHRAG_READ_ONLY) keep winning, as they did at start-up.
     probe = cfg.copy()
     apply_dict(probe, applied, strict=False)  # validates types before persisting
-    check_ranges(probe)
+    check_ranges(probe, applied)
     _apply_env(probe)
     save_user_settings(stored)
     return probe
@@ -170,8 +170,12 @@ RANGES = {("llm", "context_tokens"): (2048, 1_048_576), ("vision", "min_page_sco
           ("retrieval", "follow_references"): (0, 10), ("retrieval", "reference_tokens"): (100, 8000)}
 
 
-def check_ranges(cfg: Config) -> None:
+def check_ranges(cfg: Config, changed: dict) -> None:
+    """Range check of the advanced values this update changes (a value set elsewhere, e.g. in a YAML file,
+    does not block an unrelated change)."""
     for (section, key), (lo, hi) in RANGES.items():
+        if key not in (changed.get(section) or {}):
+            continue
         v = getattr(getattr(cfg, section), key)
         if not lo <= v <= hi:
             raise ValueError(f"{section}.{key} must be between {lo} and {hi} (got {v})")
