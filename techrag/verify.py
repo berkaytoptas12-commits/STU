@@ -390,7 +390,7 @@ def deterministic_check(claims: list[Claim], registry) -> None:
                      value=value)
                 unverifiable = True
                 continue
-            if any(s.evidence_text and any(q.matches(x) for x in find_quantities(s.text)) for s in good_docs):
+            if any(s.evidence_text and any(q.matches(x) for x in _source_quantities(s, s.text)) for s in good_docs):
                 fail("value_image_only", f"value '{value}' appears only in a page-image transcription "
                      "(unverified extraction), not in the page's text layer", value=value)
                 unverifiable = True

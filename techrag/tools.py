@@ -20,6 +20,10 @@ from techrag.store import ParameterRow, Store, TableRow
 from techrag.units import find_quantities, parse_number
 
 TOOL_RESULT_TOKENS = 2500
+READING_AID = ("[READING AID - the vision model's reconstruction of a table on this page. It did NOT match the PDF "
+               "text cell by cell: use it only to see which value belongs to which row and column, then take each "
+               "value from the text above (it is there, perhaps in another order). Never cite a value that appears "
+               "only here.]")
 
 
 TYPE_NOTES = {
@@ -108,11 +112,16 @@ class SourceRegistry:
     def add_passage(self, p: Passage, doc_meta: Optional[dict] = None) -> tuple[Source, bool]:
         key = "c:" + ",".join(map(str, p.chunk_ids))
         meta = {"entities": p.entities, "doc_type": p.doc_type, "revision": p.revision, **(doc_meta or {})}
-        return self._add(key, kind="table" if p.kind == "table" else "passage", text=p.text, doc_id=p.doc_id,
+        if p.aid:
+            # The model sees the reading aid; verification, the judge and the evidence locator see only the PDF text.
+            meta["evidence_text"] = p.text
+        return self._add(key, kind="table" if p.kind == "table" else "passage",
+                         text=f"{p.text}\n\n{READING_AID}\n{p.aid}" if p.aid else p.text, doc_id=p.doc_id,
                          doc_title=p.doc_title, domain=p.domain, section=p.section, page_start=p.page_start,
                          page_end=p.page_end, score=p.score,
                          extra={"chunk_ids": list(p.chunk_ids),
-                                **({"referenced_as": p.referenced_as} if p.referenced_as else {})}, **meta)
+                                **({"referenced_as": p.referenced_as} if p.referenced_as else {}),
+                                **({"reading_aid": True} if p.aid else {})}, **meta)
 
     def add_parameter(self, r: ParameterRow, doc_meta: dict) -> tuple[Source, bool]:
         caption = f"{r.caption} — " if r.caption else ""

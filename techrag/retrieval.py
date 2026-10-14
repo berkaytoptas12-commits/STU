@@ -73,6 +73,8 @@ class Passage:
     revision: str = ""
     figure_page: Optional[int] = None
     referenced_as: str = ""         # "Table 4-12" / "Section 3.2": added because another passage refers to it
+    aid: str = ""                   # reading aid: the vision model's (unmatched) table of this page, not evidence
+    replaced: bool = False          # the search hit was an unmatched VLM table, replaced by the page's PDF text
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -296,6 +298,22 @@ def _same_document(d: DocumentRow) -> tuple:
     return doc_series(d), d.version, tuple(sorted(e.lower() for e in d.entities))
 
 
+AID_TOKENS = 1200      # per page: the reading aid is cut to this size
+
+
+def _cut_tokens(text: str, tokens: int) -> str:
+    if estimate_tokens(text) <= tokens:
+        return text
+    lines, out, used = text.split("\n"), [], 0
+    for ln in lines:
+        t = estimate_tokens(ln) + 1
+        if out and used + t > tokens:
+            break
+        out.append(ln)
+        used += t
+    return "\n".join(out) + "\n(...)"
+
+
 def _groups(included: dict[tuple[int, int], ChunkRow]) -> list[list[ChunkRow]]:
     """Consecutive chunks of the same section form one passage."""
     groups: list[list[ChunkRow]] = []
@@ -380,7 +398,12 @@ class Retriever:
                 n += len(ranked)
                 if conf is not None:
                     confidence = conf if confidence is None else min(confidence, conf)
-            passages = self.with_references(self.build_passages(selected, budget), budget)
+            passages = self.build_passages(selected, budget)
+            rescored = self._rescore(plan, passages, timings)
+            passages = self.with_references(passages, budget)
+            if rescored:
+                confidence = min((max((p.score for p in passages if p.doc_id in ids and not p.referenced_as),
+                                      default=0.0) for ids in scope.per_entity.values()), default=None)
             params: list[ParameterRow] = []
             if with_parameters and plan.wants_parameters:
                 for ids in scope.per_entity.values():
@@ -397,11 +420,36 @@ class Retriever:
                                          "searched the whole library"]
             scope = wider
             ranked, confidence = self._rank(plan, scope, timings)
-        passages = self.with_references(self.build_passages(ranked[:k], budget), budget)
+        passages = self.build_passages(ranked[:k], budget)
+        rescored = self._rescore(plan, passages, timings)
+        passages = self.with_references(passages, budget)
+        if rescored:
+            confidence = max((p.score for p in passages if not p.referenced_as), default=None)
         params = []
         if with_parameters and plan.wants_parameters:
             params = self.parameters(plan, scope)
         return RetrievalResult(plan, passages, scope, params, confidence, len(ranked), timings)
+
+    def _rescore(self, plan: QueryPlan, passages: list[Passage], timings: dict) -> bool:
+        """A passage that stands in for an unmatched VLM table (the page's PDF text) is scored again by the
+        reranker: the score shown and used for ordering is that of the text the model actually gets, not of the
+        clean table it never sees. True when scores changed."""
+        todo = [p for p in passages if p.replaced]
+        if not self.reranker or not todo:
+            return False
+        t = time.time()
+        try:
+            docs = self.catalog.docs()
+            scores = self.reranker.score(plan.rerank_query, [
+                f"{', '.join(docs[p.doc_id].entities) if p.doc_id in docs else ''} | {p.doc_title} | {p.section}\n"
+                f"{p.text}" for p in todo])
+        except Exception:
+            return False        # the hit's own score stays (the answer does not depend on it)
+        for p, sc in zip(todo, scores):
+            p.score = float(sc)
+        passages.sort(key=lambda p: -p.score)
+        timings["rerank"] = round(timings.get("rerank", 0) + time.time() - t, 3)
+        return True
 
     def parameters(self, plan: QueryPlan, scope: Scope, k: Optional[int] = None) -> list[ParameterRow]:
         k = k or self.cfg.retrieval.parameter_rows
@@ -412,21 +460,37 @@ class Retriever:
 
     # ------------------------------------------------------------- passages
     def _evidence_rows(self, selected: list[tuple[ChunkRow, float]]) -> list[tuple[ChunkRow, float]]:
-        """Search-only hits (unverified VLM tables) are replaced by the original text of their page."""
+        return self._evidence_and_aids(selected)[0]
+
+    def _evidence_and_aids(self, selected: list[tuple[ChunkRow, float]]
+                           ) -> tuple[list[tuple[ChunkRow, float]], dict[tuple[int, int], list[str]], set]:
+        """Search-only hits (VLM tables not matched to the PDF text cell by cell) are replaced by the original
+        text of their page. Returns (rows, reading aids per (doc, page): the replaced VLM tables, keys of the rows
+        that stand in for such a hit)."""
         out: list[tuple[ChunkRow, float]] = []
         seen: set[tuple[int, int]] = set()
+        aids: dict[tuple[int, int], list[str]] = {}
+        replaced: set[tuple[int, int]] = set()
         for row, score in selected:
-            rows = [row] if row.evidence else self.store.page_chunks(row.doc_id, row.page_start)
+            if row.evidence:
+                rows = [row]
+            else:
+                rows = self.store.page_chunks(row.doc_id, row.page_start)
+                if rows:
+                    aids.setdefault((row.doc_id, row.page_start), []).append(row.text)
             for r in rows:
-                if (r.doc_id, r.ordinal) not in seen:
-                    seen.add((r.doc_id, r.ordinal))
+                key = (r.doc_id, r.ordinal)
+                if key not in seen:
+                    seen.add(key)
                     out.append((r, score))
-        return out
+                    if not row.evidence:
+                        replaced.add(key)
+        return out, aids, replaced
 
     def build_passages(self, selected: list[tuple[ChunkRow, float]], budget: int) -> list[Passage]:
         rc = self.cfg.retrieval
         docs = self.catalog.docs()
-        selected = self._evidence_rows(selected)
+        selected, aids, replaced = self._evidence_and_aids(selected)
         used = 0
         included: dict[tuple[int, int], ChunkRow] = {}
         hit_score: dict[tuple[int, int], float] = {}
@@ -441,6 +505,19 @@ class Retriever:
             included[key] = row
             hit_score[key] = score
             used += t
+
+        # Reading aids come before the small-to-big expansion: for a page whose table the search found only in
+        # the vision model's (unmatched) version, that version helps the model read the PDF text of the table.
+        aid_text: dict[tuple[int, int], str] = {}
+        pages_in = {(r.doc_id, p) for r in included.values() for p in range(r.page_start, r.page_end + 1)}
+        for key, texts in aids.items():
+            if key not in pages_in:
+                continue
+            txt = _cut_tokens("\n\n".join(dict.fromkeys(texts)), AID_TOKENS)
+            t = estimate_tokens(txt)
+            if used + t <= budget:
+                aid_text[key] = txt
+                used += t
 
         # Small-to-big: whole section if short, else neighbours within the section.
         for key in sorted(hit_score, key=lambda k: -hit_score[k]):
@@ -464,6 +541,14 @@ class Retriever:
                 used += t
 
         passages = [self._passage(g, hit_score, docs) for g in _groups(included)]
+        key_of = {r.id: k for k, r in included.items()}
+        for p in passages:
+            hits = [key_of[c] for c in p.chunk_ids if key_of.get(c) in hit_score]
+            p.replaced = bool(hits) and all(k in replaced for k in hits)
+            for page in range(p.page_start, p.page_end + 1):
+                txt = aid_text.pop((p.doc_id, page), "")
+                if txt:
+                    p.aid = f"{p.aid}\n\n{txt}".strip()
         passages.sort(key=lambda p: -p.score)
         return passages
 
