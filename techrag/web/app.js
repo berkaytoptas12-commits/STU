@@ -101,6 +101,35 @@ const I18N = {
     refTable: "başvurulan Tablo {0}", refSection: "başvurulan Bölüm {0}",
     rcDetail: "gerekçe: {0}", rcTechnical: "teknik ayrıntı: {0}",
     citeFixed: "atıf düzeltildi: {0} eklendi ({1} bu kaynakta geçiyor)", vCiteFixed: "{0} ifadede atıf düzeltildi",
+    evaluation: "Değerlendirme", advanced: "Gelişmiş",
+    advContext: "Model bağlam uzunluğu (token)", ctxInfo: "sunucunun bildirdiği: {0} · kullanılan: {1}",
+    ctxUnknown: "sunucu bağlam uzunluğunu bildirmiyor; bu değer kullanılır",
+    advJudgeBatch: "Denetleyici: bir istekte en fazla ifade", advRepair: "Yanlış atıfı düzelt (değer, verilen başka bir kaynakta geçiyorsa)",
+    advRefs: "İzlenecek tablo / bölüm başvurusu (0 = kapalı)", advPageScore: "VLM tablo sayfası eşiği", advMaxPages: "Belge başına en fazla VLM sayfası",
+    advHint: "Bağlam uzunluğu sunucunun bildirdiğinden büyük girilirse sunucunun değeri kullanılır. VLM eşiği veya sayfa sınırı değişirse belgeler bir sonraki taramada yeniden işlenir (daha önce okunan sayfalar önbellekten gelir).",
+    fbUp: "Doğru / faydalı", fbDown: "Yanlış veya eksik — düzeltme ekle", fbSaved: "geri bildirim kaydedildi",
+    fbTitle: "Cevap hakkında geri bildirim",
+    fbHint: "Doğru değeri ve nerede yazdığını biliyorsanız ekleyin; bilmiyorsanız boş bırakabilirsiniz. Kayıt yalnızca bu bilgisayarda, kullanıcı klasörünüzde tutulur; kütüphaneye yazılmaz. Dışa aktarılan maddeler bir mühendis belgeye karşı kontrol edene kadar doğrulanmış sayılmaz.",
+    fbValue: "Doğru değer", fbUnit: "Birim", fbParameter: "Parametre", fbDocument: "Belge (ad veya numara)", fbPage: "Sayfa (PDF sayfa no.)",
+    fbNote: "Not", fbUnanswerable: "Kütüphanedeki belgeler bu soruyu cevaplamıyor (cevap vermemeliydi)", fbSend: "Gönder",
+    fbHeading: "Cevap geri bildirimleri", fbSummary: "{0} kayıt: {1} 👍, {2} 👎 ({3} tanesinde doğru değer var) — {4} aday değerlendirme maddesi",
+    fbExport: "Aday maddeleri dışa aktar (.yaml)", fbList: "Son kayıtlar", fbNone: "Henüz geri bildirim yok.", fbDelete: "Sil",
+    evalHint: "Soru setini mevcut kütüphaneye karşı arka planda çalıştırır; pencere kullanılabilir kalır. Örnek set ve geri bildirimden çıkan maddeler bir uzman doğrulamadıkça benchmark değildir; sonuçlar göstergedir. Her oran pay/payda ile gösterilir; paydası 0 olan oran ölçülmemiştir.",
+    evalSetBundled: "Örnek soru seti ({0} soru, taslak)", evalSetFeedback: "Geri bildirimden aday maddeler ({0})", evalSetCustom: "Kendi soru dosyam (.yaml)",
+    evalRetrievalOnly: "Yalnızca erişim (model cevabı üretmeden recall@k / MRR)", evalRun: "Çalıştır", evalStop: "Durdur",
+    evalRunning: "{0}/{1} soru", evalDone: "Tamamlandı — rapor kaydedildi", evalCancelled: "Durduruldu (rapor kaydedilmedi)",
+    evalFailed: "Başarısız: {0}", evalNoFile: "Bir .yaml dosyası seçin.", evalHistory: "Önceki raporlar", evalNoReports: "Kayıtlı rapor yok.",
+    evalNotBenchmark: "Doğrulanmış benchmark değil: maddelerin beklenen değerleri belgelerinize karşı bir uzman tarafından kontrol edilmedi; sayılar göstergedir.",
+    evalBenchmark: "Tüm maddeler uzman tarafından belgelere karşı doğrulanmış.",
+    evalHead: "{0} soru ({1} cevaplanabilir, {2} cevaplanamaz), {3} hata, {4} uzman doğrulamalı madde",
+    evalNotMeasured: "ölçülmedi", evalRetrievalNote: "yalnızca erişim ölçüldü",
+    m_recall: "İlgili parça ilk {0} sonuçta (recall@{0})", m_mrr: "MRR (ilk ilgili parçanın sırası)",
+    m_answered_rate: "Cevap verilen", m_abstention_rate: "Cevap verilmeyen", m_fact_accuracy_of_answered: "Doğru cevap (cevap verilenler içinde)",
+    m_fact_accuracy_of_all_answerable: "Doğru cevap (cevaplanabilir sorular içinde)", m_wrong_answer_rate_of_answered: "Yanlış cevap (cevap verilenler içinde)",
+    m_wrong_answer_rate_of_all: "Yanlış cevap (tüm sorular içinde)", m_correct_abstention_rate: "Doğru çekimserlik (cevaplanamaz sorularda)",
+    m_unnecessary_abstention_rate: "Gereksiz çekimserlik (cevaplanabilir sorularda)", m_source_accuracy: "Doğru kaynak belge",
+    m_page_accuracy: "Doğru sayfa", m_evidence_location_accuracy: "Doğru kanıt konumu",
+    m_internal_verification_pass_rate: "İç doğrulamanın kabul ettiği ifadeler (bağımsız doğruluk ölçüsü değildir)", m_avg_seconds: "Ortalama süre (sn)",
     removedList: "Çıkarılan / işaretlenen ifadeler", claimDetails: "İfade ayrıntıları", usesUser: "kullanıcı girdisi içerir", usesCalc: "hesap içerir",
     st_supported: "destekleniyor", st_unsupported: "desteklenmiyor", st_unverified: "doğrulanamadı", st_not_checked: "uygulanmadı",
     prev: "‹ Önceki", next: "Sonraki ›", zoom: "Yakınlaştır", zoomIn: "Yakınlaştır", zoomOut: "Uzaklaştır", openOriginal: "Orijinal dosyayı aç",
@@ -258,6 +287,35 @@ const I18N = {
     refTable: "referenced Table {0}", refSection: "referenced Section {0}",
     rcDetail: "reason: {0}", rcTechnical: "technical detail: {0}",
     citeFixed: "citation repaired: {0} added ({1} appears in that source)", vCiteFixed: "citation repaired in {0} statement(s)",
+    evaluation: "Evaluation", advanced: "Advanced",
+    advContext: "Model context length (tokens)", ctxInfo: "server reports: {0} · used: {1}",
+    ctxUnknown: "the server does not report its context length; this value is used",
+    advJudgeBatch: "Checker: statements per request (max)", advRepair: "Repair wrong citations (value found in another given source)",
+    advRefs: "Table / section references to follow (0 = off)", advPageScore: "VLM table page threshold", advMaxPages: "Max VLM pages per document",
+    advHint: "A context length larger than the server reports is capped at the server's value. Changing the VLM threshold or page limit re-processes documents on the next scan (pages read before come from the cache).",
+    fbUp: "Correct / helpful", fbDown: "Wrong or incomplete — add a correction", fbSaved: "feedback saved",
+    fbTitle: "Feedback on the answer",
+    fbHint: "Add the correct value and where it is written if you know it; otherwise leave the fields empty. Feedback is kept only on this computer, in your user folder; nothing is written into the library. Exported items count as verified only after an engineer checks them against the document.",
+    fbValue: "Correct value", fbUnit: "Unit", fbParameter: "Parameter", fbDocument: "Document (name or number)", fbPage: "Page (PDF page no.)",
+    fbNote: "Note", fbUnanswerable: "The library's documents do not answer this question (it should not have answered)", fbSend: "Send",
+    fbHeading: "Answer feedback", fbSummary: "{0} entries: {1} 👍, {2} 👎 ({3} with the correct value) — {4} candidate evaluation items",
+    fbExport: "Export candidate items (.yaml)", fbList: "Recent entries", fbNone: "No feedback yet.", fbDelete: "Delete",
+    evalHint: "Runs a question set against the current library in the background; the window stays usable. The example set and items from feedback are not a benchmark until an expert verifies them; results are indicative. Every rate shows its numerator/denominator; a rate with denominator 0 was not measured.",
+    evalSetBundled: "Example question set ({0} questions, draft)", evalSetFeedback: "Candidate items from feedback ({0})", evalSetCustom: "My own question file (.yaml)",
+    evalRetrievalOnly: "Retrieval only (recall@k / MRR, no model answers)", evalRun: "Run", evalStop: "Stop",
+    evalRunning: "{0}/{1} questions", evalDone: "Finished — report saved", evalCancelled: "Stopped (no report saved)",
+    evalFailed: "Failed: {0}", evalNoFile: "Choose a .yaml file.", evalHistory: "Previous reports", evalNoReports: "No saved reports.",
+    evalNotBenchmark: "Not a validated benchmark: the items' expected values were not checked against your documents by an expert; the numbers are indicative.",
+    evalBenchmark: "All items are expert-verified against the documents.",
+    evalHead: "{0} questions ({1} answerable, {2} unanswerable), {3} errors, {4} expert-verified items",
+    evalNotMeasured: "not measured", evalRetrievalNote: "retrieval only",
+    m_recall: "Relevant passage in the first {0} results (recall@{0})", m_mrr: "MRR (rank of the first relevant passage)",
+    m_answered_rate: "Answered", m_abstention_rate: "Not answered", m_fact_accuracy_of_answered: "Correct answer (of answered)",
+    m_fact_accuracy_of_all_answerable: "Correct answer (of answerable questions)", m_wrong_answer_rate_of_answered: "Wrong answer (of answered)",
+    m_wrong_answer_rate_of_all: "Wrong answer (of all questions)", m_correct_abstention_rate: "Correct abstention (unanswerable questions)",
+    m_unnecessary_abstention_rate: "Unnecessary abstention (answerable questions)", m_source_accuracy: "Correct source document",
+    m_page_accuracy: "Correct page", m_evidence_location_accuracy: "Correct evidence location",
+    m_internal_verification_pass_rate: "Statements accepted by the internal checks (not an independent accuracy measure)", m_avg_seconds: "Average time (s)",
     removedList: "Removed / flagged statements", claimDetails: "Statement details", usesUser: "uses user input", usesCalc: "uses a calculation",
     st_supported: "supported", st_unsupported: "unsupported", st_unverified: "unverified", st_not_checked: "not applied",
     prev: "‹ Prev", next: "Next ›", zoom: "Zoom", zoomIn: "Zoom in", zoomOut: "Zoom out", openOriginal: "Open original file",
@@ -1103,6 +1161,7 @@ async function ask(question, reply) {
   $("#messages").append(u);
   const el = $("#tpl-answer").content.firstElementChild.cloneNode(true);
   $$("[data-i18n]", el).forEach((x) => { x.textContent = t(x.dataset.i18n); });
+  $$("[data-i18n-title]", el).forEach((x) => { x.title = t(x.dataset.i18nTitle); x.setAttribute("aria-label", x.title); });
   $("#messages").append(el);
   el._sources = [];
   el._final = false;
@@ -1193,6 +1252,10 @@ async function ask(question, reply) {
           navigator.clipboard && navigator.clipboard.writeText(`${text}\n\n${refs}`);
           e.target.textContent = t("copied");
         });
+        const fbCtx = { question: ev.merged_question || asked, answer: text,
+          verification_status: (ev.verification || {}).status || "", sources: (el._sources || []).filter((s) => s.cited) };
+        $(".btn-fb-up", acts).addEventListener("click", () => sendFeedback(el, fbCtx, "up"));
+        $(".btn-fb-down", acts).addEventListener("click", () => openFeedback(el, fbCtx));
         if (chat === state.chatId) {
           state.history.push({ role: "user", content: asked }, { role: "assistant", content: text });
           state.history = state.history.slice(-12);
@@ -1592,6 +1655,167 @@ function svcCard(svc) {
   if (s.base_url && !(same && same.checked)) load();
   return div;
 }
+// ------------------------------------------------------------------ answer feedback
+// 👍 is saved at once; 👎 opens a short form for the correct value / document / page. Kept per user on this
+// computer (never in the library); exported as candidate evaluation items that an engineer still has to verify.
+async function sendFeedback(el, ctx, rating, extra = {}) {
+  const st = $(".fb-state", el);
+  try {
+    await postJSON("/api/feedback", Object.assign({ rating }, ctx, extra));
+    $(".btn-fb-up", el).classList.toggle("chosen", rating === "up");
+    $(".btn-fb-down", el).classList.toggle("chosen", rating === "down");
+    st.textContent = t("fbSaved");
+    return true;
+  } catch (e) {
+    st.textContent = `${t("errorPrefix")}: ${e.message}`;
+    return false;
+  }
+}
+function openFeedback(el, ctx) {
+  const d = $("#dlg-feedback");
+  state.fbTarget = { el, ctx };
+  $("#fb-question").textContent = ctx.question;
+  for (const id of ["#fb-value", "#fb-unit", "#fb-parameter", "#fb-document", "#fb-page", "#fb-note"]) $(id).value = "";
+  $("#fb-unanswerable").checked = false;
+  $("#fb-status").textContent = "";
+  $$("#dlg-feedback [data-i18n]").forEach((x) => { x.textContent = t(x.dataset.i18n); });
+  d.showModal();
+}
+async function submitFeedback(e) {
+  e.preventDefault();
+  const target = state.fbTarget;
+  if (!target) return;
+  const correction = { value: $("#fb-value").value.trim(), unit: $("#fb-unit").value.trim(), parameter: $("#fb-parameter").value.trim(),
+    document: $("#fb-document").value.trim(), page: parseInt($("#fb-page").value, 10) || null, note: $("#fb-note").value.trim() };
+  const ok = await sendFeedback(target.el, target.ctx, "down", { correction, unanswerable: $("#fb-unanswerable").checked });
+  if (ok) $("#dlg-feedback").close();
+  else $("#fb-status").textContent = $(".fb-state", target.el).textContent;
+}
+
+// ------------------------------------------------------------------ evaluation
+const EVAL_RATES = ["answered_rate", "abstention_rate", "fact_accuracy_of_answered", "fact_accuracy_of_all_answerable",
+  "wrong_answer_rate_of_answered", "wrong_answer_rate_of_all", "correct_abstention_rate", "unnecessary_abstention_rate",
+  "source_accuracy", "page_accuracy", "evidence_location_accuracy"];
+function pct(v) {
+  const n = (100 * v).toFixed(1).replace(/\.0$/, "");
+  return LANG === "tr" ? `%${n.replace(".", ",")}` : `${n}%`;
+}
+function evalSummaryHtml(s, meta = {}) {
+  const c = s.counts || {};
+  const row = (label, name) => {
+    const v = s[name];
+    const [num, den] = c[name] || [];
+    const val = v == null ? `<span class="muted">${esc(t("evalNotMeasured"))}</span>` : esc(pct(v));
+    const frac = den != null ? `${num}/${den}` : "";
+    return `<tr><td>${esc(label)}</td><td class="num">${val}</td><td class="num muted">${frac}</td></tr>`;
+  };
+  let h = `<p>${esc(t("evalHead", s.n, s.answerable, s.unanswerable, s.errors, s.expert_verified_items))}${meta.retrieval_only ? ` · ${esc(t("evalRetrievalNote"))}` : ""}</p>`;
+  h += `<p class="${s.benchmark ? "small" : "note small"}">${esc(t(s.benchmark ? "evalBenchmark" : "evalNotBenchmark"))}</p><table>`;
+  for (const k of [1, 3, 5, 8]) h += row(t("m_recall", k), `recall@${k}`);
+  if (s.mrr != null) h += `<tr><td>${esc(t("m_mrr"))}</td><td class="num">${s.mrr}</td><td></td></tr>`;
+  if (s.answered_rate !== undefined) {
+    for (const k of EVAL_RATES) h += row(t("m_" + k), k);
+    if (s.internal_verification_pass_rate != null) h += `<tr><td>${esc(t("m_internal_verification_pass_rate"))}</td><td class="num">${esc(pct(s.internal_verification_pass_rate))}</td><td></td></tr>`;
+  }
+  if (s.avg_seconds != null) h += `<tr><td>${esc(t("m_avg_seconds"))}</td><td class="num">${s.avg_seconds}</td><td></td></tr>`;
+  return h + "</table>";
+}
+async function loadEvalInfo() {
+  const info = await getJSON("/api/eval");
+  $("#eval-set-bundled").textContent = t("evalSetBundled", info.sets.bundled);
+  $("#eval-set-feedback").textContent = t("evalSetFeedback", info.sets.feedback);
+  const box = $("#eval-reports");
+  if (!info.reports.length) box.innerHTML = `<p class="small muted">${esc(t("evalNoReports"))}</p>`;
+  else {
+    box.innerHTML = `<ul>${info.reports.map((r) => `<li><a data-name="${esc(r.name)}">${esc(fmtTime(r.timestamp))}</a> — ${esc(r.set)} — ${r.summary.n}${r.retrieval_only ? ` · ${esc(t("evalRetrievalNote"))}` : ""}${r.summary["recall@5"] != null ? ` · recall@5 ${esc(pct(r.summary["recall@5"]))}` : ""}${r.summary.fact_accuracy_of_answered != null ? ` · ${esc(t("m_fact_accuracy_of_answered"))} ${esc(pct(r.summary.fact_accuracy_of_answered))}` : ""}</li>`).join("")}</ul>`;
+    $$("a", box).forEach((a) => a.addEventListener("click", async () => {
+      const rep = await getJSON(`/api/eval/reports/${encodeURIComponent(a.dataset.name)}`);
+      $("#eval-result").innerHTML = evalSummaryHtml(rep.summary, rep);
+    }));
+  }
+  return info;
+}
+async function loadFeedbackInfo() {
+  const fb = await getJSON("/api/feedback");
+  const s = fb.summary;
+  $("#fb-summary").textContent = t("fbSummary", s.total, s.up, s.down, s.with_correction, s.candidates);
+  const ul = $("#fb-list");
+  ul.innerHTML = fb.items.length ? "" : `<li class="muted">${esc(t("fbNone"))}</li>`;
+  for (const d of fb.items.slice(0, 20)) {
+    const li = document.createElement("li");
+    const corr = d.correction || {};
+    const what = corr.value ? ` → ${corr.value}${corr.unit ? " " + corr.unit : ""}${corr.document ? ` (${corr.document}${corr.page ? ", s." + corr.page : ""})` : ""}` : "";
+    li.innerHTML = `${d.rating === "up" ? "👍" : "👎"} ${esc(d.question)}${esc(what)} <button type="button" class="ghost small">${esc(t("fbDelete"))}</button>`;
+    $("button", li).addEventListener("click", async () => {
+      await api(`/api/feedback/${encodeURIComponent(d.id)}`, { method: "DELETE" });
+      loadFeedbackInfo();
+      loadEvalInfo();
+    });
+    ul.append(li);
+  }
+}
+async function openEval() {
+  $$("#dlg-eval [data-i18n]").forEach((x) => { x.textContent = t(x.dataset.i18n); });
+  $("#eval-status").textContent = "";
+  $("#dlg-eval").showModal();
+  try {
+    const info = await loadEvalInfo();
+    await loadFeedbackInfo();
+    if (info.running) pollEval(info.running);
+  } catch (e) { $("#eval-status").textContent = `${t("errorPrefix")}: ${e.message}`; }
+}
+async function runEval() {
+  const set = ($("input[name=eval-set]:checked") || {}).value || "bundled";
+  const body = { set, retrieval_only: $("#eval-retrieval-only").checked };
+  if (set === "custom") {
+    const f = $("#eval-file").files[0];
+    if (!f) { $("#eval-status").textContent = t("evalNoFile"); return; }
+    body.yaml = await f.text();
+    body.name = f.name;
+  }
+  try {
+    const r = await postJSON("/api/eval/run", body);
+    $("#eval-result").innerHTML = "";
+    pollEval(r.job);
+  } catch (e) { $("#eval-status").textContent = `${t("errorPrefix")}: ${e.message}`; }
+}
+async function pollEval(id) {
+  state.evalJob = id;
+  $("#btn-eval-run").disabled = true;
+  $("#btn-eval-stop").hidden = false;
+  $("#eval-bar-box").hidden = false;
+  for (;;) {
+    let job;
+    try { job = await getJSON(`/api/jobs/${id}`); } catch (e) { $("#eval-status").textContent = `${t("errorPrefix")}: ${e.message}`; break; }
+    const p = job.progress || {};
+    $("#eval-bar").style.width = p.total ? `${(100 * p.done) / p.total}%` : "0";
+    $("#eval-status").textContent = t("evalRunning", p.done || 0, p.total || 0);
+    if (job.status === "done") {
+      $("#eval-status").textContent = t("evalDone");
+      $("#eval-result").innerHTML = evalSummaryHtml(job.report.summary, { retrieval_only: $("#eval-retrieval-only").checked });
+      loadEvalInfo();
+      break;
+    }
+    if (job.status === "cancelled") { $("#eval-status").textContent = t("evalCancelled"); break; }
+    if (job.status === "failed") { $("#eval-status").textContent = t("evalFailed", (job.messages || []).slice(-1)[0] || ""); break; }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  state.evalJob = null;
+  $("#btn-eval-run").disabled = false;
+  $("#btn-eval-stop").hidden = true;
+}
+async function exportFeedback() {
+  try {
+    const blob = await (await api("/api/feedback/export")).blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "feedback_candidates.yaml";
+    document.body.append(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  } catch (e) { $("#eval-status").textContent = `${t("errorPrefix")}: ${e.message}`; }
+}
+
 async function openSettings() {
   SETTINGS = await getJSON("/api/settings");
   const grid = $("#svc-grid");
@@ -1604,6 +1828,16 @@ async function openSettings() {
   $("#set-regenerate").checked = SETTINGS.answer.regenerate;
   $("#set-failed").value = SETTINGS.answer.failed_claims;
   $("#set-vision-enabled").checked = SETTINGS.vision.enabled;
+  $("#set-context").value = SETTINGS.llm.context_tokens;
+  $("#set-judge-batch").value = SETTINGS.answer.judge_batch;
+  $("#set-repair-cites").checked = SETTINGS.answer.repair_citations !== false;
+  $("#set-follow-refs").value = SETTINGS.retrieval.follow_references ?? 3;
+  $("#set-page-score").value = SETTINGS.vision.min_page_score;
+  $("#set-max-pages").value = SETTINGS.vision.max_pages_per_doc;
+  $("#ctx-info").textContent = "";
+  getJSON("/api/settings/context").then((c) => {
+    $("#ctx-info").textContent = c.server ? t("ctxInfo", c.server, c.used) : t("ctxUnknown");
+  }).catch(() => {});
   $("#set-tls-system").checked = SETTINGS.tls.system_store;
   $("#set-tls-proxy").checked = SETTINGS.tls.use_system_proxy;
   $("#set-tls-ca").value = SETTINGS.tls.ca_bundle || "";
@@ -1625,6 +1859,13 @@ async function saveSettings(e) {
   }
   Object.assign(patch.llm, { thinking: $("#set-thinking").value, thinking_control: $("#set-thinking-control").value, tools: $("#set-tools").value });
   patch.vision = Object.assign(patch.vision || {}, { enabled: $("#set-vision-enabled").checked });
+  const num = (id, int) => { const v = int ? parseInt($(id).value, 10) : parseFloat($(id).value); return Number.isFinite(v) ? v : undefined; };
+  const adv = { llm: { context_tokens: num("#set-context", true) }, answer: { judge_batch: num("#set-judge-batch", true),
+    repair_citations: $("#set-repair-cites").checked }, retrieval: { follow_references: num("#set-follow-refs", true) },
+    vision: { min_page_score: num("#set-page-score"), max_pages_per_doc: num("#set-max-pages", true) } };
+  for (const [sec, vals] of Object.entries(adv)) {
+    for (const [k, v] of Object.entries(vals)) if (v !== undefined) (patch[sec] = patch[sec] || {})[k] = v;
+  }
   patch.tls = tlsPatch();
   try {
     const r = await postJSON("/api/settings", patch, "PUT");
@@ -1706,6 +1947,11 @@ function bind() {
   ["#set-tls-system", "#set-tls-proxy", "#set-tls-ca"].forEach((id) => $(id).addEventListener("change", applyTls));
   $("#btn-pick-ca").addEventListener("click", pickCaFiles);
   $("#btn-library").addEventListener("click", openLibrary);
+  $("#btn-eval").addEventListener("click", openEval);
+  $("#btn-eval-run").addEventListener("click", runEval);
+  $("#btn-eval-stop").addEventListener("click", () => { if (state.evalJob) postJSON(`/api/jobs/${state.evalJob}/cancel`, {}); });
+  $("#btn-fb-export").addEventListener("click", exportFeedback);
+  $("#btn-fb-send").addEventListener("click", submitFeedback);
   $("#btn-pick-lib").addEventListener("click", () => pickFolder($("#lib-new-path")));
   $("#btn-pick-publish").addEventListener("click", () => pickFolder($("#lib-publish-path")));
   $("#btn-open-lib").addEventListener("click", async () => {

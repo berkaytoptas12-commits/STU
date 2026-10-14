@@ -163,6 +163,7 @@ class PathsConfig:
     library_dir: str = field(default_factory=_default_library)
     cache_dir: str = ""             # local render cache; "" = per-user cache dir
     domains_file: str = ""          # "" = bundled techrag/resources/domains.yaml
+    user_data_dir: str = ""         # answer feedback, evaluation reports; "" = per-user settings folder
 
 
 @dataclass
@@ -269,6 +270,11 @@ class Config:
     def page_cache_dir(self) -> Path:
         base = Path(self.paths.cache_dir).expanduser() if self.paths.cache_dir else user_cache_dir()
         return base / "pages"
+
+    @property
+    def user_data_dir(self) -> Path:
+        """Per-user files that never go into the (possibly shared, read-only) library."""
+        return Path(self.paths.user_data_dir).expanduser() if self.paths.user_data_dir else user_config_dir()
 
     @property
     def domains_file(self) -> Path:

@@ -96,6 +96,23 @@ class FolderRequest(BaseModel):
     path: str = Field(min_length=1, max_length=4000)
 
 
+class FeedbackRequest(BaseModel):
+    rating: str
+    question: str = Field(min_length=1, max_length=4000)
+    answer: str = Field(default="", max_length=50000)
+    verification_status: str = ""
+    sources: list[dict] = Field(default_factory=list)
+    correction: dict = Field(default_factory=dict)
+    unanswerable: bool = False
+
+
+class EvalRequest(BaseModel):
+    set: str = "bundled"              # bundled | feedback | custom
+    yaml: Optional[str] = Field(default=None, max_length=2_000_000)   # the custom set's file content
+    name: str = Field(default="", max_length=200)                      # the custom set's file name
+    retrieval_only: bool = False
+
+
 STOPPED_MESSAGE = "stopped: the application is closing (remaining documents are processed by the next rescan)"
 
 
@@ -106,7 +123,9 @@ class Jobs:
         self.gate = WriteGate()  # full exit of the desktop app: see shutdown()
 
     def running(self) -> bool:
-        return any(j["status"] in ("queued", "running") for j in list(self.items.values()))
+        """An indexing job (which writes the library) is queued or running. An evaluation only reads and simply
+        stops when the application closes."""
+        return any(j["status"] in ("queued", "running") and j["kind"] != "eval" for j in list(self.items.values()))
 
     def shutdown(self, timeout: float = 60.0) -> bool:
         """The application is closing: jobs stop before their next document, the index write in progress is allowed
@@ -248,6 +267,20 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             else:
                 state["engine"].cfg = new_cfg
         return {"settings": public_settings(new_cfg), "error": state["error"]}
+
+    @app.get("/api/settings/context", dependencies=guard)
+    def context_info():
+        """The context length the chat model server reports (vLLM max_model_len) next to the setting; the
+        smaller of the two is used."""
+        e = state["engine"]
+        server = None
+        if e is not None:
+            try:
+                server = e.llm.context_window()
+            except Exception:
+                server = None
+        setting = state["cfg"].llm.context_tokens
+        return {"setting": setting, "server": server, "used": min(setting, server) if server else setting}
 
     def _probe_service(p: ServiceProbe) -> ServiceConfig:
         if p.service not in SERVICES:
@@ -709,6 +742,125 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
 
         threading.Thread(target=run, daemon=True).start()
         return {"job": job["id"]}
+
+    # -------------------------------------------------------------- feedback
+    def feedback_store():
+        from techrag.feedback import FeedbackStore
+
+        return FeedbackStore(state["cfg"].user_data_dir)
+
+    @app.post("/api/feedback", dependencies=guard)
+    def add_feedback(req: FeedbackRequest):
+        try:
+            rec = feedback_store().add(req.model_dump())
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        except OSError as exc:
+            raise HTTPException(500, f"feedback could not be saved: {exc.__class__.__name__}")
+        return {"ok": True, "id": rec["id"], "summary": feedback_store().summary()}
+
+    @app.get("/api/feedback", dependencies=guard)
+    def list_feedback():
+        fs = feedback_store()
+        return {"items": list(reversed(fs.items()))[:500], "summary": fs.summary()}
+
+    @app.delete("/api/feedback/{fid}", dependencies=guard)
+    def delete_feedback(fid: str):
+        if not feedback_store().delete(fid):
+            raise HTTPException(404, "feedback not found")
+        return {"ok": True, "summary": feedback_store().summary()}
+
+    @app.get("/api/feedback/export", dependencies=guard)
+    def export_feedback():
+        from techrag.feedback import export_yaml
+
+        return Response(export_yaml(feedback_store().items()), media_type="text/yaml; charset=utf-8",
+                        headers={"Content-Disposition": 'attachment; filename="feedback_candidates.yaml"'})
+
+    # ------------------------------------------------------------ evaluation
+    def eval_dir() -> Path:
+        return state["cfg"].user_data_dir / "eval_reports"
+
+    @app.get("/api/eval", dependencies=guard)
+    def eval_info():
+        from techrag.evaluation import bundled_questions, list_reports, load_items
+        from techrag.feedback import candidate_items
+
+        try:
+            bundled = len(load_items(bundled_questions()))
+        except Exception:
+            bundled = 0
+        running = next((j["id"] for j in jobs.items.values()
+                        if j["kind"] == "eval" and j["status"] in ("queued", "running")), None)
+        return {"sets": {"bundled": bundled, "feedback": len(candidate_items(feedback_store().items()))},
+                "reports": list_reports(eval_dir()), "running": running}
+
+    @app.get("/api/eval/reports/{name}", dependencies=guard)
+    def eval_report(name: str):
+        from techrag.evaluation import read_report
+
+        rep = read_report(eval_dir(), name)
+        if rep is None:
+            raise HTTPException(404, "report not found")
+        return rep
+
+    @app.post("/api/eval/run", dependencies=guard)
+    def eval_run(req: EvalRequest):
+        """Runs a question set against the current library in the background (one evaluation at a time). The
+        report is saved in the user data folder; nothing is written into the library."""
+        from techrag.evaluation import (EvalStopped, bundled_questions, load_items, load_items_text, parse_items,
+                                        run_eval, save_report)
+        from techrag.feedback import candidate_items
+        from techrag.ingest.quality import scrub
+
+        if any(j["kind"] == "eval" and j["status"] in ("queued", "running") for j in jobs.items.values()):
+            raise HTTPException(409, "an evaluation is already running")
+        try:
+            if req.set == "bundled":
+                items, label = load_items(bundled_questions()), "bundled"
+            elif req.set == "feedback":
+                items, label = parse_items(candidate_items(feedback_store().items())), "feedback"
+            elif req.set == "custom":
+                items, label = load_items_text(req.yaml or ""), Path(req.name or "custom.yaml").name
+            else:
+                raise ValueError(f"unknown question set '{req.set}'")
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        if not items:
+            raise HTTPException(400, "the question set is empty")
+        e = eng()
+        job = jobs.create("eval")
+        job["cancel"] = False
+        job["progress"] = {"done": 0, "total": len(items)}
+
+        def run():
+            job["status"] = "running"
+            try:
+                rep = run_eval(e, items, retrieval_only=req.retrieval_only,
+                               progress=lambda m: job["messages"].append(m),
+                               should_stop=lambda: job["cancel"] or jobs.gate.stop.is_set(),
+                               on_item=lambda n, total: job["progress"].update(done=n, total=total))
+                rep.update(set=label, retrieval_only=req.retrieval_only)
+                path = save_report(rep, eval_dir())
+                job["report"] = {"name": path.name, "summary": rep["summary"], "set": label}
+                job["status"] = "done"
+            except EvalStopped as exc:
+                job["messages"].append(str(exc))
+                job["status"] = "cancelled"
+            except Exception as exc:
+                job["messages"].append(f"ERROR: {scrub(f'{exc.__class__.__name__}: {exc}')}")
+                job["status"] = "failed"
+
+        threading.Thread(target=run, daemon=True).start()
+        return {"job": job["id"], "total": len(items)}
+
+    @app.post("/api/jobs/{job_id}/cancel", dependencies=guard)
+    def cancel_job(job_id: str):
+        job = jobs.items.get(job_id)
+        if not job or job["kind"] != "eval":
+            raise HTTPException(404, "no evaluation with this id")
+        job["cancel"] = True
+        return {"ok": True}
 
     @app.post("/api/ingest", dependencies=guard)
     def ingest_all(req: IngestRequest = IngestRequest()):

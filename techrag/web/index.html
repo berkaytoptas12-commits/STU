@@ -14,6 +14,7 @@
     <div class="top-actions">
       <button class="ghost" id="btn-new-chat" data-i18n="newChat"></button>
       <button class="ghost" id="btn-library" data-i18n="library"></button>
+      <button class="ghost" id="btn-eval" data-i18n="evaluation"></button>
       <button class="ghost" id="btn-settings" data-i18n="settings"></button>
       <button class="ghost" id="btn-toggle-right" aria-controls="viewer-panel" data-i18n="toggleRight"></button>
       <div class="lang-toggle" role="group">
@@ -107,6 +108,22 @@
           <select id="set-failed"><option value="strip" data-i18n="strip"></option><option value="flag" data-i18n="flag"></option></select></label>
         <label><input type="checkbox" id="set-vision-enabled"> <span data-i18n="visionEnabled"></span></label>
       </fieldset>
+      <fieldset id="adv-box">
+        <legend data-i18n="advanced"></legend>
+        <label><span data-i18n="advContext"></span>
+          <input type="number" id="set-context" min="2048" max="1048576" step="1024">
+          <span class="small muted" id="ctx-info"></span></label>
+        <label><span data-i18n="advJudgeBatch"></span>
+          <input type="number" id="set-judge-batch" min="1" max="32" step="1"></label>
+        <label><input type="checkbox" id="set-repair-cites"> <span data-i18n="advRepair"></span></label>
+        <label><span data-i18n="advRefs"></span>
+          <input type="number" id="set-follow-refs" min="0" max="10" step="1"></label>
+        <label><span data-i18n="advPageScore"></span>
+          <input type="number" id="set-page-score" min="0" max="50" step="0.5"></label>
+        <label><span data-i18n="advMaxPages"></span>
+          <input type="number" id="set-max-pages" min="0" max="100000" step="10"></label>
+        <p class="hint wide" data-i18n="advHint"></p>
+      </fieldset>
       <fieldset id="tls-box">
         <legend data-i18n="tlsTitle"></legend>
         <label class="wide"><input type="checkbox" id="set-tls-system"> <span data-i18n="tlsSystem"></span></label>
@@ -163,6 +180,60 @@
     </form>
   </dialog>
 
+  <!-- Answer feedback (👎 / correction) -->
+  <dialog id="dlg-feedback">
+    <form method="dialog" class="dlg">
+      <h2 data-i18n="fbTitle"></h2>
+      <p class="hint" data-i18n="fbHint"></p>
+      <p class="small fb-question" id="fb-question"></p>
+      <div class="fb-grid">
+        <label><span data-i18n="fbValue"></span><input id="fb-value" maxlength="200"></label>
+        <label><span data-i18n="fbUnit"></span><input id="fb-unit" maxlength="40" placeholder="ns, V, mA…"></label>
+        <label><span data-i18n="fbParameter"></span><input id="fb-parameter" maxlength="200" placeholder="tRFC"></label>
+        <label><span data-i18n="fbDocument"></span><input id="fb-document" maxlength="300" placeholder="JESD79-5"></label>
+        <label><span data-i18n="fbPage"></span><input type="number" id="fb-page" min="1" step="1"></label>
+      </div>
+      <label class="wide"><span data-i18n="fbNote"></span><textarea id="fb-note" rows="2" maxlength="2000"></textarea></label>
+      <label class="small"><input type="checkbox" id="fb-unanswerable"> <span data-i18n="fbUnanswerable"></span></label>
+      <div class="dlg-actions">
+        <span class="muted small" id="fb-status"></span>
+        <button type="button" class="ghost" data-close data-i18n="cancel"></button>
+        <button id="btn-fb-send" value="default" data-i18n="fbSend"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Evaluation -->
+  <dialog id="dlg-eval">
+    <form method="dialog" class="dlg">
+      <h2 data-i18n="evaluation"></h2>
+      <p class="hint" data-i18n="evalHint"></p>
+      <div class="eval-sets">
+        <label><input type="radio" name="eval-set" value="bundled" checked> <span id="eval-set-bundled"></span></label>
+        <label><input type="radio" name="eval-set" value="feedback"> <span id="eval-set-feedback"></span></label>
+        <label><input type="radio" name="eval-set" value="custom"> <span data-i18n="evalSetCustom"></span>
+          <input type="file" id="eval-file" accept=".yaml,.yml"></label>
+      </div>
+      <label class="small"><input type="checkbox" id="eval-retrieval-only"> <span data-i18n="evalRetrievalOnly"></span></label>
+      <div class="row">
+        <button type="button" id="btn-eval-run" data-i18n="evalRun"></button>
+        <button type="button" class="ghost" id="btn-eval-stop" data-i18n="evalStop" hidden></button>
+        <span class="small muted" id="eval-status"></span>
+      </div>
+      <div class="bar" id="eval-bar-box" hidden><div class="bar-fill" id="eval-bar"></div></div>
+      <div id="eval-result" class="eval-result"></div>
+      <details id="eval-history"><summary class="small" data-i18n="evalHistory"></summary><div id="eval-reports"></div></details>
+      <hr>
+      <h3 data-i18n="fbHeading"></h3>
+      <p class="small" id="fb-summary"></p>
+      <div class="row">
+        <button type="button" class="ghost" id="btn-fb-export" data-i18n="fbExport"></button>
+      </div>
+      <details><summary class="small" data-i18n="fbList"></summary><ul class="fb-list" id="fb-list"></ul></details>
+      <div class="dlg-actions"><button type="button" data-close data-i18n="close"></button></div>
+    </form>
+  </dialog>
+
   <!-- Folder / rescan preview -->
   <dialog id="dlg-folder">
     <form method="dialog" class="dlg">
@@ -187,6 +258,9 @@
       <div class="cites"></div>
       <div class="msg-actions" hidden>
         <button class="ghost small btn-copy" data-i18n="copy"></button>
+        <button class="ghost small icon btn-fb-up" data-i18n-title="fbUp">👍</button>
+        <button class="ghost small icon btn-fb-down" data-i18n-title="fbDown">👎</button>
+        <span class="small muted fb-state"></span>
         <span class="muted small timing"></span>
       </div>
     </div>

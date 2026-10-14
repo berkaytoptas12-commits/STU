@@ -299,7 +299,8 @@ def test_notes_feature_is_gone_and_saved_notes_are_left_alone(ui):
     assert ui.inner_text("#viewer-panel .viewer-head h2") == "Kaynak"
     _ask(ui, "DDR5 tRFC değeri nedir?")
     actions = ui.evaluate("() => [...document.querySelectorAll('.msg.assistant .msg-actions button')].map((b) => b.className)")
-    assert actions == ["ghost small btn-copy"], "only Copy is left next to an answer"
+    assert actions == ["ghost small btn-copy", "ghost small icon btn-fb-up", "ghost small icon btn-fb-down"], \
+        "Copy and the answer feedback buttons; no note button"
     _cite(ui)  # sources, PDF page and highlight still work
     ui.wait_for_selector("#tab-source .hl.current")
     assert "Not" not in ui.inner_text("#viewer-panel .viewer-head")
@@ -460,3 +461,60 @@ def test_removal_reasons_in_turkish_and_citation_repair_note(ui, fake, cfg):
     last = ui.locator(".msg.assistant .verify").last
     last.locator("details").first.click()
     assert "Value '999 ns' was not found in the cited sources." in last.inner_text()
+
+
+def test_answer_feedback_up_and_correction(ui, cfg):
+    import json
+
+    _ask(ui, "DDR5 tRFC değeri nedir?")
+    msg = ui.locator(".msg.assistant").last
+    assert msg.locator(".btn-fb-up").get_attribute("title") == "Doğru / faydalı"
+    msg.locator(".btn-fb-up").click()
+    ui.wait_for_function("() => document.querySelector('.msg.assistant .fb-state').textContent.includes('kaydedildi')")
+    msg.locator(".btn-fb-down").click()
+    ui.wait_for_selector("#dlg-feedback[open]")
+    assert "DDR5 tRFC" in ui.inner_text("#fb-question")
+    ui.fill("#fb-value", "295")
+    ui.fill("#fb-unit", "ns")
+    ui.fill("#fb-document", "JESD79-5")
+    ui.fill("#fb-page", "6")
+    ui.click("#btn-fb-send")
+    ui.wait_for_function("() => !document.querySelector('#dlg-feedback').open")
+    items = json.loads((cfg.user_data_dir / "feedback.json").read_text(encoding="utf-8"))
+    assert [i["rating"] for i in items] == ["up", "down"]
+    assert items[1]["correction"]["value"] == "295" and items[1]["correction"]["page"] == 6
+    assert items[0]["sources"] and all(s["doc_title"] and s["page_start"] for s in items[0]["sources"])
+    assert "text" not in items[0]["sources"][0], "the source text itself is not stored"
+
+
+def test_evaluation_dialog_runs_a_question_file(ui, tmp_path):
+    f = tmp_path / "set.yaml"
+    f.write_text("- id: t1\n  question: DDR5 tRFC değeri nedir?\n  document: DDR5\n  pages: [6]\n"
+                 "  facts: [{parameter: [tRFC], value: '295', unit: ns}]\n", encoding="utf-8")
+    ui.click("#btn-eval")
+    ui.wait_for_selector("#dlg-eval[open]")
+    ui.wait_for_function("() => document.querySelector('#eval-set-bundled').textContent.length > 0")
+    assert "Örnek soru seti (" in ui.inner_text("#eval-set-bundled")
+    ui.check("input[name=eval-set][value=custom]")
+    ui.set_input_files("#eval-file", str(f))
+    ui.click("#btn-eval-run")
+    ui.wait_for_function("() => document.querySelector('#eval-status').textContent.includes('Tamamlandı')", timeout=30000)
+    result = ui.inner_text("#eval-result")
+    assert "Doğrulanmış benchmark değil" in result and "1/1" in result and "%100" in result
+    assert "ölçülmedi" in result, "a rate with denominator 0 is shown as not measured"
+    ui.click("#eval-history summary")
+    assert "set.yaml" in ui.inner_text("#eval-reports")
+
+
+def test_advanced_settings_are_shown_and_saved(ui):
+    ui.click("#btn-settings")
+    ui.wait_for_selector("#dlg-settings[open]")
+    assert ui.input_value("#set-context") == "16000" and ui.input_value("#set-judge-batch") == "8"
+    assert ui.is_checked("#set-repair-cites") and ui.input_value("#set-follow-refs") == "3"
+    ui.wait_for_function("() => document.querySelector('#ctx-info').textContent.length > 0")
+    ui.fill("#set-judge-batch", "4")
+    ui.fill("#set-follow-refs", "2")
+    ui.click("#btn-save-settings")
+    ui.wait_for_function("() => document.querySelector('#settings-status').textContent.length > 0")
+    s = ui.evaluate("async () => (await (await fetch('/api/settings')).json())")
+    assert s["answer"]["judge_batch"] == 4 and s["retrieval"]["follow_references"] == 2

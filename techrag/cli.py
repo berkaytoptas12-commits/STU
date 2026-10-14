@@ -474,17 +474,18 @@ def cmd_serve(cfg: Config, args) -> int:
 
 
 def cmd_eval(cfg: Config, args) -> int:
-    from techrag.evaluation import load_items, run_eval, save_report
+    from techrag.evaluation import bundled_questions, load_items, run_eval, save_report
 
     e = _engine(cfg)
     if args.no_rewrite:
         e.planner.use_llm = False
-    items = load_items(args.file)
+    items = load_items(args.file or bundled_questions())
     if args.only:
         items = [i for i in items if any(i.id.startswith(o) for o in args.only)]
     report = run_eval(e, items, retrieval_only=args.retrieval_only, progress=_print)
+    report.update(set=Path(args.file).name if args.file else "bundled", retrieval_only=args.retrieval_only)
     _print("\n" + json.dumps(report["summary"], ensure_ascii=False, indent=2))
-    _print(f"report: {save_report(report, args.out)}")
+    _print(f"report: {save_report(report, args.out or cfg.user_data_dir / 'eval_reports')}")
     return 0
 
 
@@ -581,11 +582,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(func=cmd_cert)
 
     s = sub.add_parser("eval", help="run a gold question set")
-    s.add_argument("file", nargs="?", default="eval/questions.yaml")
+    s.add_argument("file", nargs="?", help="YAML question set (default: the bundled example set)")
     s.add_argument("--retrieval-only", action="store_true")
     s.add_argument("--no-rewrite", action="store_true")
     s.add_argument("--only", action="append")
-    s.add_argument("--out", default="data/eval_reports")
+    s.add_argument("--out", help="report folder (default: eval_reports in the user data folder)")
     s.set_defaults(func=cmd_eval)
     return p
 

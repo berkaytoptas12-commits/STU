@@ -4,7 +4,8 @@ result is never reported as accuracy.
 Item (YAML list):
 
     - id: ddr5-trfc-8gb
-      status: draft              # draft | expert_verified - only expert-verified items make a benchmark
+      status: draft              # draft | candidate | expert_verified - only expert-verified items make a
+                                 # benchmark (candidate: made from answer feedback, not yet checked)
       question: "DDR5 8Gb için tRFC nedir?"
       answerable: true           # false: the loaded documents do not answer it; abstaining is correct
       document: "JESD79-5"       # substring of the expected source document's title or path
@@ -41,8 +42,15 @@ from typing import Callable, Optional
 
 import yaml
 
+from techrag.config import resource_path
+from techrag.ingest.quality import scrub
 from techrag.units import find_quantities, parse_number
 from techrag.verify import CITATION
+
+
+def bundled_questions() -> Path:
+    """The example question set shipped with the application (draft items, not a benchmark)."""
+    return resource_path("resources", "eval", "questions.yaml")
 
 _NEGATION = re.compile(r"\b(?:not|değil|degil|instead of|yerine|rather than|incorrect|yanlış|yanlis|wrong|hatalı)\b",
                        re.I)
@@ -114,7 +122,21 @@ def _list(v) -> list:
 
 def load_items(path: str | Path) -> list[EvalItem]:
     with open(path, encoding="utf-8") as fh:
-        raw = yaml.safe_load(fh) or []
+        return parse_items(yaml.safe_load(fh))
+
+
+def load_items_text(text: str) -> list[EvalItem]:
+    try:
+        raw = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"not a valid YAML question list: {exc}") from exc
+    return parse_items(raw)
+
+
+def parse_items(raw) -> list[EvalItem]:
+    raw = raw or []
+    if not isinstance(raw, list) or not all(isinstance(r, dict) and r.get("question") for r in raw):
+        raise ValueError("expected a YAML list of items, each with a 'question'")
     items = []
     for i, r in enumerate(raw):
         facts = [Fact([str(x) for x in _list(f.get("parameter"))], str(f.get("value", "")), str(f.get("unit", "") or ""),
@@ -240,11 +262,20 @@ def score_answer(item: EvalItem, ans: dict) -> dict:
     return out
 
 
+class EvalStopped(Exception):
+    pass
+
+
 def run_eval(engine, items: list[EvalItem], retrieval_only: bool = False,
-             progress: Optional[Callable[[str], None]] = None) -> dict:
+             progress: Optional[Callable[[str], None]] = None,
+             should_stop: Optional[Callable[[], bool]] = None,
+             on_item: Optional[Callable[[int, int], None]] = None) -> dict:
+    """should_stop() is asked before every item: True stops the run (EvalStopped); nothing is saved."""
     progress = progress or (lambda m: None)
     results: list[EvalResult] = []
     for n, item in enumerate(items, 1):
+        if should_stop and should_stop():
+            raise EvalStopped(f"stopped after {n - 1} of {len(items)} questions")
         t = time.time()
         try:
             rr = engine.retrieve(item.question)
@@ -259,10 +290,12 @@ def run_eval(engine, items: list[EvalItem], retrieval_only: bool = False,
                     setattr(res, k, val)
         except Exception as exc:
             res = EvalResult(item.id, item.question, item.status, item.answerable, None,
-                             error=f"{exc.__class__.__name__}: {exc}")
+                             error=scrub(f"{exc.__class__.__name__}: {exc}"))
         res.seconds = round(time.time() - t, 2)
         results.append(res)
         progress(_line(n, len(items), res))
+        if on_item:
+            on_item(n, len(items))
     return {"summary": summarize(results, retrieval_only), "results": [asdict(r) for r in results],
             "timestamp": datetime.now().isoformat(timespec="seconds")}
 
@@ -277,11 +310,18 @@ def _mean(vals) -> Optional[float]:
 
 
 def summarize(results: list[EvalResult], retrieval_only: bool = False) -> dict:
+    """Rates with their numerator and denominator (summary["counts"][name] = [num, den]); a rate whose
+    denominator is 0 is None (not measured), never 0."""
     ok = [r for r in results if r.error is None]
     retr = [r for r in ok if r.answerable]
+    counts: dict[str, list[int]] = {}
+
+    def rate(name: str, num: int, den: int) -> Optional[float]:
+        counts[name] = [num, den]
+        return _rate(num, den)
 
     def recall(k: int) -> Optional[float]:
-        return _rate(sum(1 for r in retr if r.first_hit_rank and r.first_hit_rank <= k), len(retr))
+        return rate(f"recall@{k}", sum(1 for r in retr if r.first_hit_rank and r.first_hit_rank <= k), len(retr))
 
     expert = sum(1 for r in results if r.status == "expert_verified")
     s: dict = {
@@ -295,32 +335,44 @@ def summarize(results: list[EvalResult], retrieval_only: bool = False) -> dict:
         "recall@1": recall(1), "recall@3": recall(3), "recall@5": recall(5), "recall@8": recall(8),
         "mrr": round(sum(1 / r.first_hit_rank if r.first_hit_rank else 0.0 for r in retr) / len(retr), 3) if retr else None,
     }
-    if retrieval_only:
-        return s
-    ans = [r for r in ok if r.answered is not None]
-    answered = [r for r in ans if r.answered]
-    a_ok = [r for r in ans if r.answerable and r.correct is not None]
-    a_answered = [r for r in a_ok if r.answered]
-    un = [r for r in ans if not r.answerable]
-    s.update({
-        "answered_rate": _rate(len(answered), len(ans)),
-        "abstention_rate": _rate(len(ans) - len(answered), len(ans)),
-        "fact_accuracy_of_answered": _rate(sum(1 for r in a_answered if r.correct), len(a_answered)),
-        "fact_accuracy_of_all_answerable": _rate(sum(1 for r in a_ok if r.correct), len(a_ok)),
-        "wrong_answer_rate_of_answered": _rate(sum(1 for r in answered if r.wrong), len(answered)),
-        "wrong_answer_rate_of_all": _rate(sum(1 for r in ans if r.wrong), len(ans)),
-        "correct_abstention_rate": _rate(sum(1 for r in un if not r.answered), len(un)),
-        "unnecessary_abstention_rate": _rate(sum(1 for r in a_ok if not r.answered), len(a_ok)),
-        "source_accuracy": _rate(sum(1 for r in a_answered if r.source_correct), sum(1 for r in a_answered if r.source_correct is not None)),
-        "page_accuracy": _rate(sum(1 for r in a_answered if r.page_correct), sum(1 for r in a_answered if r.page_correct is not None)),
-        "evidence_location_accuracy": _rate(sum(1 for r in a_answered if r.location_correct),
-                                            sum(1 for r in a_answered if r.location_correct is not None)),
-        "internal_verification_pass_rate": _mean([r.internal_pass_rate for r in ans]),
-        "internal_verification_note": "share of statements the system's own checks accepted; not an independent "
-                                      "accuracy or faithfulness measure",
-        "legacy_contains_rate": _rate(sum(1 for r in ans if r.legacy_contains), sum(1 for r in ans if r.legacy_contains is not None)),
-        "avg_seconds": round(sum(r.seconds for r in ok) / len(ok), 2) if ok else None,
-    })
+    if not retrieval_only:
+        ans = [r for r in ok if r.answered is not None]
+        answered = [r for r in ans if r.answered]
+        a_ok = [r for r in ans if r.answerable and r.correct is not None]
+        a_answered = [r for r in a_ok if r.answered]
+        un = [r for r in ans if not r.answerable]
+
+        def known(attr: str) -> list:
+            return [r for r in a_answered if getattr(r, attr) is not None]
+
+        s.update({
+            "answered_rate": rate("answered_rate", len(answered), len(ans)),
+            "abstention_rate": rate("abstention_rate", len(ans) - len(answered), len(ans)),
+            "fact_accuracy_of_answered": rate("fact_accuracy_of_answered", sum(1 for r in a_answered if r.correct),
+                                              len(a_answered)),
+            "fact_accuracy_of_all_answerable": rate("fact_accuracy_of_all_answerable",
+                                                    sum(1 for r in a_ok if r.correct), len(a_ok)),
+            "wrong_answer_rate_of_answered": rate("wrong_answer_rate_of_answered",
+                                                  sum(1 for r in answered if r.wrong), len(answered)),
+            "wrong_answer_rate_of_all": rate("wrong_answer_rate_of_all", sum(1 for r in ans if r.wrong), len(ans)),
+            "correct_abstention_rate": rate("correct_abstention_rate", sum(1 for r in un if not r.answered), len(un)),
+            "unnecessary_abstention_rate": rate("unnecessary_abstention_rate",
+                                                sum(1 for r in a_ok if not r.answered), len(a_ok)),
+            "source_accuracy": rate("source_accuracy", sum(1 for r in known("source_correct") if r.source_correct),
+                                    len(known("source_correct"))),
+            "page_accuracy": rate("page_accuracy", sum(1 for r in known("page_correct") if r.page_correct),
+                                  len(known("page_correct"))),
+            "evidence_location_accuracy": rate("evidence_location_accuracy",
+                                               sum(1 for r in known("location_correct") if r.location_correct),
+                                               len(known("location_correct"))),
+            "internal_verification_pass_rate": _mean([r.internal_pass_rate for r in ans]),
+            "internal_verification_note": "share of statements the system's own checks accepted; not an independent "
+                                          "accuracy or faithfulness measure",
+            "legacy_contains_rate": rate("legacy_contains_rate", sum(1 for r in ans if r.legacy_contains),
+                                         sum(1 for r in ans if r.legacy_contains is not None)),
+            "avg_seconds": round(sum(r.seconds for r in ok) / len(ok), 2) if ok else None,
+        })
+    s["counts"] = counts
     return s
 
 
@@ -337,6 +389,40 @@ def _line(n: int, total: int, r: EvalResult) -> str:
 def save_report(report: dict, out_dir: str | Path) -> Path:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    path = out / f"eval_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    path = out / f"eval_{stamp}.json"
+    k = 1
+    while path.exists():
+        k += 1
+        path = out / f"eval_{stamp}_{k}.json"
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
+
+
+_REPORT_NAME = re.compile(r"^eval_\d{8}_\d{6}(?:_\d+)?\.json$")
+
+
+def list_reports(out_dir: str | Path, limit: int = 30) -> list[dict]:
+    """Saved reports, newest first: file name, time, question set and summary."""
+    out = []
+    folder = Path(out_dir)
+    if not folder.is_dir():
+        return []
+    for p in sorted((p for p in folder.iterdir() if _REPORT_NAME.match(p.name)), reverse=True)[:limit]:
+        try:
+            r = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        out.append({"name": p.name, "timestamp": r.get("timestamp", ""), "set": r.get("set", ""),
+                    "retrieval_only": bool(r.get("retrieval_only")), "summary": r.get("summary", {})})
+    return out
+
+
+def read_report(out_dir: str | Path, name: str) -> Optional[dict]:
+    if not _REPORT_NAME.match(name or ""):
+        return None
+    p = Path(out_dir) / name
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None

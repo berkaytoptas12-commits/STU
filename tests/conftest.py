@@ -96,6 +96,7 @@ def cfg(tmp_path: Path) -> Config:
         getattr(c, svc).base_url = "http://fake/v1"
         getattr(c, svc).model = model
     c.vision.min_page_score = 4.0
+    c.paths.user_data_dir = str(tmp_path / "user")
     return c
 
 

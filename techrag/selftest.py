@@ -50,6 +50,7 @@ def run() -> dict:
         cfg = Config()
         cfg.paths.library_dir = str(Path(tmp) / "library")
         cfg.paths.cache_dir = str(Path(tmp) / "cache")
+        cfg.paths.user_data_dir = str(Path(tmp) / "user")
         cfg.embedding.backend = "hash"
         cfg.reranker.enabled = False
         cfg.vision.enabled = False
@@ -75,6 +76,8 @@ def run() -> dict:
             checks["documents"] = info["stats"]["documents"]
             png = client.get("/api/documents/1/page/1.png")
             assert png.status_code == 200 and png.content[:4] == b"\x89PNG"
+            checks["eval_questions"] = client.get("/api/eval").json()["sets"]["bundled"]
+            assert checks["eval_questions"] > 0, "the example question set is not bundled"
         store.publish(Path(tmp) / "published", cfg.sources_dir)
         checks["publish"] = (Path(tmp) / "published" / "index.sqlite").exists()
     from techrag.launcher import SIZE_DIP, render_icon
