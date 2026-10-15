@@ -1,5 +1,23 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.7.3 — değerlendirmede soru soru cevaplar, yeni örnek set
+- **Sorular ve cevaplar:** Değerlendirme penceresinde her raporun altında her soru bir satır: sonuç (doğru,
+  yanlış, cevap yok, netleştirme sordu, bulunamadı dedi, hata). Açınca beklenen değer, belge, sayfa ve kontrol
+  notu ile sistemin cevabı, atıf yaptığı kaynaklar, doğrulamanın çıkardığı ifadeler (Türkçe gerekçeleriyle) ve
+  olgu sonuçları yan yana görünür. "Yalnızca sorunlu olanları göster" süzgeci ve soruyu sohbette (kaynaklar, PDF
+  vurgusu, 👍/👎 ile) soran "Sohbette sor" düğmesi var. Önceki raporlar da bu ayrıntılarla açılır (yeni
+  çalıştırmalarda beklenen değerler ve kaynaklar rapora yazılır).
+- **Yeni örnek set (30 soru):** kütüphanedeki konulara göre — ARINC-429, ARINC-818, COM Express, DDR, LPDDR4,
+  DisplayPort, Ethernet, genel tasarım, I2C, PCIe, RS-422, USB. Karışık türler: değer (13), tasarım dilinde soru
+  (12; "length matching gerekir mi", "pull-up nasıl seçilir", "I2C hattı ne kadar uzun olabilir"), koşula bağlı
+  (2; netleştirme sorması doğru), karşılaştırma (2) ve kütüphanede cevabı olmayan (1). Değerler taslaktır;
+  "Dosyayı indir" ile indirip belgenize göre kontrol edin (belge, sayfa, değer), `status: expert_verified` yapın ve
+  kendi dosyanız olarak yükleyin.
+- Değerlendirme raporunda netleştirme ayrı ölçülür: koşula bağlı sorularda netleştirme sorma oranı ve diğer
+  sorularda gereksiz netleştirme oranı (pay/payda ile); koşula bağlı soruda netleştirme sormak "gereksiz cevap
+  vermeme" sayılmaz.
+- Yeniden indeksleme gerekmez.
+
 ### 0.7.2 — tasarım sorularını standardın gereksinimine bağlama
 Standartlar gereksinimleri kendi terimleriyle yazar; kullanıcı ise çoğu zaman tasarım diliyle sorar. Örneğin
 "length matching gerekir mi?" sorusunun cevabı standartta intra/inter-pair skew sınırı olarak yazar. Önceki

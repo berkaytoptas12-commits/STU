@@ -1,243 +1,253 @@
-# Example question set — NOT a validated benchmark.
+# Example question set: 30 mixed questions for a library with ARINC-429, ARINC-818, COM Express, DDR, DisplayPort,
+# Ethernet, general design, I2C, LPDDR4, PCIe, RS-422 and USB documents. NOT a validated benchmark.
 #
-# Every item below is `status: draft`: the expected values are widely published facts, but nobody has checked
-# them against YOUR document revisions. Numbers from this file are indicative only; `techrag eval` says so in
-# its report ("benchmark": false). To build a real benchmark, have an engineer verify each item against the
-# loaded PDF (document, revision, physical page, value, unit, conditions) and set `status: expert_verified`.
-#
-#   techrag eval                    retrieval + answers
-#   techrag eval --retrieval-only   no LLM: recall@k / MRR only
+# Every item is `status: draft`: the expected values are widely published facts, but nobody has checked them
+# against YOUR document revisions. Check each item in the document (document, revision, physical page, value,
+# unit, conditions), correct it if needed and set `status: expert_verified`. Until then the numbers in a report
+# are indicative only (the report says so: "benchmark": false).
 #
 # Item fields (see techrag/evaluation.py):
-#   question     user question (TR or EN)
-#   answerable   false = the library should NOT answer it (abstaining is the correct behaviour)
-#   document     substring of the expected source document title/path, e.g. "JESD79-4"   (recommended)
-#   revision     expected document revision (optional)
-#   pages        physical page index(es) holding the answer -> recall@k, page and location accuracy
+#   question     the question as an engineer would ask it (Turkish or English)
+#   kind         value | design | condition | comparison | unanswerable (for reading the report)
+#   answerable   false = the library should NOT answer it (saying "not found" is the correct behaviour)
+#   clarify      true = the answer depends on a condition the question leaves out; asking back is correct
+#   document     substring of the expected document's title or file name (fill in from your library)
+#   pages        physical page(s) holding the answer -> retrieval recall@k, page and location accuracy
 #   facts        [{parameter: [names/symbols], value, unit, qualifier (min/typ/max), conditions: [...]}]
-#                each must be stated correctly in ONE statement; "not X but Y" or a second value with the
-#                same unit for the same parameter counts as wrong
-#   keywords     non-numeric expectations; an inner list = alternatives
+#   keywords     words the answer must contain; an inner list = alternatives
+#   note         what to check / adjust for your library
 #
-# Grow the set to a few hundred real questions from your engineers, including questions the library can NOT
-# answer, and tune parsing/chunking/reranking on recall@k BEFORE touching prompts.
+# Faster way to fill document and page: ask the question in the app, then 👍 (right) or 👎 with the correct
+# value and page; the Evaluation window turns that feedback into items of their own.
 
-# ----------------------------------------------------------------- ARINC
-- id: arinc-01
+# ------------------------------------------------------------------ ARINC 429
+- id: a429-01
   status: draft
+  kind: value
   domain: arinc
-  question: ARINC 429 bir veri kelimesi kaç bitten oluşur?
-  facts: [{parameter: [bit, bits, kelime, word], value: "32"}]
-- id: arinc-02
+  question: ARINC 429 yüksek hız modunda bit hızı nedir?
+  facts: [{parameter: [high speed, yüksek hız, bit rate, bit hızı, hız], value: "100", unit: kbps}]
+  note: ARINC 429 Part 1, elektriksel arayüz / bit hızı bölümü.
+- id: a429-02
   status: draft
+  kind: design
   domain: arinc
-  question: ARINC 429 kelimesinde etiket (label) hangi bitlerde yer alır?
-  keywords: [["1-8", "1–8", "1 through 8", "1 to 8", "1 ile 8", "1'den 8", "1 - 8", "1 ila 8"]]
-- id: arinc-03
+  question: Bir ARINC 429 vericisine en fazla kaç alıcı bağlayabilirim?
+  keywords: ["20"]
+  note: Verici başına alıcı sayısı sınırı (yük / giriş empedansı) - sayfayı ekleyin.
+- id: a429-03
   status: draft
+  kind: comparison
   domain: arinc
-  question: ARINC 429 yüksek hızda (high speed) veri hızı nedir?
-  facts: [{parameter: [high speed, yüksek hız, hız, rate, bit rate], value: "100", unit: kbps}]
-- id: arinc-04
-  status: draft
-  domain: arinc
-  question: ARINC 429 düşük hız modunda bit hızı aralığı nedir?
-  keywords: [["14.5", "14,5"]]
-- id: arinc-05
-  status: draft
-  domain: arinc
-  question: ARINC 429 kelimesinde parite biti hangi bittir ve hangi parite kullanılır?
-  keywords: ["32", ["odd", "tek"]]
-- id: arinc-06
-  status: draft
-  domain: arinc
-  question: ARINC 664 Part 7 (AFDX) için izin verilen BAG değerleri nelerdir?
-  keywords: ["128"]
+  question: ARINC 429 ve RS-422'de bir vericiye bağlanabilecek alıcı sayısı nasıl farklıdır?
+  keywords: ["20", "10"]
+  note: İki ayrı belgeden (ARINC 429 ve TIA-422) ayrı atıfla cevaplanmalı.
 
-# ------------------------------------------------------------------- DDR
+# ------------------------------------------------------------------ ARINC 818
+- id: a818-01
+  status: draft
+  kind: value
+  domain: arinc
+  question: ARINC 818 ADVB çerçevesinin taşıyabileceği en büyük yük (payload) kaç bayttır?
+  keywords: ["2112"]
+  note: Fibre Channel çerçeve yapısından gelir; ARINC 818 belgesindeki çerçeve tanımını kontrol edin.
+- id: a818-02
+  status: draft
+  kind: design
+  domain: arinc
+  question: ARINC 818 linkimde hangi hat hızlarını kullanabilirim?
+  keywords: ["1.0625", "2.125"]
+  note: Belgenizin revizyonundaki hız listesine göre anahtar kelimeleri tamamlayın (ARINC 818-2 daha çok hız tanımlar).
+
+# ------------------------------------------------------------------ COM Express
+- id: come-01
+  status: draft
+  kind: value
+  domain: general
+  question: COM Express Basic modülün boyutları nedir?
+  keywords: ["125", "95"]
+  note: PICMG COM.0 - modül boyutları (Mini / Compact / Basic / Extended).
+- id: come-02
+  status: draft
+  kind: value
+  domain: general
+  question: COM Express modülünün ana besleme girişi hangi gerilimdedir ve toleransı nedir?
+  keywords: ["12"]
+  note: Sabit 12 V girişi ve isteğe bağlı geniş aralıklı giriş ayrı ayrı yazılmış olabilir; toleransı da ekleyin.
+
+# ------------------------------------------------------------------ DDR
 - id: ddr-01
   status: draft
+  kind: value
   domain: ddr
   question: DDR4 SDRAM'in VDD besleme gerilimi nedir?
-  document: JESD79-4
-  facts: [{parameter: [VDD], value: "1.2", unit: V}]
+  facts: [{parameter: [VDD, besleme, supply], value: "1.2", unit: V}]
+  note: JESD79-4, DC çalışma koşulları tablosu.
 - id: ddr-02
   status: draft
+  kind: condition
   domain: ddr
-  question: DDR5 SDRAM'in VDD besleme gerilimi nedir?
-  document: JESD79-5
-  facts: [{parameter: [VDD], value: "1.1", unit: V}]
+  clarify: true
+  question: DDR4'te tRFC değeri nedir?
+  keywords: [["2Gb", "2 Gb"], ["8Gb", "8 Gb"]]
+  note: tRFC yoğunluğa (2/4/8/16 Gb) göre değişir; sistem yoğunluğu sormalı ya da her yoğunluk için değeri vermeli.
 - id: ddr-03
   status: draft
+  kind: design
   domain: ddr
-  question: DDR4'te prefetch mimarisi nedir?
-  document: JESD79-4
-  keywords: ["8n"]
-- id: ddr-04
+  question: DDR4'te adres/komut hatları fly-by topolojiyle çekildiğinde yazma tarafında ne yapılması gerekir?
+  keywords: [["write leveling", "write-leveling", "yazma seviyeleme"]]
+  note: Write leveling bölümü.
+
+# ------------------------------------------------------------------ DisplayPort
+- id: dp-01
   status: draft
-  domain: ddr
-  question: DDR5'te varsayılan burst length (BL) değeri nedir?
-  document: JESD79-5
-  facts: [{parameter: [BL, burst length, BL16], value: "16"}]
-- id: ddr-05
+  kind: value
+  domain: displayport
+  question: DisplayPort HBR3 hızında şerit başına bit hızı nedir?
+  facts: [{parameter: [HBR3], value: "8.1", unit: Gbps}]
+- id: dp-02
   status: draft
-  domain: ddr
-  question: DDR4 için normal sıcaklık aralığında ortalama yenileme aralığı tREFI nedir?
-  document: JESD79-4
-  facts: [{parameter: [tREFI], value: "7.8", unit: us}]
-- id: ddr-neg-01
+  kind: design
+  domain: displayport
+  question: DisplayPort main link hatlarında length matching gerekir mi?
+  keywords: [["skew"]]
+  note: Standart "length matching" demez; intra-pair / inter-pair skew sınırları üzerinden cevaplanmalı.
+- id: dp-03
   status: draft
+  kind: design
+  domain: displayport
+  question: DisplayPort main link hatlarına AC kuplaj kondansatörü koymam gerekir mi, değeri ne olmalı?
+  keywords: ["75", "200"]
+  note: AC kuplaj kondansatörü değer aralığı (nF) - belgedeki tabloyu ve sayfayı ekleyin.
+
+# ------------------------------------------------------------------ Ethernet
+- id: eth-01
+  status: draft
+  kind: value
+  domain: ethernet
+  question: 1000BASE-T kaç kablo çifti kullanır?
+  keywords: [["four", "4", "dört"]]
+- id: eth-02
+  status: draft
+  kind: design
+  domain: ethernet
+  question: Ethernet MDI hatlarını PCB'de hangi diferansiyel empedansla çekmeliyim?
+  keywords: ["100"]
+  note: Standart kablo/bağlantı empedansını tanımlar; PCB empedansı bunun üzerinden yorumlanmalı.
+
+# ------------------------------------------------------------------ General design
+- id: gen-01
+  status: draft
+  kind: design
+  domain: general
+  question: Dekuplaj kondansatörlerini entegre devrenin besleme pinlerine göre nasıl yerleştirmeliyim?
+  keywords: [["dekuplaj", "decoupl", "bypass"]]
+  note: General Design klasöründeki belgeye göre beklenen içeriği ve sayfayı yazın; o konu yoksa answerable false yapın.
+
+# ------------------------------------------------------------------ I2C
+- id: i2c-01
+  status: draft
+  kind: value
+  domain: i2c
+  question: I2C Fast-mode'da SDA/SCL yükselme süresi (tr) en fazla ne kadar olabilir?
+  facts: [{parameter: [tr, rise time, yükselme], value: "300", unit: ns, conditions: [Fast-mode]}]
+  note: UM10204, Fast-mode zamanlama tablosu.
+- id: i2c-02
+  status: draft
+  kind: design
+  domain: i2c
+  question: I2C hattında pull-up direncini nasıl seçmeliyim?
+  keywords: [["Rp(max)", "Rp max", "Rp(min)", "Rp min", "0.8473"], ["kapasit", "capacit", "Cb"]]
+  note: Rp(min) ve Rp(max) formülleri; yükselme süresi, hat kapasitansı ve çekilen akım sınırına bağlı.
+- id: i2c-03
+  status: draft
+  kind: design
+  domain: i2c
+  question: I2C hattını kartlar arasında ne kadar uzun çekebilirim?
+  keywords: [["400 pF", "400pF", "kapasit", "capacit"]]
+  note: Standart uzunluk vermez; hat kapasitansı sınırı ve yükselme süresi üzerinden cevaplanmalı.
+- id: i2c-04
+  status: draft
+  kind: condition
+  domain: i2c
+  clarify: true
+  question: I2C'de START sonrası tutma süresi tHD;STA en az ne kadar olmalı?
+  keywords: [["4.0", "4,0"], ["0.6", "0,6"]]
+  note: Moda göre değişir (Standard / Fast / Fast-mode Plus); sistem modu sormalı ya da her mod için değeri vermeli.
+
+# ------------------------------------------------------------------ LPDDR4
+- id: lpddr4-01
+  status: draft
+  kind: value
   domain: ddr
-  question: DDR6 SDRAM için tRFC değeri nedir?
-  answerable: false          # no DDR6 document is expected in the library: the answer must be "not found"
+  question: LPDDR4'te VDDQ gerilimi nedir?
+  facts: [{parameter: [VDDQ], value: "1.1", unit: V}]
+  note: JESD209-4. LPDDR4X (0.6 V) ile karıştırılmamalı.
+- id: lpddr4-02
+  status: draft
+  kind: comparison
+  domain: ddr
+  question: DDR4 ve LPDDR4'ün VDDQ gerilimleri arasındaki fark nedir?
+  keywords: ["1.2", "1.1"]
+  note: İki ayrı belgeden ayrı atıfla.
 
 # ------------------------------------------------------------------ PCIe
 - id: pcie-01
   status: draft
+  kind: value
   domain: pcie
-  question: PCIe 3.0 hangi hat kodlama şemasını kullanır?
-  keywords: ["128b/130b"]
+  question: PCIe 3.0'da şerit başına veri hızı nedir?
+  facts: [{parameter: [veri hızı, data rate, hız, rate], value: "8", unit: GT/s}]
 - id: pcie-02
   status: draft
+  kind: design
   domain: pcie
-  question: PCIe 3.0 (Gen3) şerit başına veri hızı nedir?
-  facts: [{parameter: [data rate, veri hızı, hız, GT/s, rate], value: "8", unit: GT/s}]
+  question: PCIe 3.0 (8 GT/s) TX hatlarında AC kuplaj kondansatörü hangi değer aralığında olmalı?
+  keywords: ["176", "265"]
+  note: Verici AC kuplaj kondansatörü (CTX) - nF; elektriksel tablo ve sayfa.
 - id: pcie-03
   status: draft
+  kind: unanswerable
   domain: pcie
-  question: PCIe 5.0 şerit başına veri hızı nedir?
-  facts: [{parameter: [data rate, veri hızı, hız, GT/s, rate], value: "32", unit: GT/s}]
-- id: pcie-04
-  status: draft
-  domain: pcie
-  question: PCIe 1.x ve 2.x hangi kodlamayı kullanır?
-  keywords: ["8b/10b"]
-- id: pcie-05
-  status: draft
-  domain: pcie
-  question: PCIe LTSSM'in ana durumları nelerdir?
-  keywords: ["Detect", "Polling", "Configuration", "L0", "Recovery"]
-- id: pcie-06
-  status: draft
-  domain: pcie
-  question: PCIe 6.0 hangi sinyal modülasyonunu kullanır?
-  keywords: ["PAM4"]
+  answerable: false
+  question: PCIe 7.0'da şerit başına veri hızı nedir?
+  note: Kütüphanede PCIe 7.0 belgesi varsa answerable true yapıp değeri ekleyin.
 
-# -------------------------------------------------------------- Ethernet
-- id: eth-01
-  status: draft
-  domain: ethernet
-  question: Ethernet minimum çerçeve boyutu kaç bayttır?
-  facts: [{parameter: [frame, çerçeve], value: "64"}]
-- id: eth-02
-  status: draft
-  domain: ethernet
-  question: Ethernet'te minimum interpacket gap kaç bit süresidir?
-  facts: [{parameter: [interpacket gap, IPG, inter-packet gap], value: "96"}]
-- id: eth-03
-  status: draft
-  domain: ethernet
-  question: 100BASE-TX hangi kodlamaları kullanır?
-  keywords: [["4B/5B", "4B5B"], "MLT-3"]
-- id: eth-04
-  status: draft
-  domain: ethernet
-  question: Ethernet preamble kaç oktettir?
-  keywords: [["7 oktet", "7 octet", "7 bayt", "7 byte", "seven octets", "56 bit"]]
-
-# ---------------------------------------------------------- DisplayPort
-- id: dp-01
-  status: draft
-  domain: displayport
-  question: DisplayPort HBR3 şerit başına bit hızı nedir?
-  facts: [{parameter: [HBR3], value: "8.1", unit: Gbps}]
-- id: dp-02
-  status: draft
-  domain: displayport
-  question: DisplayPort HBR2 şerit başına bit hızı nedir?
-  facts: [{parameter: [HBR2], value: "5.4", unit: Gbps}]
-- id: dp-03
-  status: draft
-  domain: displayport
-  question: DisplayPort 2.x UHBR hızları hangi kodlamayı kullanır?
-  keywords: ["128b/132b"]
-- id: dp-04
-  status: draft
-  domain: displayport
-  question: DisplayPort AUX kanalı hangi kodlamayı kullanır?
-  keywords: ["Manchester"]
-
-# ------------------------------------------------------------------- USB
-- id: usb-01
-  status: draft
-  domain: usb
-  question: USB 2.0 High-Speed veri hızı nedir?
-  facts: [{parameter: [High-Speed, high speed, hız], value: "480", unit: Mbps}]
-- id: usb-02
-  status: draft
-  domain: usb
-  question: USB 2.0 Full-Speed ve Low-Speed veri hızları nedir?
-  facts:
-    - {parameter: [Full-Speed, full speed], value: "12", unit: Mbps}
-    - {parameter: [Low-Speed, low speed], value: "1.5", unit: Mbps}
-- id: usb-03
-  status: draft
-  domain: usb
-  question: USB 3.2 Gen 2 hangi kodlamayı kullanır?
-  keywords: ["128b/132b"]
-- id: usb-04
-  status: draft
-  domain: usb
-  question: USB Power Delivery EPR modunda izin verilen en yüksek sabit gerilim nedir?
-  facts: [{parameter: [EPR, voltage, gerilim], value: "48", unit: V}]
-
-# ---------------------------------------------------------------- RS-422
+# ------------------------------------------------------------------ RS-422
 - id: rs422-01
   status: draft
+  kind: value
   domain: rs422
-  question: RS-422'de bir sürücüye en fazla kaç alıcı bağlanabilir?
-  facts: [{parameter: [receiver, receivers, alıcı], value: "10"}]
+  question: RS-422 alıcısının diferansiyel giriş eşiği (hassasiyeti) nedir?
+  facts: [{parameter: [eşik, threshold, sensitivity, hassasiyet], value: "200", unit: mV}]
+  note: TIA-422, alıcı elektriksel karakteristikleri.
 - id: rs422-02
   status: draft
+  kind: design
   domain: rs422
-  question: RS-422 alıcısının diferansiyel giriş hassasiyeti (eşik) nedir?
-  facts: [{parameter: [threshold, sensitivity, eşik, hassasiyet], value: "200", unit: mV}]
-- id: rs422-03
-  status: draft
-  domain: rs422
-  question: RS-422 için maksimum kablo uzunluğu nedir?
-  keywords: [["1200", "1 200", "4000", "1.2 km", "1,2 km"]]
+  question: RS-422 hattında sonlandırma direnci gerekir mi, değeri ne olmalı?
+  keywords: [["sonland", "terminat"]]
+  note: Sonlandırma kablonun karakteristik empedansına göre seçilir - belgedeki ifadeyi ve sayfayı ekleyin.
 
-# ------------------------------------------------------------------- I2C
-- id: i2c-01
+# ------------------------------------------------------------------ USB
+- id: usb-01
   status: draft
-  domain: i2c
-  question: I2C Standard-mode, Fast-mode ve Fast-mode Plus için maksimum bit hızları nedir?
-  keywords: ["100", "400", ["1 Mbit", "1 Mb", "1Mbit", "1 MHz", "1000 k"]]
-- id: i2c-02
+  kind: value
+  domain: usb
+  question: USB 2.0 High-Speed veri hızı nedir?
+  facts: [{parameter: [High-Speed, high speed, veri hızı, data rate], value: "480", unit: Mb/s}]
+- id: usb-02
   status: draft
-  domain: i2c
-  question: I2C High-speed mode maksimum bit hızı nedir?
-  keywords: [["3.4", "3,4"]]
-- id: i2c-03
+  kind: design
+  domain: usb
+  question: USB 2.0 D+/D- hatlarını hangi diferansiyel empedansla çekmeliyim?
+  keywords: ["90"]
+  note: Diferansiyel empedans ve toleransı.
+- id: usb-03
   status: draft
-  domain: i2c
-  question: Standard-mode ve Fast-mode için izin verilen maksimum bus kapasitansı nedir?
-  facts: [{parameter: [capacitance, kapasitans, Cb], value: "400", unit: pF}]
-- id: i2c-04
-  status: draft
-  domain: i2c
-  question: I2C'de START koşulu nasıl tanımlanır?
-  keywords: ["SDA", "SCL"]
-
-# --------------------------------------------------------------- General
-- id: gen-01
-  status: draft
-  domain: general
-  question: DO-254'te tasarım güvence seviyeleri (DAL) nelerdir?
-  keywords: [["A, B, C", "A–E", "A-E", "A'dan E", "A through E", "A ile E", "A-D", "A–D", "Level A"]]
-- id: gen-02
-  status: draft
-  domain: general
-  question: MIL-STD-461'de CE102 testi neyi kapsar?
-  keywords: [["conducted emission", "iletilen emisyon", "iletim yoluyla", "power lead", "güç hat"]]
+  kind: value
+  domain: usb
+  question: USB 2.0 host portunda VBUS gerilimi hangi aralıkta olmalı?
+  keywords: ["4.75", "5.25"]
+  note: Kütüphanedeki USB belgesinin (USB 2.0 / Type-C) VBUS tanımına göre kontrol edin.

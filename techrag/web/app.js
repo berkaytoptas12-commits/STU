@@ -132,6 +132,18 @@ const I18N = {
     m_unnecessary_abstention_rate: "Gereksiz çekimserlik (cevaplanabilir sorularda)", m_source_accuracy: "Doğru kaynak belge",
     m_page_accuracy: "Doğru sayfa", m_evidence_location_accuracy: "Doğru kanıt konumu",
     m_internal_verification_pass_rate: "İç doğrulamanın kabul ettiği ifadeler (bağımsız doğruluk ölçüsü değildir)", m_avg_seconds: "Ortalama süre (sn)",
+    evalDownload: "Dosyayı indir (düzenleyip kendi dosyanız olarak yükleyin)",
+    evResults: "Sorular ve cevaplar", evOnlyProblems: "Yalnızca sorunlu olanları göster", evAskChat: "Sohbette sor",
+    evExpected: "Beklenen", evSystem: "Sistem", evCited: "Atıf yapılan kaynaklar", evRemoved: "Doğrulamanın çıkardığı ifadeler",
+    evFacts: "Olgular", evNoAnswer: "(cevap yok)", evNote: "Kontrol notu", evHit: "ilgili parça {0}. sırada", evNoHit: "ilgili parça ilk sonuçlarda yok",
+    evOk: "Doğru", evWrong: "Yanlış", evMiss: "Cevap yok", evErr: "Hata", evUnscored: "Değerlendirilmedi",
+    evClarOk: "Doğru: netleştirme sordu", evClarUnexpected: "Netleştirme sordu", evAbstainOk: "Doğru: bulunamadı dedi",
+    evAnsweredBad: "Yanlış: cevap verdi", evRetrOk: "Bulundu", evRetrBad: "Bulunamadı",
+    evFactRes_correct: "doğru", evFactRes_conflict: "farklı / çelişkili", evFactRes_absent: "cevapta yok",
+    evKind_value: "değer", evKind_design: "tasarım", evKind_condition: "koşula bağlı", evKind_comparison: "karşılaştırma",
+    evKind_unanswerable: "cevapsız", evAnswerable: "kütüphane cevaplamamalı", evClarify: "netleştirme sorması beklenir",
+    evDoc: "belge", evPages: "sayfa", evKeywords: "geçmesi gerekenler", evSeconds: "{0} sn",
+    m_clarification_rate: "Netleştirme sordu (koşula bağlı sorularda)", m_unexpected_clarification_rate: "Gereksiz netleştirme (diğer sorularda)",
     removedList: "Çıkarılan / işaretlenen ifadeler", claimDetails: "İfade ayrıntıları", usesUser: "kullanıcı girdisi içerir", usesCalc: "hesap içerir",
     st_supported: "destekleniyor", st_unsupported: "desteklenmiyor", st_unverified: "doğrulanamadı", st_not_checked: "uygulanmadı",
     prev: "‹ Önceki", next: "Sonraki ›", zoom: "Yakınlaştır", zoomIn: "Yakınlaştır", zoomOut: "Uzaklaştır", openOriginal: "Orijinal dosyayı aç",
@@ -320,6 +332,18 @@ const I18N = {
     m_unnecessary_abstention_rate: "Unnecessary abstention (answerable questions)", m_source_accuracy: "Correct source document",
     m_page_accuracy: "Correct page", m_evidence_location_accuracy: "Correct evidence location",
     m_internal_verification_pass_rate: "Statements accepted by the internal checks (not an independent accuracy measure)", m_avg_seconds: "Average time (s)",
+    evalDownload: "Download the file (edit it and load it as your own file)",
+    evResults: "Questions and answers", evOnlyProblems: "Show only the problems", evAskChat: "Ask in the chat",
+    evExpected: "Expected", evSystem: "System", evCited: "Cited sources", evRemoved: "Statements removed by verification",
+    evFacts: "Facts", evNoAnswer: "(no answer)", evNote: "Check note", evHit: "relevant passage at rank {0}", evNoHit: "relevant passage not in the first results",
+    evOk: "Correct", evWrong: "Wrong", evMiss: "No answer", evErr: "Error", evUnscored: "Not scored",
+    evClarOk: "Correct: asked to clarify", evClarUnexpected: "Asked to clarify", evAbstainOk: "Correct: said not found",
+    evAnsweredBad: "Wrong: answered", evRetrOk: "Found", evRetrBad: "Not found",
+    evFactRes_correct: "correct", evFactRes_conflict: "different / conflicting", evFactRes_absent: "not in the answer",
+    evKind_value: "value", evKind_design: "design", evKind_condition: "condition", evKind_comparison: "comparison",
+    evKind_unanswerable: "unanswerable", evAnswerable: "the library should not answer", evClarify: "should ask to clarify",
+    evDoc: "document", evPages: "page", evKeywords: "must contain", evSeconds: "{0} s",
+    m_clarification_rate: "Asked to clarify (condition questions)", m_unexpected_clarification_rate: "Unneeded clarification (other questions)",
     removedList: "Removed / flagged statements", claimDetails: "Statement details", usesUser: "uses user input", usesCalc: "uses a calculation",
     st_supported: "supported", st_unsupported: "unsupported", st_unverified: "unverified", st_not_checked: "not applied",
     prev: "‹ Prev", next: "Next ›", zoom: "Zoom", zoomIn: "Zoom in", zoomOut: "Zoom out", openOriginal: "Open original file",
@@ -1700,7 +1724,76 @@ async function submitFeedback(e) {
 // ------------------------------------------------------------------ evaluation
 const EVAL_RATES = ["answered_rate", "abstention_rate", "fact_accuracy_of_answered", "fact_accuracy_of_all_answerable",
   "wrong_answer_rate_of_answered", "wrong_answer_rate_of_all", "correct_abstention_rate", "unnecessary_abstention_rate",
-  "source_accuracy", "page_accuracy", "evidence_location_accuracy"];
+  "clarification_rate", "unexpected_clarification_rate", "source_accuracy", "page_accuracy", "evidence_location_accuracy"];
+
+// One line per question of a report: the verdict, and on opening what was expected next to what the system said.
+function evVerdict(r) {
+  const e = r.expected || {};
+  if (r.error) return ["err", "evErr"];
+  if (r.answered == null) return r.first_hit_rank ? ["ok", "evRetrOk"] : ["bad", "evRetrBad"];
+  if (r.clarified) return e.clarify ? ["ok", "evClarOk"] : ["miss", "evClarUnexpected"];
+  if (r.answerable === false) return r.answered ? ["bad", "evAnsweredBad"] : ["ok", "evAbstainOk"];
+  if (r.correct) return ["ok", "evOk"];
+  if (r.wrong) return ["bad", "evWrong"];
+  if (!r.answered) return ["miss", "evMiss"];
+  return ["none", "evUnscored"];
+}
+function evExpectedHtml(e) {
+  const parts = [];
+  if (e.kind) parts.push(t("evKind_" + e.kind));
+  if (e.answerable === false) parts.push(t("evAnswerable"));
+  if (e.clarify) parts.push(t("evClarify"));
+  for (const f of e.facts || []) {
+    parts.push(`${(f.parameter || [])[0] || ""} = ${f.value}${f.unit ? " " + f.unit : ""}${f.qualifier ? ` (${f.qualifier})` : ""}${(f.conditions || []).length ? ` [${f.conditions.join(", ")}]` : ""}`);
+  }
+  if ((e.keywords || []).length) {
+    parts.push(`${t("evKeywords")}: ${e.keywords.map((k) => Array.isArray(k) ? k.join(" / ") : k).join("; ")}`);
+  }
+  if (e.document) parts.push(`${t("evDoc")}: ${e.document}${(e.pages || []).length ? `, ${t("evPages")} ${e.pages.join(", ")}` : ""}`);
+  let h = esc(parts.join(" · "));
+  if (e.note) h += `<br><span class="muted">${esc(t("evNote"))}: ${esc(e.note)}</span>`;
+  return h;
+}
+function evalResultsHtml(rep) {
+  const results = rep.results || [];
+  if (!results.length) return "";
+  const items = results.map((r, i) => {
+    const [cls, label] = evVerdict(r);
+    const e = r.expected || {};
+    const sys = [r.verification_status || "", r.first_hit_rank ? t("evHit", r.first_hit_rank) : t("evNoHit"),
+      r.seconds != null ? t("evSeconds", r.seconds) : ""].filter(Boolean).join(" · ");
+    const facts = (r.facts || []).map((f) => `${f.parameter} = ${f.value}${f.unit ? " " + f.unit : ""}: ${t("evFactRes_" + f.result)}`);
+    const removed = (r.removed || []).map((c) => `<li>${esc(c.text)}<br><span class="muted">${esc(claimReasons(c).join(" "))}</span></li>`).join("");
+    return `<li class="ev-item ev-${cls}" data-problem="${cls === "ok" ? 0 : 1}"><details><summary>
+      <span class="ev-badge ev-${cls}">${esc(t(label))}</span> <b>${esc(r.id)}</b> ${esc(r.question)}${e.kind ? ` <span class="muted small">(${esc(t("evKind_" + e.kind))})</span>` : ""}</summary>
+      <div class="ev-body">
+        <div class="small"><b>${esc(t("evExpected"))}:</b> ${evExpectedHtml(e)}</div>
+        <div class="small"><b>${esc(t("evSystem"))}:</b> ${esc(sys)}</div>
+        ${r.error ? `<div class="small bad">${esc(r.error)}</div>` : ""}
+        <div class="markdown ev-answer">${r.answer ? renderMarkdown(r.answer, false) : `<p class="muted">${esc(t("evNoAnswer"))}</p>`}</div>
+        ${facts.length ? `<div class="small"><b>${esc(t("evFacts"))}:</b> ${esc(facts.join("; "))}</div>` : ""}
+        ${(r.cited || []).length ? `<div class="small"><b>${esc(t("evCited"))}:</b> ${esc(r.cited.join(" | "))}</div>` : ""}
+        ${removed ? `<div class="small"><b>${esc(t("evRemoved"))}:</b><ul>${removed}</ul></div>` : ""}
+        <button type="button" class="ghost small ev-ask" data-i="${i}">${esc(t("evAskChat"))}</button>
+      </div></details></li>`;
+  }).join("");
+  return `<h3>${esc(t("evResults"))}</h3>
+    <label class="small"><input type="checkbox" class="ev-only-problems"> ${esc(t("evOnlyProblems"))}</label>
+    <ul class="ev-items">${items}</ul>`;
+}
+function showEvalReport(rep) {
+  const box = $("#eval-result");
+  box.innerHTML = evalSummaryHtml(rep.summary, rep) + evalResultsHtml(rep);
+  const only = $(".ev-only-problems", box);
+  if (only) only.addEventListener("change", () => {
+    $$(".ev-item", box).forEach((li) => { li.hidden = only.checked && li.dataset.problem === "0"; });
+  });
+  $$(".ev-ask", box).forEach((b) => b.addEventListener("click", () => {
+    const r = rep.results[+b.dataset.i];
+    $("#dlg-eval").close();
+    if (!state.busy) ask(r.question);
+  }));
+}
 function pct(v) {
   const n = (100 * v).toFixed(1).replace(/\.0$/, "");
   return LANG === "tr" ? `%${n.replace(".", ",")}` : `${n}%`;
@@ -1734,8 +1827,7 @@ async function loadEvalInfo() {
   else {
     box.innerHTML = `<ul>${info.reports.map((r) => `<li><a data-name="${esc(r.name)}">${esc(fmtTime(r.timestamp))}</a> — ${esc(r.set)} — ${r.summary.n}${r.retrieval_only ? ` · ${esc(t("evalRetrievalNote"))}` : ""}${r.summary["recall@5"] != null ? ` · recall@5 ${esc(pct(r.summary["recall@5"]))}` : ""}${r.summary.fact_accuracy_of_answered != null ? ` · ${esc(t("m_fact_accuracy_of_answered"))} ${esc(pct(r.summary.fact_accuracy_of_answered))}` : ""}</li>`).join("")}</ul>`;
     $$("a", box).forEach((a) => a.addEventListener("click", async () => {
-      const rep = await getJSON(`/api/eval/reports/${encodeURIComponent(a.dataset.name)}`);
-      $("#eval-result").innerHTML = evalSummaryHtml(rep.summary, rep);
+      showEvalReport(await getJSON(`/api/eval/reports/${encodeURIComponent(a.dataset.name)}`));
     }));
   }
   return info;
@@ -1797,7 +1889,11 @@ async function pollEval(id) {
     $("#eval-status").textContent = t("evalRunning", p.done || 0, p.total || 0);
     if (job.status === "done") {
       $("#eval-status").textContent = t("evalDone");
-      $("#eval-result").innerHTML = evalSummaryHtml(job.report.summary, { retrieval_only: $("#eval-retrieval-only").checked });
+      try {
+        showEvalReport(await getJSON(`/api/eval/reports/${encodeURIComponent(job.report.name)}`));
+      } catch (e) {
+        $("#eval-result").innerHTML = evalSummaryHtml(job.report.summary, { retrieval_only: $("#eval-retrieval-only").checked });
+      }
       loadEvalInfo();
       break;
     }
@@ -1808,6 +1904,15 @@ async function pollEval(id) {
   state.evalJob = null;
   $("#btn-eval-run").disabled = false;
   $("#btn-eval-stop").hidden = true;
+}
+async function downloadText(path, name) {
+  const blob = await (await api(path)).blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
 async function exportFeedback() {
   try {
@@ -1957,6 +2062,8 @@ function bind() {
   $("#btn-eval-run").addEventListener("click", runEval);
   $("#btn-eval-stop").addEventListener("click", () => { if (state.evalJob) postJSON(`/api/jobs/${state.evalJob}/cancel`, {}); });
   $("#btn-fb-export").addEventListener("click", exportFeedback);
+  $("#btn-eval-download").addEventListener("click", () => downloadText("/api/eval/questions", "questions.yaml")
+    .catch((e) => { $("#eval-status").textContent = `${t("errorPrefix")}: ${e.message}`; }));
   $("#btn-fb-send").addEventListener("click", submitFeedback);
   $("#btn-pick-lib").addEventListener("click", () => pickFolder($("#lib-new-path")));
   $("#btn-pick-publish").addEventListener("click", () => pickFolder($("#lib-publish-path")));

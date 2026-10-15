@@ -415,8 +415,15 @@ anahtarıyla, `?token=…` ile yazdırılır; anahtarsız istekler reddedilir).
 
 ## 5. Doğruluğu ölçme
 
+**Sorular ve cevaplar:** her raporda her soru için bir satır vardır: sonuç (doğru / yanlış / cevap yok /
+netleştirme sordu / bulunamadı dedi / hata) ve açınca beklenen değer, belge, sayfa ve kontrol notu ile sistemin
+cevabı, atıf yaptığı kaynaklar, doğrulamanın çıkardığı ifadeler (gerekçeleriyle) ve olgu sonuçları yan yana.
+"Yalnızca sorunlu olanları göster" ile yanlış ve cevapsızlar süzülür; "Sohbette sor" soruyu sohbette sorar
+(kaynaklar, PDF vurgusu ve 👍/👎 ile). Örnek set "Dosyayı indir" ile indirilip düzenlenebilir ve kendi dosya olarak
+yüklenebilir.
+
 **Değerlendirme penceresi** (üst çubuk): bir soru setini mevcut kütüphaneye karşı arka planda çalıştırır
-(ilerleme çubuğu, "Durdur"; pencere kullanılabilir kalır). Set seçimi: uygulamayla gelen **örnek set** (39 taslak
+(ilerleme çubuğu, "Durdur"; pencere kullanılabilir kalır). Set seçimi: uygulamayla gelen **örnek set** (30 taslak
 soru), **geri bildirimden aday maddeler** veya **kendi `.yaml` dosyanız**; "yalnızca erişim" seçeneği model
 cevabı üretmeden recall@k/MRR ölçer. Sonuç tablosunda her oran **pay/payda** ile gösterilir ("1/1, %100");
 paydası 0 olan oran "ölçülmedi" yazar (0 sayılmaz). Raporlar kullanıcı klasörüne
@@ -434,7 +441,9 @@ SayisalTasarimUzmani.exe eval                      :: + cevap metrikleri
 
 Soru şeması (örnek set: `techrag/resources/eval/questions.yaml`, exe'nin içinde gömülü; ayrıntı
 `techrag/evaluation.py`): doküman, revizyon, fiziksel sayfa ve
-**olgular** (parametre, değer, birim, min/typ/max, koşullar). `answerable: false` ile cevabı kütüphanede
+**olgular** (parametre, değer, birim, min/typ/max, koşullar); `kind` (value / design / condition / comparison /
+unanswerable), `clarify: true` (cevap soruda yazmayan bir koşula bağlıysa netleştirme sorusu doğru davranıştır;
+rapor "netleştirme sordu" oranını ayrı verir) ve `note` (belgede neyin kontrol edileceği). `answerable: false` ile cevabı kütüphanede
 olmayan sorular eklenir; bunlarda doğru davranış cevap vermemektir. Rapor ayrı ayrı verir:
 
 * cevaplanan soru oranı ve cevap vermeme oranı (gereksiz cevap vermeme dahil),

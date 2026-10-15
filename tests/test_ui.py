@@ -518,3 +518,30 @@ def test_advanced_settings_are_shown_and_saved(ui):
     ui.wait_for_function("() => document.querySelector('#settings-status').textContent.length > 0")
     s = ui.evaluate("async () => (await (await fetch('/api/settings')).json())")
     assert s["answer"]["judge_batch"] == 4 and s["retrieval"]["follow_references"] == 2
+
+
+def test_evaluation_results_show_each_answer(ui, tmp_path):
+    f = tmp_path / "two.yaml"
+    f.write_text("- id: t1\n  kind: value\n  question: DDR5 tRFC değeri nedir?\n"
+                 "  facts: [{parameter: [tRFC], value: '295', unit: ns}]\n  note: refresh table\n"
+                 "- id: t2\n  kind: value\n  question: DDR5 tRFC değeri nedir?\n"
+                 "  facts: [{parameter: [tRFC], value: '999', unit: ns}]\n", encoding="utf-8")
+    ui.click("#btn-eval")
+    ui.wait_for_selector("#dlg-eval[open]")
+    ui.check("input[name=eval-set][value=custom]")
+    ui.set_input_files("#eval-file", str(f))
+    ui.click("#btn-eval-run")
+    ui.wait_for_selector(".ev-item >> nth=1", timeout=30000)
+    items = ui.locator(".ev-item")
+    assert "Doğru" in items.nth(0).inner_text() and "Yanlış" in items.nth(1).inner_text()
+    items.nth(0).locator("summary").click()
+    body = items.nth(0).inner_text()
+    assert "Beklenen" in body and "tRFC = 295 ns" in body and "refresh table" in body
+    assert "295 ns" in items.nth(0).locator(".ev-answer").inner_text() and "Atıf yapılan kaynaklar" in body
+    ui.check(".ev-only-problems")
+    assert items.nth(0).is_hidden() and items.nth(1).is_visible()
+    ui.uncheck(".ev-only-problems")
+    n = ui.locator(".msg.assistant").count()
+    items.nth(0).locator(".ev-ask").click()
+    ui.wait_for_selector(f".msg.assistant >> nth={n} >> .msg-actions:not([hidden])", timeout=20000)
+    assert not ui.evaluate("document.querySelector('#dlg-eval').open")

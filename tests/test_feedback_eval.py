@@ -96,7 +96,7 @@ CUSTOM = """
 
 def test_evaluation_runs_in_the_background_and_saves_a_report(client, cfg):
     info = client.get("/api/eval").json()
-    assert info["sets"]["bundled"] == len(load_items(bundled_questions())) > 30 and info["reports"] == []
+    assert info["sets"]["bundled"] == len(load_items(bundled_questions())) >= 30 and info["reports"] == []
     r = client.post("/api/eval/run", json={"set": "custom", "yaml": CUSTOM, "name": "mine.yaml"}).json()
     assert r["total"] == 2
     job = _wait(client, r["job"])
@@ -166,3 +166,50 @@ def test_advanced_settings_and_context_info(client, fake, engine, monkeypatch):
                 {"retrieval": {"follow_references": 99}}, {"vision": {"min_page_score": -1}}):
         assert client.put("/api/settings", json=bad).status_code == 400, bad
     assert client.get("/api/settings").json()["answer"]["judge_batch"] == 4, "a rejected value changes nothing"
+
+
+def test_clarify_items_and_per_question_details():
+    from techrag.evaluation import EvalItem, item_expectation, score_answer
+
+    item = EvalItem("c1", "DDR4 tRFC?", clarify=True, kind="condition", note="depends on density")
+    asked = {"answer": "Which density?", "verification": {"status": "clarify", "details": []}, "sources": []}
+    assert score_answer(item, asked) == {"answered": False, "verification_status": "clarify", "clarified": True,
+                                         "correct": True, "wrong": False}
+    plain = EvalItem("p1", "DDR4 VDD?")
+    out = score_answer(plain, asked)
+    assert out["clarified"] and not out["answered"] and out.get("correct") is None
+    exp = item_expectation(item)
+    assert exp["clarify"] and exp["kind"] == "condition" and exp["note"] == "depends on density"
+
+
+def test_report_keeps_expected_answer_sources_and_removed_statements(client):
+    yaml_text = """
+- id: v1
+  kind: value
+  question: DDR5 tRFC değeri nedir?
+  facts: [{parameter: [tRFC], value: "295", unit: ns}]
+  note: check the refresh table
+"""
+    r = client.post("/api/eval/run", json={"set": "custom", "yaml": yaml_text, "name": "one.yaml"}).json()
+    job = _wait(client, r["job"])
+    rep = client.get(f"/api/eval/reports/{job['report']['name']}").json()
+    res = rep["results"][0]
+    assert res["expected"]["facts"][0]["value"] == "295" and res["expected"]["note"] == "check the refresh table"
+    assert "295" in res["answer"] and res["cited"] and " — s. " in res["cited"][0]
+    assert res["removed"] == [] and res["clarified"] is False
+    assert "clarification_rate" in rep["summary"]["counts"]
+
+
+def test_bundled_question_set_fits_the_library_and_downloads(client):
+    from collections import Counter
+
+    items = load_items(bundled_questions())
+    assert len(items) == 30 and len({i.id for i in items}) == 30
+    kinds = Counter(i.kind for i in items)
+    assert set(kinds) == {"value", "design", "condition", "comparison", "unanswerable"}
+    assert sum(i.clarify for i in items) == kinds["condition"] and any(not i.answerable for i in items)
+    assert {i.id.split("-")[0] for i in items} >= {"a429", "a818", "come", "ddr", "dp", "eth", "gen", "i2c",
+                                                   "lpddr4", "pcie", "rs422", "usb"}
+    assert all(i.status == "draft" for i in items), "nobody checked them against the documents yet"
+    r = client.get("/api/eval/questions")
+    assert r.status_code == 200 and "a818-01" in r.text and "attachment" in r.headers["content-disposition"]

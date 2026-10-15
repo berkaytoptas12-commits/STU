@@ -793,6 +793,15 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         return {"sets": {"bundled": bundled, "feedback": len(candidate_items(feedback_store().items()))},
                 "reports": list_reports(eval_dir()), "running": running}
 
+    @app.get("/api/eval/questions", dependencies=guard)
+    def eval_questions():
+        """The bundled example question set, to check and complete it against the library and load it back as an
+        own question file."""
+        from techrag.evaluation import bundled_questions
+
+        return Response(bundled_questions().read_text(encoding="utf-8"), media_type="text/yaml; charset=utf-8",
+                        headers={"Content-Disposition": 'attachment; filename="questions.yaml"'})
+
     @app.get("/api/eval/reports/{name}", dependencies=guard)
     def eval_report(name: str):
         from techrag.evaluation import read_report

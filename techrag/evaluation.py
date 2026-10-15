@@ -81,6 +81,9 @@ class EvalItem:
     keywords: list = field(default_factory=list)
     expected: list = field(default_factory=list)     # legacy substring expectations
     domain: Optional[str] = None
+    kind: str = ""                  # value | design | condition | comparison | unanswerable (for the reader)
+    clarify: bool = False           # the question leaves out a condition the answer depends on: asking is right
+    note: str = ""                  # what to check in the document (shown with the result)
 
     @property
     def expected_doc(self) -> Optional[str]:
@@ -112,6 +115,17 @@ class EvalResult:
     answer: str = ""
     sources: list = field(default_factory=list)
     error: Optional[str] = None
+    clarified: Optional[bool] = None         # the system asked a clarifying question instead of answering
+    expected: dict = field(default_factory=dict)     # what the item expects (shown next to the answer)
+    cited: list = field(default_factory=list)        # sources the final answer cites
+    removed: list = field(default_factory=list)      # statements verification removed, with their reasons
+
+
+def item_expectation(item: "EvalItem") -> dict:
+    return {"kind": item.kind, "answerable": item.answerable, "clarify": item.clarify, "document": item.document,
+            "revision": item.revision, "pages": item.pages, "keywords": item.keywords, "note": item.note,
+            "facts": [{"parameter": f.parameter, "value": f.value, "unit": f.unit, "qualifier": f.qualifier,
+                       "conditions": f.conditions} for f in item.facts]}
 
 
 def _list(v) -> list:
@@ -149,7 +163,8 @@ def parse_items(raw) -> list[EvalItem]:
             status=str(r.get("status", "draft")), document=r.get("document") or r.get("expected_doc"),
             revision=r.get("revision"), pages=[int(p) for p in pages], facts=facts,
             keywords=_list(r.get("keywords")), expected=[exp] if isinstance(exp, str) else exp,
-            domain=r.get("domain")))
+            domain=r.get("domain"), kind=str(r.get("kind", "") or ""), clarify=bool(r.get("clarify")),
+            note=str(r.get("note", "") or "")))
     return items
 
 
@@ -228,9 +243,13 @@ def score_answer(item: EvalItem, ans: dict) -> dict:
     v = ans.get("verification") or {}
     claims = [c for c in v.get("details", []) if c.get("outcome") in ("kept", "flagged")]
     answered = bool(claims)
-    out: dict = {"answered": answered, "verification_status": v.get("status", "")}
+    clarified = v.get("status") == "clarify"
+    out: dict = {"answered": answered, "verification_status": v.get("status", ""), "clarified": clarified}
     if v.get("claims"):
         out["internal_pass_rate"] = round(v.get("supported", 0) / v["claims"], 3)
+    if item.clarify and clarified:
+        out.update(correct=True, wrong=False)       # the answer depends on a condition the question leaves out
+        return out
     if not item.answerable:
         out.update(correct=not answered, wrong=answered)
         return out
@@ -283,11 +302,18 @@ def run_eval(engine, items: list[EvalItem], retrieval_only: bool = False,
                          if is_hit(item, f"{p.doc_title} {p.doc_path}", p.page_start, p.page_end, p.text)), None)
             res = EvalResult(item.id, item.question, item.status, item.answerable, rank,
                              sources=[f"{p.doc_title} | {p.section} | p.{p.page_start}" for p in rr.passages])
+            res.expected = item_expectation(item)
             if not retrieval_only:
                 ans = engine.ask(item.question)
                 res.answer = ans.get("answer", "")
                 for k, val in score_answer(item, ans).items():
                     setattr(res, k, val)
+                res.cited = [f"[{s.get('n')}] {s.get('doc_title', '')}"
+                             + (f" — {s['section'].split(' > ')[-1]}" if s.get("section") else "")
+                             + f" — s. {s.get('page_start')}" for s in ans.get("sources", []) if s.get("cited")]
+                res.removed = [{"text": c.get("text", ""), "reasons": c.get("reasons", []), "codes": c.get("codes", [])}
+                               for c in (ans.get("verification") or {}).get("details", [])
+                               if c.get("outcome") == "removed"][:12]
         except Exception as exc:
             res = EvalResult(item.id, item.question, item.status, item.answerable, None,
                              error=scrub(f"{exc.__class__.__name__}: {exc}"))
@@ -314,6 +340,7 @@ def summarize(results: list[EvalResult], retrieval_only: bool = False) -> dict:
     denominator is 0 is None (not measured), never 0."""
     ok = [r for r in results if r.error is None]
     retr = [r for r in ok if r.answerable]
+    clar_ids = {r.id for r in results if (r.expected or {}).get("clarify")}
     counts: dict[str, list[int]] = {}
 
     def rate(name: str, num: int, den: int) -> Optional[float]:
@@ -357,7 +384,12 @@ def summarize(results: list[EvalResult], retrieval_only: bool = False) -> dict:
             "wrong_answer_rate_of_all": rate("wrong_answer_rate_of_all", sum(1 for r in ans if r.wrong), len(ans)),
             "correct_abstention_rate": rate("correct_abstention_rate", sum(1 for r in un if not r.answered), len(un)),
             "unnecessary_abstention_rate": rate("unnecessary_abstention_rate",
-                                                sum(1 for r in a_ok if not r.answered), len(a_ok)),
+                                                sum(1 for r in a_ok if not r.answered and not r.clarified), len(a_ok)),
+            "clarification_rate": rate("clarification_rate", sum(1 for r in ans if r.clarified and r.id in clar_ids),
+                                       sum(1 for r in ans if r.id in clar_ids)),
+            "unexpected_clarification_rate": rate("unexpected_clarification_rate",
+                                                  sum(1 for r in ans if r.clarified and r.id not in clar_ids),
+                                                  sum(1 for r in ans if r.id not in clar_ids)),
             "source_accuracy": rate("source_accuracy", sum(1 for r in known("source_correct") if r.source_correct),
                                     len(known("source_correct"))),
             "page_accuracy": rate("page_accuracy", sum(1 for r in known("page_correct") if r.page_correct),
