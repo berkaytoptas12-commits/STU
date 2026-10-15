@@ -308,3 +308,14 @@ dialog::backdrop { background: rgba(0, 0, 0, .35); }
 .ev-body ul { margin: 2px 0 0; padding-left: 18px; }
 .ev-answer { border-left: 3px solid var(--border); padding-left: 8px; font-size: 13px; }
 .ev-body .bad { color: var(--bad); }
+.ev-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
+.ev-tab { border-radius: 8px 8px 0 0; border-bottom: 2px solid transparent; }
+.ev-tab.active { border-bottom-color: var(--accent); font-weight: 600; }
+.ev-pane { display: flex; flex-direction: column; gap: 10px; }
+.ev-pane[hidden] { display: none; }
+.hist-tools { align-items: center; }
+.hist-tools input[type=search] { flex: 1; min-width: 200px; }
+.hist-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.hist-item { border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; }
+.hist-item summary { cursor: pointer; font-size: 13px; overflow-wrap: anywhere; }
+.hist-actions { align-items: center; flex-wrap: wrap; }
