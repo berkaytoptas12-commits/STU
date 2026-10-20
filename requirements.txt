@@ -2,7 +2,8 @@
 numpy>=1.24
 pyyaml>=6.0
 httpx>=0.25
-pymupdf>=1.24
+# 2.0 changed table extraction (lost spaces, extra empty columns, "7.8" read as "78" + "."): stay on 1.x
+pymupdf>=1.24,<2
 fastapi>=0.110
 uvicorn>=0.27
 python-multipart>=0.0.9

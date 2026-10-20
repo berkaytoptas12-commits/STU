@@ -13,6 +13,9 @@
   (2; netleştirme sorması doğru), karşılaştırma (2) ve kütüphanede cevabı olmayan (1). Değerler taslaktır;
   "Dosyayı indir" ile indirip belgenize göre kontrol edin (belge, sayfa, değer), `status: expert_verified` yapın ve
   kendi dosyanız olarak yükleyin.
+- PDF okuyucu kütüphanesi (PyMuPDF) 1.x sürümüne sabitlendi: yeni çıkan 2.0, PDF tablolarını farklı okuyor
+  (kelime arası boşluklar kayboluyor, boş sütunlar ekleniyor, "7.8" değeri "78" ve "." diye bölünüyor). Önceki
+  sürümlerin exe'leri 1.x ile derlenmişti, etkilenmedi.
 - Değerlendirme raporunda netleştirme ayrı ölçülür: koşula bağlı sorularda netleştirme sorma oranı ve diğer
   sorularda gereksiz netleştirme oranı (pay/payda ile); koşula bağlı soruda netleştirme sormak "gereksiz cevap
   vermeme" sayılmaz.
