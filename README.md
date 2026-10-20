@@ -415,15 +415,6 @@ anahtarıyla, `?token=…` ile yazdırılır; anahtarsız istekler reddedilir).
 
 ## 5. Doğruluğu ölçme
 
-**Soru geçmişi** (Değerlendirme penceresinin ilk sekmesi): sohbette sorduğunuz sorular ve gösterilen cevaplar,
-doğrulama durumu, atıf yapılan kaynaklar (belge, revizyon, bölüm, sayfa) ve doğrulamanın çıkardığı ifadeler
-(gerekçeleriyle) en yenisi üstte listelenir; soru, cevap veya belge adında aranabilir. Her kayıtta "Sohbette tekrar
-sor", 👍/👎 ve "Sil" vardır; "Tümünü sil" geçmişi temizler. Kayıtlar yalnızca bu bilgisayarda,
-`%APPDATA%\SayisalTasarimUzmani\history.json` dosyasında tutulur (en fazla 500); kütüphaneye yazılmaz, kaynak metni,
-kütüphane yolu, sunucu adresi veya anahtar içermez (cevap metni belgelerden alıntı içerebilir). Ayarlar →
-Gelişmiş → "Sorduğum soruları ve cevapları bu bilgisayarda sakla" ile kapatılır. Bu özellikten önce sorulan
-sorular kaydedilmemiştir.
-
 **Sorular ve cevaplar:** her raporda her soru için bir satır vardır: sonuç (doğru / yanlış / cevap yok /
 netleştirme sordu / bulunamadı dedi / hata) ve açınca beklenen değer, belge, sayfa ve kontrol notu ile sistemin
 cevabı, atıf yaptığı kaynaklar, doğrulamanın çıkardığı ifadeler (gerekçeleriyle) ve olgu sonuçları yan yana.

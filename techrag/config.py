@@ -211,7 +211,6 @@ class AnswerConfig:
     # Before a "not found" answer the model is asked once to search for the requirement that governs the question
     # in the standard's own terms (needs tool calling; one more model turn only for such answers).
     search_before_not_found: bool = True
-    keep_history: bool = True       # keep asked questions and answers in the user data folder (Evaluation window)
     failed_claims: str = "strip"    # strip | flag  (after the regeneration pass)
     history_turns: int = 3
 

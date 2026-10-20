@@ -1,12 +1,6 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
-### 0.7.3 — soru geçmişi, değerlendirmede soru soru cevaplar, yeni örnek set
-- **Soru geçmişi:** sohbette sorduğunuz sorular ve gösterilen cevaplar artık Değerlendirme penceresinin ilk
-  sekmesinde okunabiliyor: doğrulama durumu, atıf yapılan kaynaklar (belge, revizyon, bölüm, sayfa) ve
-  doğrulamanın çıkardığı ifadeler gerekçeleriyle; arama, "Sohbette tekrar sor", 👍/👎, tek tek ve toplu silme.
-  Kayıtlar yalnızca bu bilgisayarda, kullanıcı klasöründe (`history.json`, en fazla 500) tutulur; kütüphaneye
-  yazılmaz, kaynak metni, kütüphane yolu, sunucu adresi veya anahtar içermez. Ayarlar → Gelişmiş'ten kapatılabilir.
-  Bu sürümden önce sorulan sorular kaydedilmemişti; geçmiş bu sürümle başlar.
+### 0.7.3 — değerlendirmede soru soru cevaplar, yeni örnek set
 - **Sorular ve cevaplar:** Değerlendirme penceresinde her raporun altında her soru bir satır: sonuç (doğru,
   yanlış, cevap yok, netleştirme sordu, bulunamadı dedi, hata). Açınca beklenen değer, belge, sayfa ve kontrol
   notu ile sistemin cevabı, atıf yaptığı kaynaklar, doğrulamanın çıkardığı ifadeler (Türkçe gerekçeleriyle) ve

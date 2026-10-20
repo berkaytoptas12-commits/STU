@@ -474,43 +474,10 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 "timings": res.timings, "sources": [p.to_dict() for p in res.passages],
                 "parameters": [p.__dict__ for p in res.parameters]}
 
-    # ---------------------------------------------------------- question history
-    def history_store():
-        from techrag.history import HistoryStore
-
-        return HistoryStore(state["cfg"].user_data_dir)
-
-    def keep_answer(question: str, final: dict) -> None:
-        """The answer shown goes to the question history (Evaluation window). Never breaks the answer."""
-        if not state["cfg"].answer.keep_history:
-            return
-        try:
-            from techrag.history import record_from_final
-
-            history_store().add(record_from_final(question, final))
-        except Exception:
-            pass
-
-    @app.get("/api/history", dependencies=guard)
-    def list_history(q: str = "", limit: int = 100, offset: int = 0):
-        items, total = history_store().search(q, max(1, min(limit, 500)), max(0, offset))
-        return {"items": items, "total": total, "enabled": state["cfg"].answer.keep_history}
-
-    @app.delete("/api/history/{hid}", dependencies=guard)
-    def delete_history(hid: str):
-        if not history_store().delete(hid):
-            raise HTTPException(404, "history entry not found")
-        return {"ok": True}
-
-    @app.delete("/api/history", dependencies=guard)
-    def clear_history():
-        return {"ok": True, "deleted": history_store().clear()}
-
     @app.post("/api/ask", dependencies=guard)
     def ask(req: AskRequest):
         e = eng()
         history = [t.model_dump() for t in req.history]
-        # The non-streaming form serves scripts; only the chat (streaming) is kept in the question history.
         if not req.stream:
             return e.ask(req.question, history, req.domains, req.doc_ids, req.top_k, req.buckets, req.clarification)
 
@@ -518,8 +485,6 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             try:
                 for ev in e.ask_stream(req.question, history, req.domains, req.doc_ids, req.top_k, req.buckets,
                                        req.clarification):
-                    if ev.get("type") == "final":
-                        keep_answer(req.question, ev)
                     yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
             except Exception as exc:
                 err = {"type": "error", "message": f"{exc.__class__.__name__}: {exc}"}

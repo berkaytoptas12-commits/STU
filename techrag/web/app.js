@@ -144,15 +144,6 @@ const I18N = {
     evKind_unanswerable: "cevapsız", evAnswerable: "kütüphane cevaplamamalı", evClarify: "netleştirme sorması beklenir",
     evDoc: "belge", evPages: "sayfa", evKeywords: "geçmesi gerekenler", evSeconds: "{0} sn",
     m_clarification_rate: "Netleştirme sordu (koşula bağlı sorularda)", m_unexpected_clarification_rate: "Gereksiz netleştirme (diğer sorularda)",
-    evTabHistory: "Soru geçmişi", evTabEval: "Soru seti çalıştır", evTabFeedback: "Geri bildirimler",
-    histHint: "Sohbette sorduğunuz sorular ve gösterilen cevaplar yalnızca bu bilgisayarda, kullanıcı klasörünüzde saklanır (en fazla 500, en yenisi üstte); kütüphaneye yazılmaz. Ayarlar → Gelişmiş'ten kapatılabilir. Bu özellik gelmeden önce sorulan sorular kaydedilmedi.",
-    histSearch: "Soru, cevap veya belge adında ara", histClear: "Tümünü sil", histClearConfirm: "Tüm soru geçmişi silinsin mi?",
-    histMore: "Daha eskileri göster", histCount: "{0} kayıt", histNone: "Henüz kayıtlı soru yok.", histOff: "Soru geçmişi Ayarlar → Gelişmiş'te kapalı; yeni sorular kaydedilmiyor.",
-    histAskAgain: "Sohbette tekrar sor", histDelete: "Sil", histSources: "Atıf yapılan kaynaklar", histRemoved: "Doğrulamanın çıkardığı ifadeler",
-    histMerged: "Birleştirilmiş soru", histSeconds: "{0} sn", histScope: "kapsam: {0}",
-    hs_supported: "Doğrulandı", hs_corrected: "Bazı ifadeler çıkarıldı", hs_not_found: "Bulunamadı", hs_clarify: "Netleştirme sordu",
-    hs_unverified: "Doğrulama tamamlanamadı", hs_warning: "İşaretli ifadeler var", hs_not_checked: "Denetlenmedi",
-    advHistory: "Sorduğum soruları ve cevapları bu bilgisayarda sakla (Değerlendirme → Soru geçmişi)",
     removedList: "Çıkarılan / işaretlenen ifadeler", claimDetails: "İfade ayrıntıları", usesUser: "kullanıcı girdisi içerir", usesCalc: "hesap içerir",
     st_supported: "destekleniyor", st_unsupported: "desteklenmiyor", st_unverified: "doğrulanamadı", st_not_checked: "uygulanmadı",
     prev: "‹ Önceki", next: "Sonraki ›", zoom: "Yakınlaştır", zoomIn: "Yakınlaştır", zoomOut: "Uzaklaştır", openOriginal: "Orijinal dosyayı aç",
@@ -353,15 +344,6 @@ const I18N = {
     evKind_unanswerable: "unanswerable", evAnswerable: "the library should not answer", evClarify: "should ask to clarify",
     evDoc: "document", evPages: "page", evKeywords: "must contain", evSeconds: "{0} s",
     m_clarification_rate: "Asked to clarify (condition questions)", m_unexpected_clarification_rate: "Unneeded clarification (other questions)",
-    evTabHistory: "Question history", evTabEval: "Run a question set", evTabFeedback: "Feedback",
-    histHint: "The questions you ask in the chat and the answers shown are kept only on this computer, in your user folder (at most 500, newest first); nothing is written into the library. Can be switched off in Settings → Advanced. Questions asked before this feature were not kept.",
-    histSearch: "Search question, answer or document name", histClear: "Delete all", histClearConfirm: "Delete the whole question history?",
-    histMore: "Show older", histCount: "{0} entries", histNone: "No questions kept yet.", histOff: "Question history is off in Settings → Advanced; new questions are not kept.",
-    histAskAgain: "Ask again in the chat", histDelete: "Delete", histSources: "Cited sources", histRemoved: "Statements removed by verification",
-    histMerged: "Merged question", histSeconds: "{0} s", histScope: "scope: {0}",
-    hs_supported: "Verified", hs_corrected: "Some statements removed", hs_not_found: "Not found", hs_clarify: "Asked to clarify",
-    hs_unverified: "Verification incomplete", hs_warning: "Flagged statements", hs_not_checked: "Not checked",
-    advHistory: "Keep my questions and answers on this computer (Evaluation → Question history)",
     removedList: "Removed / flagged statements", claimDetails: "Statement details", usesUser: "uses user input", usesCalc: "uses a calculation",
     st_supported: "supported", st_unsupported: "unsupported", st_unverified: "unverified", st_not_checked: "not applied",
     prev: "‹ Prev", next: "Next ›", zoom: "Zoom", zoomIn: "Zoom in", zoomOut: "Zoom out", openOriginal: "Open original file",
@@ -1869,78 +1851,14 @@ async function loadFeedbackInfo() {
     ul.append(li);
   }
 }
-// ------------------------------------------------------------------ question history
-// The questions asked in the chat and the answers shown (kept by the server in the user folder).
-const HIST_PAGE = 50;
-const histState = { offset: 0, q: "", timer: null };
-function histEntryHtml(d, i) {
-  const st = d.status || "";
-  const cls = st === "supported" ? "ok" : st === "not_found" || st === "unverified" ? "bad" : "miss";
-  const meta = [d.seconds != null ? t("histSeconds", d.seconds) : "", (d.scope || []).length ? t("histScope", d.scope.join(", ")) : ""]
-    .filter(Boolean).join(" · ");
-  const srcs = (d.sources || []).map((s) => `<li>[${esc(s.n)}] ${esc(s.doc_title)}${s.revision ? ` (rev ${esc(s.revision)})` : ""}${s.section ? ` — ${esc(s.section)}` : ""} — ${esc(t("page"))} ${esc(s.page_start)}${s.page_label ? ` (${esc(s.page_label)})` : ""}</li>`).join("");
-  const removed = (d.removed || []).map((c) => `<li>${esc(c.text)}<br><span class="muted">${esc(claimReasons(c).join(" "))}</span></li>`).join("");
-  return `<li class="hist-item" data-i="${i}"><details><summary>
-      <span class="ev-badge ev-${cls}">${esc(t("hs_" + st) !== "hs_" + st ? t("hs_" + st) : st)}</span>
-      <span class="muted small">${esc(fmtTime(d.created_at))}</span> ${esc(d.question)}</summary>
-    <div class="ev-body">
-      ${d.merged_question && d.merged_question !== d.question ? `<div class="small muted">${esc(t("histMerged"))}: ${esc(d.merged_question)}</div>` : ""}
-      ${d.notice ? `<div class="notice small">${esc(d.notice)}</div>` : ""}
-      <div class="markdown ev-answer">${renderMarkdown(d.answer || "", false)}</div>
-      ${srcs ? `<div class="small"><b>${esc(t("histSources"))}:</b><ul>${srcs}</ul></div>` : ""}
-      ${removed ? `<div class="small"><b>${esc(t("histRemoved"))}:</b><ul>${removed}</ul></div>` : ""}
-      ${meta ? `<div class="small muted">${esc(meta)}</div>` : ""}
-      <div class="row hist-actions">
-        <button type="button" class="ghost small hist-ask">${esc(t("histAskAgain"))}</button>
-        <button type="button" class="ghost small icon btn-fb-up" title="${esc(t("fbUp"))}">👍</button>
-        <button type="button" class="ghost small icon btn-fb-down" title="${esc(t("fbDown"))}">👎</button>
-        <span class="small muted fb-state"></span>
-        <button type="button" class="ghost small hist-del">${esc(t("histDelete"))}</button>
-      </div>
-    </div></details></li>`;
-}
-async function loadHistory(append = false) {
-  if (!append) histState.offset = 0;
-  const r = await getJSON(`/api/history?limit=${HIST_PAGE}&offset=${histState.offset}&q=${encodeURIComponent(histState.q)}`);
-  const ul = $("#hist-list");
-  if (!append) ul.innerHTML = "";
-  const base = histState.offset;
-  ul.insertAdjacentHTML("beforeend", r.items.map((d, i) => histEntryHtml(d, base + i)).join(""));
-  $$(".hist-item", ul).forEach((li) => {
-    if (li._bound) return;
-    li._bound = true;
-    const d = r.items[+li.dataset.i - base];
-    if (!d) return;
-    const ctx = { question: d.question, answer: d.answer, verification_status: d.status || "", sources: d.sources || [] };
-    $(".hist-ask", li).addEventListener("click", () => { $("#dlg-eval").close(); if (!state.busy) ask(d.question); });
-    $(".btn-fb-up", li).addEventListener("click", () => sendFeedback(li, ctx, "up"));
-    $(".btn-fb-down", li).addEventListener("click", () => openFeedback(li, ctx));
-    $(".hist-del", li).addEventListener("click", async () => {
-      await api(`/api/history/${encodeURIComponent(d.id)}`, { method: "DELETE" });
-      li.remove();
-    });
-  });
-  histState.offset += r.items.length;
-  $("#hist-count").textContent = t("histCount", r.total);
-  $("#btn-hist-more").hidden = histState.offset >= r.total;
-  if (!r.total) ul.innerHTML = `<li class="muted small">${esc(t(r.enabled ? "histNone" : "histOff"))}</li>`;
-  else if (!r.enabled && !append) ul.insertAdjacentHTML("afterbegin", `<li class="muted small">${esc(t("histOff"))}</li>`);
-}
-function showEvTab(name) {
-  $$(".ev-tab").forEach((b) => b.classList.toggle("active", b.dataset.evtab === name));
-  $$(".ev-pane").forEach((p) => { p.hidden = p.id !== `evtab-${name}`; });
-}
-
 async function openEval() {
   $$("#dlg-eval [data-i18n]").forEach((x) => { x.textContent = t(x.dataset.i18n); });
-  $("#hist-search").placeholder = t("histSearch");
   $("#eval-status").textContent = "";
   $("#dlg-eval").showModal();
   try {
-    await loadHistory();
     const info = await loadEvalInfo();
     await loadFeedbackInfo();
-    if (info.running) { showEvTab("eval"); pollEval(info.running); }
+    if (info.running) pollEval(info.running);
   } catch (e) { $("#eval-status").textContent = `${t("errorPrefix")}: ${e.message}`; }
 }
 async function runEval() {
@@ -1975,7 +1893,7 @@ async function pollEval(id) {
       } catch (e) {
         $("#eval-result").innerHTML = evalSummaryHtml(job.report.summary, { retrieval_only: $("#eval-retrieval-only").checked });
       }
-      $("#eval-status").textContent = t("evalDone");
+      $("#eval-status").textContent = t("evalDone");   // after the report is drawn
       loadEvalInfo();
       break;
     }
@@ -2024,7 +1942,6 @@ async function openSettings() {
   $("#set-judge-batch").value = SETTINGS.answer.judge_batch;
   $("#set-repair-cites").checked = SETTINGS.answer.repair_citations !== false;
   $("#set-search-more").checked = SETTINGS.answer.search_before_not_found !== false;
-  $("#set-keep-history").checked = SETTINGS.answer.keep_history !== false;
   $("#set-follow-refs").value = SETTINGS.retrieval.follow_references ?? 3;
   $("#set-page-score").value = SETTINGS.vision.min_page_score;
   $("#set-max-pages").value = SETTINGS.vision.max_pages_per_doc;
@@ -2055,8 +1972,7 @@ async function saveSettings(e) {
   patch.vision = Object.assign(patch.vision || {}, { enabled: $("#set-vision-enabled").checked });
   const num = (id, int) => { const v = int ? parseInt($(id).value, 10) : parseFloat($(id).value); return Number.isFinite(v) ? v : undefined; };
   const adv = { llm: { context_tokens: num("#set-context", true) }, answer: { judge_batch: num("#set-judge-batch", true),
-    repair_citations: $("#set-repair-cites").checked, search_before_not_found: $("#set-search-more").checked,
-    keep_history: $("#set-keep-history").checked }, retrieval: { follow_references: num("#set-follow-refs", true) },
+    repair_citations: $("#set-repair-cites").checked, search_before_not_found: $("#set-search-more").checked }, retrieval: { follow_references: num("#set-follow-refs", true) },
     vision: { min_page_score: num("#set-page-score"), max_pages_per_doc: num("#set-max-pages", true) } };
   for (const [sec, vals] of Object.entries(adv)) {
     for (const [k, v] of Object.entries(vals)) if (v !== undefined) (patch[sec] = patch[sec] || {})[k] = v;
@@ -2146,17 +2062,6 @@ function bind() {
   $("#btn-eval-run").addEventListener("click", runEval);
   $("#btn-eval-stop").addEventListener("click", () => { if (state.evalJob) postJSON(`/api/jobs/${state.evalJob}/cancel`, {}); });
   $("#btn-fb-export").addEventListener("click", exportFeedback);
-  $$(".ev-tab").forEach((b) => b.addEventListener("click", () => showEvTab(b.dataset.evtab)));
-  $("#hist-search").addEventListener("input", () => {
-    clearTimeout(histState.timer);
-    histState.timer = setTimeout(() => { histState.q = $("#hist-search").value.trim(); loadHistory(); }, 300);
-  });
-  $("#btn-hist-more").addEventListener("click", () => loadHistory(true));
-  $("#btn-hist-clear").addEventListener("click", async () => {
-    if (!confirm(t("histClearConfirm"))) return;
-    await api("/api/history", { method: "DELETE" });
-    loadHistory();
-  });
   $("#btn-eval-download").addEventListener("click", () => downloadText("/api/eval/questions", "questions.yaml")
     .catch((e) => { $("#eval-status").textContent = `${t("errorPrefix")}: ${e.message}`; }));
   $("#btn-fb-send").addEventListener("click", submitFeedback);

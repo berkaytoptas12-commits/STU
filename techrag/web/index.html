@@ -117,7 +117,6 @@
           <input type="number" id="set-judge-batch" min="1" max="32" step="1"></label>
         <label><input type="checkbox" id="set-repair-cites"> <span data-i18n="advRepair"></span></label>
         <label><input type="checkbox" id="set-search-more"> <span data-i18n="advSearchMore"></span></label>
-        <label><input type="checkbox" id="set-keep-history"> <span data-i18n="advHistory"></span></label>
         <label><span data-i18n="advRefs"></span>
           <input type="number" id="set-follow-refs" min="0" max="10" step="1"></label>
         <label><span data-i18n="advPageScore"></span>
@@ -205,51 +204,34 @@
     </form>
   </dialog>
 
-  <!-- Evaluation, question history, feedback -->
+  <!-- Evaluation -->
   <dialog id="dlg-eval">
     <form method="dialog" class="dlg">
       <h2 data-i18n="evaluation"></h2>
-      <div class="ev-tabs" role="tablist">
-        <button type="button" class="ghost ev-tab active" data-evtab="history" role="tab" data-i18n="evTabHistory"></button>
-        <button type="button" class="ghost ev-tab" data-evtab="eval" role="tab" data-i18n="evTabEval"></button>
-        <button type="button" class="ghost ev-tab" data-evtab="feedback" role="tab" data-i18n="evTabFeedback"></button>
+      <p class="hint" data-i18n="evalHint"></p>
+      <div class="eval-sets">
+        <label><input type="radio" name="eval-set" value="bundled" checked> <span id="eval-set-bundled"></span>
+          <button type="button" class="ghost small" id="btn-eval-download" data-i18n="evalDownload"></button></label>
+        <label><input type="radio" name="eval-set" value="feedback"> <span id="eval-set-feedback"></span></label>
+        <label><input type="radio" name="eval-set" value="custom"> <span data-i18n="evalSetCustom"></span>
+          <input type="file" id="eval-file" accept=".yaml,.yml"></label>
       </div>
-      <section class="ev-pane" id="evtab-history">
-        <p class="hint" data-i18n="histHint"></p>
-        <div class="row hist-tools">
-          <input type="search" id="hist-search" autocomplete="off">
-          <span class="small muted" id="hist-count"></span>
-          <button type="button" class="ghost small" id="btn-hist-clear" data-i18n="histClear"></button>
-        </div>
-        <ul class="hist-list" id="hist-list"></ul>
-        <div class="row"><button type="button" class="ghost small" id="btn-hist-more" data-i18n="histMore" hidden></button></div>
-      </section>
-      <section class="ev-pane" id="evtab-eval" hidden>
-        <p class="hint" data-i18n="evalHint"></p>
-        <div class="eval-sets">
-          <label><input type="radio" name="eval-set" value="bundled" checked> <span id="eval-set-bundled"></span>
-            <button type="button" class="ghost small" id="btn-eval-download" data-i18n="evalDownload"></button></label>
-          <label><input type="radio" name="eval-set" value="feedback"> <span id="eval-set-feedback"></span></label>
-          <label><input type="radio" name="eval-set" value="custom"> <span data-i18n="evalSetCustom"></span>
-            <input type="file" id="eval-file" accept=".yaml,.yml"></label>
-        </div>
-        <label class="small"><input type="checkbox" id="eval-retrieval-only"> <span data-i18n="evalRetrievalOnly"></span></label>
-        <div class="row">
-          <button type="button" id="btn-eval-run" data-i18n="evalRun"></button>
-          <button type="button" class="ghost" id="btn-eval-stop" data-i18n="evalStop" hidden></button>
-          <span class="small muted" id="eval-status"></span>
-        </div>
-        <div class="bar" id="eval-bar-box" hidden><div class="bar-fill" id="eval-bar"></div></div>
-        <div id="eval-result" class="eval-result"></div>
-        <details id="eval-history"><summary class="small" data-i18n="evalHistory"></summary><div id="eval-reports"></div></details>
-      </section>
-      <section class="ev-pane" id="evtab-feedback" hidden>
-        <p class="small" id="fb-summary"></p>
-        <div class="row">
-          <button type="button" class="ghost" id="btn-fb-export" data-i18n="fbExport"></button>
-        </div>
-        <details open><summary class="small" data-i18n="fbList"></summary><ul class="fb-list" id="fb-list"></ul></details>
-      </section>
+      <label class="small"><input type="checkbox" id="eval-retrieval-only"> <span data-i18n="evalRetrievalOnly"></span></label>
+      <div class="row">
+        <button type="button" id="btn-eval-run" data-i18n="evalRun"></button>
+        <button type="button" class="ghost" id="btn-eval-stop" data-i18n="evalStop" hidden></button>
+        <span class="small muted" id="eval-status"></span>
+      </div>
+      <div class="bar" id="eval-bar-box" hidden><div class="bar-fill" id="eval-bar"></div></div>
+      <div id="eval-result" class="eval-result"></div>
+      <details id="eval-history"><summary class="small" data-i18n="evalHistory"></summary><div id="eval-reports"></div></details>
+      <hr>
+      <h3 data-i18n="fbHeading"></h3>
+      <p class="small" id="fb-summary"></p>
+      <div class="row">
+        <button type="button" class="ghost" id="btn-fb-export" data-i18n="fbExport"></button>
+      </div>
+      <details><summary class="small" data-i18n="fbList"></summary><ul class="fb-list" id="fb-list"></ul></details>
       <div class="dlg-actions"><button type="button" data-close data-i18n="close"></button></div>
     </form>
   </dialog>
