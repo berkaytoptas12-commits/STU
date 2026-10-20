@@ -13,6 +13,11 @@
   (2; netleştirme sorması doğru), karşılaştırma (2) ve kütüphanede cevabı olmayan (1). Değerler taslaktır;
   "Dosyayı indir" ile indirip belgenize göre kontrol edin (belge, sayfa, değer), `status: expert_verified` yapın ve
   kendi dosyanız olarak yükleyin.
+- **Simge artık kaybolmuyor:** sohbet penceresi açılınca (etkin pencere olunca) simge onun arkasına geçiyordu;
+  pencere simgenin köşesini kapladığında (ekranı kapladığında veya dizüstü ölçeğinde büyük açıldığında) simge
+  görünmez oluyordu. Simge artık sohbet penceresinin de üzerinde kalır. Simge gönder düğmesinin üstüne gelirse
+  soru kutusu ve gönder düğmesi simgenin soluna kayar; pencere taşındığında, boyutlandırıldığında veya simge
+  sürüklendiğinde bu kendiliğinden güncellenir.
 - PDF okuyucu kütüphanesi (PyMuPDF) 1.x sürümüne sabitlendi: yeni çıkan 2.0, PDF tablolarını farklı okuyor
   (kelime arası boşluklar kayboluyor, boş sütunlar ekleniyor, "7.8" değeri "78" ve "." diye bölünüyor). Önceki
   sürümlerin exe'leri 1.x ile derlenmişti, etkilenmedi.

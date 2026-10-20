@@ -453,7 +453,7 @@ const desk = () => (window.pywebview && window.pywebview.api) || null;
 
 // The desktop app hides this window instead of closing it: the page, the chat and running jobs stay as they are. While
 // it is hidden nothing is polled (indexing goes on in the backend); progress is fetched again once it is shown.
-const host = { hidden: false, waiters: [] };
+const host = { hidden: false, waiters: [], iconArea: null };
 const pageHidden = () => host.hidden || document.hidden;
 function wakeUp() { if (!pageHidden()) host.waiters.splice(0).forEach((r) => r()); }
 const whenShown = () => (pageHidden() ? new Promise((r) => host.waiters.push(r)) : Promise.resolve());
@@ -461,7 +461,36 @@ document.addEventListener("visibilitychange", wakeUp);
 window.techragHost = {
   setVisible(v) { host.hidden = !v; wakeUp(); return !host.hidden; },
   openSettings() { if (!$("#dlg-settings").open) openSettings().catch((e) => alert(e.message)); return true; },
+  // The launcher icon stays on top of this window; area = the part of the window it covers ([x0, y0, x1, y1] as
+  // fractions of the width and height) or null. The send row moves left of it, so the icon never hides it.
+  setIconArea(area) { host.iconArea = Array.isArray(area) && area.length === 4 ? area : null; applyIconGuard(); return true; },
+  iconArea() { return host.iconArea; },
 };
+function iconGuardPx() {
+  const a = host.iconArea;
+  const comp = $("#composer");
+  if (!a || !comp) return 0;
+  const W = window.innerWidth, H = window.innerHeight;
+  const x0 = a[0] * W, y0 = a[1] * H, x1 = a[2] * W, y1 = a[3] * H;
+  comp.style.paddingRight = "";
+  const r = comp.getBoundingClientRect();
+  const hit = x0 < r.right && x1 > r.left && y0 < r.bottom && y1 > r.top;
+  const px = Math.ceil(r.right - x0 + 8);
+  return hit && px <= r.width / 2 ? px : 0;   // the icon dragged onto the middle of the box: leave the layout alone
+}
+function applyIconGuard() {
+  const comp = $("#composer");
+  if (!comp) return;
+  const px = iconGuardPx();
+  comp.style.paddingRight = px ? `${px}px` : "";
+  document.body.classList.toggle("icon-over-composer", px > 0);
+}
+window.addEventListener("resize", () => applyIconGuard());
+// The chat column changes width when a panel is resized or toggled: the send row may move under the icon.
+{
+  const chatPanel = document.querySelector(".panel.chat");   // this script runs after the page body
+  if (chatPanel && window.ResizeObserver) new ResizeObserver(() => applyIconGuard()).observe(chatPanel);
+}
 
 async function api(path, opts = {}) {
   const headers = Object.assign({}, opts.headers || {});
@@ -734,6 +763,7 @@ function applyLayout() {
   $("#btn-toggle-left").setAttribute("aria-expanded", String(!b.classList.contains("left-collapsed")));
   $("#btn-toggle-right").setAttribute("aria-pressed", String(!b.classList.contains("right-hidden")));
   setRightWidth(state.ui.rightW || 440, false); // a width saved on a larger screen is clamped, not overwritten
+  applyIconGuard();
 }
 function setLeftCollapsed(v) {
   if (isNarrow()) state.narrowLeft = !v; else { state.ui.leftCollapsed = v; saveUi(); }

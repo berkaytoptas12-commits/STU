@@ -3,6 +3,7 @@ highlight toggle and evidence navigation, and that an unverified answer is never
 Skipped when Playwright/Chromium is not installed (e.g. the Windows CI build)."""
 
 import glob
+import json
 import os
 import socket
 import threading
@@ -545,3 +546,34 @@ def test_evaluation_results_show_each_answer(ui, tmp_path):
     items.nth(0).locator(".ev-ask").click()
     ui.wait_for_selector(f".msg.assistant >> nth={n} >> .msg-actions:not([hidden])", timeout=20000)
     assert not ui.evaluate("document.querySelector('#dlg-eval').open")
+
+
+_SEND_CLEAR = """() => {
+  const a = window.techragHost.iconArea(), r = document.querySelector('#btn-send').getBoundingClientRect();
+  const W = innerWidth, H = innerHeight;
+  return !(a[0] * W < r.right && a[2] * W > r.left && a[1] * H < r.bottom && a[3] * H > r.top);
+}"""
+
+
+def test_send_button_moves_out_from_under_the_launcher_icon(ui):
+    """The launcher icon stays on top of the chat window (also a maximized one); the desktop app tells the page
+    which part of the window it covers and the send row moves left of it."""
+    l, t, r, b, w, h = ui.evaluate("""() => { const r = document.querySelector('#btn-send').getBoundingClientRect();
+      return [r.left, r.top, r.right, r.bottom, innerWidth, innerHeight]; }""")
+    area = [(r - 30) / w, (t - 10) / h, (r + 30) / w, (b + 20) / h]   # a 60 px icon over the send button
+    assert ui.evaluate(f"window.techragHost.setIconArea({json.dumps(area)})") is True
+    assert ui.evaluate(_SEND_CLEAR) is True, "the send button is no longer under the icon"
+    assert ui.evaluate("document.querySelector('#question').getBoundingClientRect().width") > 200
+    assert "icon-over-composer" in ui.evaluate("document.body.className")
+    ui.click("#btn-toggle-right")                                        # the chat column changes width
+    ui.wait_for_function(_SEND_CLEAR)
+    ui.click("#btn-toggle-right")
+    ui.wait_for_function(_SEND_CLEAR)
+    ui.evaluate("window.techragHost.setIconArea(null)")                 # the icon moved away
+    assert ui.evaluate("document.querySelector('#composer').style.paddingRight") == ""
+    assert "icon-over-composer" not in ui.evaluate("document.body.className")
+    q = ui.evaluate("""() => { const r = document.querySelector('#question').getBoundingClientRect();
+      return [r.left + r.width / 2, r.top, innerWidth, innerHeight]; }""")
+    mid = [(q[0] - 30) / q[2], q[1] / q[3], (q[0] + 30) / q[2], (q[1] + 60) / q[3]]
+    ui.evaluate(f"window.techragHost.setIconArea({json.dumps(mid)})")   # dragged onto the middle of the box
+    assert ui.evaluate("document.querySelector('#composer').style.paddingRight") == "", "layout left alone"

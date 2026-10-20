@@ -134,6 +134,12 @@ SMOKE_JS = """(function () {
           host: !!window.techragHost,
           notes: !!document.querySelector('[data-tab="notes"], #tab-notes, #notes-list, .btn-note')};
 })()"""
+# smoke test: the page knows the part of the window the launcher icon covers and its send button is not under it
+SEND_CLEAR_JS = """(function () {
+  var a = window.techragHost.iconArea(), r = document.querySelector('#btn-send').getBoundingClientRect();
+  var W = innerWidth, H = innerHeight;
+  return !!a && !(a[0] * W < r.right && a[2] * W > r.left && a[1] * H < r.bottom && a[3] * H > r.top);
+})()"""
 
 
 class DesktopApp:
@@ -155,6 +161,7 @@ class DesktopApp:
         self._L = L
         self.front = front or self._chat_in_front   # is the (visible) chat window in front of the others?
         self.double_click = L.double_click_seconds()
+        self.icon_area = None   # the part of the chat window the launcher icon covers (fractions), if any
         self._last_open_click = -1e9
         self.chat, self.jobs, self._lang, self.state = chat, jobs, lang, state
         self.hide_on_close = hide_on_close
@@ -208,6 +215,16 @@ class DesktopApp:
 
     def icon_moved(self, anchor: dict) -> None:
         self._post(self.state.set, "launcher", anchor)
+
+    def icon_overlap(self, area) -> None:
+        """The launcher icon (always on top) covers this part of the chat window (fractions) or none of it: the
+        page keeps its send button clear of it."""
+        self.icon_area = list(area) if area else None
+        self._page(self._icon_area_script())
+
+    def _icon_area_script(self) -> str:
+        return f"window.techragHost && window.techragHost.setIconArea && window.techragHost.setIconArea(" \
+               f"{json.dumps(self.icon_area)})"
 
     def request_quit(self, confirm: bool = True) -> None:
         self._post(self._quit, confirm)
@@ -322,13 +339,14 @@ class DesktopApp:
             return
         hwnd = self.chat_hwnd()
         if hwnd and self.launcher is not None:
-            self.launcher.set_companion(hwnd)  # before it becomes active: the icon then steps behind it
+            self.launcher.set_companion(hwnd)  # the icon reports which part of this window it covers
         self.chat.show()
         if hwnd and os.name == "nt":
             self._L.bring_to_front(hwnd)  # also restores a minimized window
         self.visible = True
         self.stats["opened"] += 1
         self._page("window.techragHost && window.techragHost.setVisible(true)")
+        self._page(self._icon_area_script())
         if script:
             self._page(script)
 
@@ -461,8 +479,9 @@ def _wait(pred: Callable[[], object], timeout: float, step: float = 0.2):
 
 def _smoke(desk: DesktopApp, result_path: str) -> None:
     """CI check of the packaged app with real windows: the launcher icon comes first; a drag moves it without opening
-    the chat; a click opens the chat (UI, JS<->Python bridge, no notes UI); a click on the icon hides the chat when it
-    is in front, shows it again with the page kept, restores it when minimized and raises it when another window
+    the chat; a click opens the chat (UI, JS<->Python bridge, no notes UI); the icon stays on top of the active chat
+    window, also of a maximized one that covers it, and the page's send button moves out from under it; a click on
+    the icon hides the chat when it is in front, shows it again with the page kept, restores it when minimized and raises it when another window
     covers it; the close button only hides it and the page is kept; a second start of the exe hands over instead of
     starting a backend; the icon's menu opens the settings and finally quits the app (the CI step checks that the
     process then ends by itself)."""
@@ -543,6 +562,22 @@ def _smoke(desk: DesktopApp, result_path: str) -> None:
             # the icon toggles: in front -> hidden (not quit), hidden -> shown, minimized/covered -> to the front
             r["front_after_open"] = front()
             check("opened_chat_is_in_front", _wait(front, 10))
+
+            def icon_on_top() -> bool:
+                i = lw.info()
+                return bool(i.get("visible") and i.get("topmost"))
+
+            # the icon never vanishes behind the active chat window, also when that covers it (maximized): it stays
+            # on top and the page moves its send button out from under it
+            time.sleep(1.0)
+            check("icon_on_top_of_active_chat", icon_on_top())
+            a.ShowWindow(hwnd, 3)  # SW_MAXIMIZE
+            check("maximized_chat_reports_icon_area", _wait(lambda: desk.icon_area, 10))
+            r["icon_area_maximized"] = desk.icon_area
+            check("icon_on_top_of_maximized_chat", icon_on_top())
+            check("send_button_clear_of_icon", _wait(lambda: chat.evaluate_js(SEND_CLEAR_JS) is True, 10))
+            a.ShowWindow(hwnd, 9)  # SW_RESTORE
+            check("restored_chat_is_in_front", _wait(front, 10))
             pause()
             click()
             check("click_hides_chat_in_front", _wait(lambda: not L.window_state(hwnd)["visible"], 30))
@@ -684,7 +719,7 @@ def _make_launcher(key: str, desk: DesktopApp, state):
 
     return Launcher(key, state.get("launcher"), desk.lang, on_click=desk.toggle_chat, on_command=desk.command,
                     on_activate=desk.activate, on_moved=desk.icon_moved, on_session_end=desk.session_end,
-                    on_close_request=lambda: desk.request_quit(confirm=False))
+                    on_close_request=lambda: desk.request_quit(confirm=False), on_overlap=desk.icon_overlap)
 
 
 def run_gui() -> int:

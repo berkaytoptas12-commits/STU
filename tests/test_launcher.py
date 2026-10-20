@@ -72,6 +72,15 @@ def test_points_and_windows_are_kept_on_screen():
         assert inside(x, y, size, FHD.work)
 
 
+def test_icon_overlap_is_a_fraction_of_the_chat_client_area():
+    client = (100, 50, 1100, 850)                      # 1000 x 800 px client area of the chat window
+    assert L.icon_overlap((1200, 900, 1260, 960), client) is None, "icon beside the window"
+    assert L.icon_overlap((1080, 820, 1140, 880), client) == (0.98, 0.9625, 1.0, 1.0), "covers the corner"
+    assert L.icon_overlap((600, 450, 660, 510), client) == (0.5, 0.5, 0.56, 0.575)
+    assert L.icon_overlap((1100, 820, 1160, 880), client) is None, "only touching the edge"
+    assert L.icon_overlap((0, 0, 60, 60), (10, 10, 10, 400)) is None, "a window without a client area"
+
+
 def test_press_tracker_tells_a_click_from_a_drag():
     t = PressTracker(threshold=4)
     t.press((100, 100), (50, 50))
@@ -242,6 +251,35 @@ def test_real_icon_reports_foreign_close_and_logoff(real_launcher):
     a.PostMessageW(ln.hwnd, L.WM_QUERYENDSESSION, 0, 0)
     a.PostMessageW(ln.hwnd, L.WM_ENDSESSION, 0, 0)     # logging off cancelled
     assert _wait(lambda: events["session"] == [None, False])
+
+
+@win
+def test_real_icon_stays_on_top_of_the_active_chat(real_launcher):
+    """The chat window, active and covering the icon (e.g. maximized), never hides it: the icon stays topmost and
+    reports the part of the chat it covers - the page keeps its send button out of that part."""
+    from techrag.desktop import _cover_window
+
+    ln, events, key = real_launcher
+    areas = []
+    ln.on_overlap = areas.append
+    a = L.win32()
+    r = ln.info()["rect"]
+    chat = _cover_window((r[0] - 500, r[1] - 400, r[2] + 4, r[3] + 4))   # stands in for the chat window
+    try:
+        ln.set_companion(chat)
+        assert chat and _wait(lambda: L.in_front(chat)), "the chat is the active window"
+        assert _wait(lambda: areas and areas[-1]), "the icon tells which part of the chat it covers"
+        x0, y0, x1, y1 = areas[-1]
+        assert 0.8 < x0 < x1 <= 1 and 0.8 < y0 < y1 <= 1, areas[-1]
+        time.sleep(1)
+        info = ln.info()
+        assert info["visible"] and info["topmost"], "still above the active chat window"
+        a.ShowWindow(chat, 6)                                            # SW_MINIMIZE
+        assert _wait(lambda: areas[-1] is None), "a minimized chat is not covered"
+    finally:
+        ln.set_companion(None)
+        ln.on_overlap = lambda area: None
+        a.PostMessageW(chat, L.WM_CLOSE, 0, 0)
 
 
 @win

@@ -293,8 +293,9 @@ kullanıcıların onu açması önerilir (açıkken üzerine yazmayın).
   gizlenir; simge durumuna küçültülmüş veya başka pencerelerin arkasındaysa gizlenmez, geri yüklenip öne
   getirilir. Çift tık pencereyi açık bırakır (ikinci tık kapatmaz); hızlı ardışık tıklamalar sırayla işlenir,
   ikinci bir pencere açılmaz. Gizlemek uygulamadan çıkmak değildir. Pencere normal bir penceredir:
-  boyutlandırılabilir, ekranı kaplayabilir, üstte sabit kalmaz. Sohbet penceresi etkinken simge onun arkasına
-  geçer, böylece pencerenin düğmelerini örtmez.
+  boyutlandırılabilir, ekranı kaplayabilir, üstte sabit kalmaz. Simge sohbet penceresinin de üzerinde kalır,
+  pencere etkinken ve simgenin köşesini kapladığında (ör. ekranı kapladığında) bile kaybolmaz; simge gönder
+  düğmesinin üstüne gelirse soru kutusu ve gönder düğmesi simgenin soluna kayar.
 * **Sürükleyerek** simge taşınır (sürükleme sohbeti açmaz); yeri, bulunduğu monitör ve en yakın köşeye uzaklığıyla
   hatırlanır. Çözünürlük, ölçek (DPI) veya görev çubuğu değişince, monitör çıkarılınca simge görünür alana geri
   alınır; her monitörde o monitörün ölçeğinde çizilir.

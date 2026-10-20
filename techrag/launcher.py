@@ -24,7 +24,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
 
 from techrag.config import APP_TITLE, write_text_atomic
 
@@ -296,6 +296,7 @@ WM_SETTINGCHANGE, WM_MOUSEACTIVATE, WM_CONTEXTMENU, WM_DISPLAYCHANGE = 0x001A, 0
 WM_COMMAND, WM_MOUSEMOVE, WM_LBUTTONDOWN, WM_LBUTTONUP = 0x0111, 0x0200, 0x0201, 0x0202
 WM_CAPTURECHANGED, WM_MOUSELEAVE, WM_DPICHANGED = 0x0215, 0x02A3, 0x02E0
 WM_APP_HIDE, WM_APP_SHOW, WM_APP_ZORDER = 0x8000 + 1, 0x8000 + 2, 0x8000 + 3
+WM_TIMER, OVERLAP_TIMER, OVERLAP_MS = 0x0113, 1, 400
 MK_LBUTTON, MA_NOACTIVATE, SPI_SETWORKAREA = 0x0001, 3, 0x002F
 WS_POPUP = 0x80000000
 WS_EX_TOPMOST, WS_EX_TOOLWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE = 0x00000008, 0x00000080, 0x00080000, 0x08000000
@@ -395,6 +396,9 @@ def win32():
     fn(user32, "SetWindowPos", B, H, H, I, I, I, I, U)
     fn(user32, "GetWindowRect", B, H, P(W.RECT))
     fn(user32, "ClientToScreen", B, H, P(W.POINT))
+    fn(user32, "GetClientRect", B, H, P(W.RECT))
+    fn(user32, "SetTimer", ctypes.c_size_t, H, ctypes.c_size_t, U, W.LPVOID)
+    fn(user32, "KillTimer", B, H, ctypes.c_size_t)
     fn(user32, "GetCursorPos", B, P(W.POINT))
     fn(user32, "SetCapture", H, H)
     fn(user32, "ReleaseCapture", B)
@@ -544,6 +548,21 @@ def in_front(hwnd, ignore=()) -> bool:
     return True
 
 
+def icon_overlap(icon: Sequence[int], client: Sequence[int]) -> Optional[tuple]:
+    """The part of a window's client area (left, top, right, bottom in screen pixels) the icon covers, as
+    fractions (x0, y0, x1, y1) of the client's width and height - independent of the DPI the page renders at.
+    None when they do not overlap."""
+    cw, ch = client[2] - client[0], client[3] - client[1]
+    if cw <= 0 or ch <= 0:
+        return None
+    x0, y0 = max(icon[0], client[0]), max(icon[1], client[1])
+    x1, y1 = min(icon[2], client[2]), min(icon[3], client[3])
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return tuple(round(v, 4) for v in ((x0 - client[0]) / cw, (y0 - client[1]) / ch,
+                                        (x1 - client[0]) / cw, (y1 - client[1]) / ch))
+
+
 def double_click_seconds() -> float:
     if os.name != "nt":
         return 0.5
@@ -658,21 +677,29 @@ class Launcher:
     on_session_end(final)    - Windows logging off / shutting down: None = asked, True = happening now,
                                False = cancelled by the user
     on_close_request()       - another program asked the app to close (taskkill without /F, an installer)
+    on_overlap(area)         - the part of the chat window's client area the icon covers, as fractions
+                               (x0, y0, x1, y1) of its width and height, or None (see icon_overlap)
+
+    The icon always stays above normal windows, also above the chat window: it must never vanish behind it
+    (the chat page keeps its own controls clear of the area reported by on_overlap).
     """
 
     def __init__(self, key: str, anchor: Optional[dict], lang: Callable[[], str], on_click: Callable[[], None],
                  on_command: Callable[[int], None], on_activate: Callable[[], None],
                  on_moved: Callable[[dict], None], on_session_end: Optional[Callable[[Optional[bool]], None]] = None,
-                 on_close_request: Optional[Callable[[], None]] = None, title: str = APP_TITLE):
+                 on_close_request: Optional[Callable[[], None]] = None, title: str = APP_TITLE,
+                 on_overlap: Optional[Callable[[Optional[tuple]], None]] = None):
         self.key, self.title = key, title
         self.anchor = dict(anchor) if isinstance(anchor, dict) else default_anchor()
         self.lang = lang
         self.on_click, self.on_command, self.on_activate = on_click, on_command, on_activate
         self.on_moved, self.on_session_end = on_moved, on_session_end or (lambda final: None)
         self.on_close_request = on_close_request or (lambda: on_command(IDM_QUIT))
+        self.on_overlap = on_overlap or (lambda area: None)
+        self._overlap: Optional[tuple] = None
         self._closing = False
         self.hwnd = None
-        self.companion = None     # chat window: while it is the active window the icon goes behind it
+        self.companion = None     # chat window: the page is told which part of it the icon covers
         self.placed: dict = {}
         self.error = ""
         self.ready = threading.Event()
@@ -680,7 +707,6 @@ class Launcher:
         self.tracker = PressTracker()
         self._size = icon_px(96)
         self._hover = False
-        self._below = False
         self._pixels: dict = {}
         self._activate_msg = 0
         self._thread: Optional[threading.Thread] = None
@@ -761,6 +787,7 @@ class Launcher:
                 self._place()
             self._hook = a.SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, None,
                                            self._hook_proc, 0, 0, WINEVENT_OUTOFCONTEXT)
+            a.SetTimer(hwnd, OVERLAP_TIMER, OVERLAP_MS, None)   # the chat window moves, resizes, maximizes
             log.info("launcher icon at %s (%d px, %s dpi, monitor %s)", (x, y), size, mon.dpi, mon.name)
         except Exception as exc:
             log.exception("launcher icon could not be created")
@@ -852,8 +879,10 @@ class Launcher:
             self._call(self.on_session_end, bool(wp))   # False: the user cancelled logging off
             return 0
         if msg == WM_APP_ZORDER:
-            self._below = None                           # force the decision
             self._on_foreground(None, 0, a.GetForegroundWindow(), 0, 0, 0, 0)
+            return 0
+        if msg == WM_TIMER and wp == OVERLAP_TIMER:
+            self._check_overlap()
             return 0
         if msg == WM_APP_HIDE:
             a.ShowWindow(hwnd, SW_HIDE)
@@ -869,6 +898,7 @@ class Launcher:
                 self._call(self.on_close_request)
             return 0
         if msg == WM_DESTROY:
+            a.KillTimer(hwnd, OVERLAP_TIMER)
             a.PostQuitMessage(0)
             return 0
         if self._activate_msg and msg == self._activate_msg:
@@ -1005,20 +1035,34 @@ class Launcher:
             a.SetForegroundWindow(previous)  # menu dismissed: give the keyboard focus back
 
     def _on_foreground(self, hook, event, hwnd, id_object, id_child, thread, ms) -> None:
-        """The icon stays above normal windows - except the chat window while it is the active one, so that the
-        icon never covers the chat's own controls (e.g. the send button of a maximized window)."""
+        """Another window became the active one: the icon stays above normal windows (the chat window included -
+        it must never vanish behind it), and the chat page learns whether the icon now covers part of it."""
         try:
-            a = win32()
-            comp = self.companion
-            below = bool(comp) and bool(hwnd) and int(hwnd) == comp
-            if below == self._below or not self.hwnd:
+            if not self.hwnd:
                 return
-            self._below = below
-            flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
-            if below:
-                a.SetWindowPos(self.hwnd, a.HWND_NOTOPMOST, 0, 0, 0, 0, flags)
-                a.SetWindowPos(self.hwnd, comp, 0, 0, 0, 0, flags)
-            else:
-                a.SetWindowPos(self.hwnd, a.HWND_TOPMOST, 0, 0, 0, 0, flags)
+            a = win32()
+            a.SetWindowPos(self.hwnd, a.HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+            self._check_overlap()
         except Exception:
             log.exception("launcher z-order")
+
+    def _check_overlap(self) -> None:
+        """Tell the app (on_overlap) when the part of the chat window that the icon covers changes."""
+        a = win32()
+        comp = self.companion
+        area = None
+        try:
+            if comp and self.hwnd and a.IsWindow(comp) and a.IsWindowVisible(comp) and not a.IsIconic(comp) \
+                    and a.IsWindowVisible(self.hwnd):
+                cr = a.W.RECT()
+                a.GetClientRect(comp, a.ctypes.byref(cr))
+                origin = a.W.POINT(0, 0)
+                a.ClientToScreen(comp, a.ctypes.byref(origin))
+                client = (origin.x, origin.y, origin.x + cr.right, origin.y + cr.bottom)
+                area = icon_overlap(_rect(self.hwnd), client)
+        except Exception:
+            log.exception("launcher overlap")
+            area = None
+        if area != self._overlap:
+            self._overlap = area
+            self._call(self.on_overlap, area)

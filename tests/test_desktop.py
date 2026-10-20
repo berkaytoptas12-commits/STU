@@ -257,6 +257,30 @@ def test_click_toggles_the_chat_window(gui):
     assert _run(gui, scenario) == 0
 
 
+def test_page_learns_which_part_the_icon_covers(gui):
+    """The icon stays on top of the chat window; the page is told which part of the window it covers (fractions),
+    also again on every opening of the window, so it can keep the send button out from under it."""
+    def scenario(w, icon, desk):
+        desk.double_click = 0.0
+        desk.front = lambda: True
+        icon.click()
+        assert desk.idle()
+        desk.icon_overlap((0.9, 0.92, 1.0, 1.0))         # the real icon reports this from its own thread
+        assert desk.idle() and w.scripts[-1].endswith("setIconArea([0.9, 0.92, 1.0, 1.0])")
+        icon.click()                                       # hidden: the icon covers nothing of it
+        assert desk.idle()
+        desk.icon_overlap(None)
+        assert desk.idle() and w.scripts[-1].endswith("setIconArea(null)")
+        desk.icon_overlap((0.5, 0.5, 0.6, 0.6))
+        icon.click()
+        assert desk.idle() and w.visible
+        shown = max(i for i, s in enumerate(w.scripts) if "setVisible(true)" in s)
+        assert w.scripts[shown + 1].endswith("setIconArea([0.5, 0.5, 0.6, 0.6])"), "sent again after showing"
+        icon.menu(L.IDM_QUIT)
+
+    assert _run(gui, scenario) == 0
+
+
 def test_double_click_opens_and_keeps_the_window_open(gui):
     def scenario(w, icon, desk):
         desk.front = lambda: desk.visible
@@ -281,9 +305,11 @@ def test_the_real_launcher_click_is_the_toggle(monkeypatch):
 
     monkeypatch.setattr(L, "Launcher", Spy)
     desk = types.SimpleNamespace(lang=lambda: "tr", toggle_chat=object(), open_chat=object(), command=None,
-                                 activate=None, icon_moved=None, session_end=None, request_quit=None)
+                                 activate=None, icon_moved=None, session_end=None, request_quit=None,
+                                 icon_overlap=object())
     desktop._make_launcher("k", desk, L.DesktopState("/nonexistent/desktop.json"))
     assert seen["on_click"] is desk.toggle_chat and seen["on_activate"] is desk.activate
+    assert seen["on_overlap"] is desk.icon_overlap
 
 
 def test_close_button_hides_and_keeps_the_page(gui):
