@@ -1,0 +1,391 @@
+# Sayısal Tasarım Uzmanı - Soru-Cevap Seti v3, zor (39 soru)
+# v2 ile aynı bölümler ve soru sayısı. Değerlendirme penceresinde "Kendi dosyanız" ile yükleyin.
+#
+# Zorluk türleri (note alanının başında yazar):
+#   [hesap]          cevap standarttaki değerlerden hesaplanır (girdiler kaynaktan gelmeli)
+#   [tablo]          bir tablonun belirli satırı/sütunu veya koşulu gerekir
+#   [koşul]          cevap soruda verilmeyen bir koşula bağlı (clarify: true): netleştirme sorması doğru;
+#                    her koşul için değeri verirse anahtar kelimelerle puanlanır
+#   [yanlış öncül]   sorunun varsayımı yanlış; doğru cevap öncülü düzeltmektir
+#   [tuzak]          kütüphanede yakın ama farklı bir belge var (answerable: false); o belgeden cevap vermek yanlış
+#   [tasarım]        tasarım diliyle sorulmuş; cevap standardın gereksinimidir
+#
+# Beklenen cevaplar yaygın yayımlanmış değerlerdir ama kendi belge revizyonlarınıza göre kontrol EDİLMEDİ
+# (status: draft). Her maddeyi belgede kontrol edin, gerekirse düzeltin, `document` ve `pages` alanlarını doldurun
+# ve `status: expert_verified` yapın. Belge/sayfa doldurulana kadar erişim ölçüleri (recall@k, MRR) ve
+# kaynak/sayfa doğruluğu anlamlı değildir; cevap doğruluğu yine ölçülür.
+#
+# keywords: hepsi aranır (büyük/küçük harf fark etmez, "1.5" = "1,5"); iç liste = seçenekler, biri yeterli.
+
+# ------------------------------------------------------------------ ARINC
+- id: h-arinc-01
+  status: draft
+  kind: value
+  domain: arinc
+  question: >-
+    ARINC 429 yüksek hızda kelimeler arasında izin verilen en kısa boşlukla art arda gönderildiğinde bir kelime
+    kaç µs sürer ve saniyede en fazla kaç kelime gönderilebilir?
+  keywords: ["320", "360", ["2777", "2778", "2.777", "2.778", "2 777", "2 778"]]
+  note: >-
+    [hesap] Beklenen: 32 bit × 10 µs = 320 µs; kelimeler arası en az 4 bit süresi boşluk → 36 bit süresi = 360 µs
+    → saniyede en fazla ≈ 2778 kelime. Girdiler: 100 kbps ve 4 bitlik kelime boşluğu (ARINC 429 Part 1).
+- id: h-arinc-02
+  status: draft
+  kind: value
+  domain: arinc
+  question: ARINC 429 BNR verisinde SSM bitleri (bit 30–31) hangi durumları kodlar?
+  keywords: [["failure warning", "arıza uyarı", "hata uyarı"], ["no computed data", "NCD", "hesaplanmış veri yok"],
+             ["functional test", "fonksiyonel test", "işlevsel test"], ["normal operation", "normal çalışma",
+             "normal operasyon"]]
+  note: >-
+    [tablo] Beklenen: bit 31-30 = 00 Failure Warning, 01 No Computed Data, 10 Functional Test, 11 Normal
+    Operation. BCD ve ayrık (discrete) veride SSM anlamları farklıdır; BNR tablosu kullanılmalı.
+- id: h-arinc-03
+  status: draft
+  kind: value
+  domain: arinc
+  question: ARINC 429 alıcısı hangi diferansiyel gerilim aralıklarını HI, NULL ve LO olarak kabul etmelidir?
+  keywords: ["6.5", "13", "2.5"]
+  note: >-
+    [tablo] Beklenen: HI +6.5 V … +13 V, NULL +2.5 V … −2.5 V, LO −6.5 V … −13 V (alıcı girişi, A-B arası).
+    Vericinin çıkış seviyeleriyle (+10 V / 0 V / −10 V) karıştırılmamalı.
+- id: h-arinc-04
+  status: draft
+  kind: comparison
+  domain: arinc
+  question: ARINC 429 vericisinde yükselme/düşme süreleri yüksek hız ve düşük hız için ne olmalıdır?
+  keywords: ["1.5", "0.5", ["10 ± 5", "10±5", "10 ±5", "± 5", "±5"]]
+  note: "[tablo] Beklenen: yüksek hız 1.5 ± 0.5 µs, düşük hız 10 ± 5 µs."
+- id: h-arinc-05
+  status: draft
+  kind: design
+  domain: arinc
+  question: >-
+    ARINC 429 kelimesi hatta hangi bit sırasıyla gönderilir? Etiket (label) alanı için bir istisna var mı?
+  keywords: [["MSB", "most significant", "en anlamlı", "en yüksek değerlikli", "en önemli bit"]]
+  note: >-
+    [tasarım] Beklenen: bit 1 ilk, bit 32 (parite) son gönderilir. Etiket (bit 1-8, sekizli/octal) ters
+    yerleştirilmiştir: etiketin en anlamlı biti (MSB) bit 1'dedir, yani etiket MSB önce gider; veri alanları
+    LSB önce gider. Yazılımda etiketin bit sırasını ters çevirmek gerekir.
+- id: h-arinc-06
+  status: draft
+  kind: design
+  domain: arinc
+  question: ARINC 818'de "container" (kapsayıcı) nedir ve bir video karesi hat üzerinde nasıl taşınır?
+  keywords: [["kare", "frame", "görüntü", "image"], ["ADVB"], ["header", "başlık"]]
+  note: >-
+    [tasarım] Beklenen: Bir container bir video karesinin (görüntünün) tamamını ve container header'ını taşır;
+    bir dizi ADVB çerçevesiyle gönderilir. İlk ADVB çerçevesi container header'ı (Object 0) ve varsa yardımcı
+    veriyi (Object 1) taşır; video satırları sonraki çerçevelerde (Object 2/3) gelir. Belgedeki tanıma göre
+    kontrol edin.
+
+# ------------------------------------------------------------------ DDR
+- id: h-ddr-01
+  status: draft
+  kind: value
+  domain: ddr
+  question: DDR4 85 °C ile 95 °C arasında çalışırken ortalama yenileme aralığı tREFI ne olmalıdır?
+  keywords: ["3.9"]
+  note: >-
+    [tablo] Beklenen: 3.9 µs (85 °C < TC ≤ 95 °C'de yenileme iki kat sıklaşır; normal aralıkta 7.8 µs).
+    Yalnızca 7.8 µs vermek yanlıştır.
+- id: h-ddr-02
+  status: draft
+  kind: value
+  domain: ddr
+  question: DDR4'te RZQ direnci kaç ohm'dur ve RTT_NOM için seçilebilen değerler nelerdir?
+  keywords: ["240", ["RZQ/4", "60"], ["RZQ/2", "120"], ["RZQ/7", "34"]]
+  note: >-
+    [tablo] Beklenen: RZQ = 240 Ω. RTT_NOM (MR1): kapalı, RZQ/4 (60 Ω), RZQ/2 (120 Ω), RZQ/6 (40 Ω), RZQ/1
+    (240 Ω), RZQ/5 (48 Ω), RZQ/3 (80 Ω), RZQ/7 (34 Ω).
+- id: h-ddr-03
+  status: draft
+  kind: value
+  domain: ddr
+  question: DDR4 yazma işleminde DQS ile CK arasında izin verilen zaman farkı (tDQSS) nedir?
+  keywords: ["0.27"]
+  note: "[tablo] Beklenen: −0.27 tCK … +0.27 tCK (1 saat çevrimi preamble ile). DDR3'teki ±0.25 tCK ile karıştırılmamalı."
+- id: h-ddr-04
+  status: draft
+  kind: value
+  domain: ddr
+  question: LPDDR4 bir die'da kaç kanal içerir ve her kanalın veri genişliği kaç bittir?
+  keywords: ["16", ["2 kanal", "iki kanal", "2 bağımsız kanal", "iki bağımsız", "2 adet", "iki adet", "2 x16", "2×16",
+                    "2 × 16", "2x16", "two channel", "2 channel", "dual-channel", "dual channel", "channel a",
+                    "kanal a"]]
+  note: "[tasarım] Beklenen: Die başına 2 bağımsız kanal (A ve B), kanal başına 16 bit (x16)."
+- id: h-ddr-05
+  status: draft
+  kind: condition
+  domain: ddr
+  clarify: true
+  question: DDR4'te minimum tCK(avg) değeri nedir?
+  keywords: ["0.625", ["0.833", "0.83", "0.75"]]
+  note: >-
+    [koşul] Hız sınıfına (speed bin) bağlı: ör. DDR4-2400 0.833 ns, DDR4-2666 0.750 ns, DDR4-3200 0.625 ns.
+    Sistem hız sınıfını sormalı ya da her hız sınıfı için değeri vermeli.
+- id: h-ddr-06
+  status: draft
+  kind: unanswerable
+  domain: ddr
+  answerable: false
+  question: LPDDR5'te VDD2H besleme gerilimi nedir?
+  note: >-
+    [tuzak] Kütüphanede LPDDR4 var, LPDDR5 yok: LPDDR4'ün VDD2 değeriyle (1.1 V) cevap vermek yanlıştır, doğru
+    davranış "bulunamadı" demektir. Kütüphanede LPDDR5 belgesi varsa answerable: true yapın (beklenen 1.05 V).
+
+# ------------------------------------------------------------------ PCIe
+- id: h-pcie-01
+  status: draft
+  kind: design
+  domain: pcie
+  question: PCIe 3.0 (8 GT/s) TX hatlarında AC kuplaj kondansatörü değeri hangi aralıkta olmalıdır?
+  keywords: ["176", "265"]
+  note: "[tablo] Beklenen: CTX 176 nF … 265 nF (8 GT/s). 2.5/5 GT/s için tanımlı aralıkla karıştırılmamalı."
+- id: h-pcie-02
+  status: draft
+  kind: value
+  domain: pcie
+  question: PCIe 3.0 x4 bir bağlantının bir yöndeki etkin (kodlama sonrası) bant genişliği yaklaşık kaç GB/s'dir?
+  keywords: [["128/130", "128b/130b"], ["3.94", "3.938", "3.9 gb", "31.5", "31.51"]]
+  note: >-
+    [hesap] Beklenen: 8 GT/s × 128/130 ≈ 7.877 Gb/s şerit başına ≈ 0.985 GB/s; x4 ≈ 31.5 Gb/s ≈ 3.94 GB/s
+    (TLP/DLLP ek yükü hariç).
+- id: h-pcie-03
+  status: draft
+  kind: value
+  domain: pcie
+  question: PCIe 3.0'da link equalization hangi LTSSM durumunda yapılır ve kaç fazdan oluşur?
+  keywords: [["Recovery.Equalization", "Recovery Equalization", "Recovery.Eq"],
+             ["phase 3", "faz 3", "3. faz", "phase 0", "faz 0", "dört faz", "4 faz", "0-3", "0–3"]]
+  note: >-
+    [tablo] Beklenen: Recovery.Equalization alt durumu; Phase 0, 1, 2, 3 (dört faz; Phase 2 ve 3 bileşene göre
+    atlanabilir).
+- id: h-pcie-04
+  status: draft
+  kind: design
+  domain: pcie
+  question: >-
+    PCIe'de Read Completion Boundary (RCB) hangi değerleri alabilir ve bir okuma isteğinin tamamlanmasını nasıl
+    etkiler?
+  keywords: ["64", "128"]
+  note: >-
+    [tasarım] Beklenen: 64 veya 128 bayt. Completer büyük bir okuma isteğini RCB sınırlarına hizalı birden fazla
+    Completion'a bölebilir; alıcı bu bölünmeyi kabul etmelidir.
+- id: h-pcie-05
+  status: draft
+  kind: value
+  domain: pcie
+  question: PCIe'de flow control kredileri hangi TLP türleri için ayrı ayrı tutulur?
+  keywords: [["non-posted", "non posted", "nonposted", "NPH"], ["completion", "Cpl"], ["header", "başlık"],
+             ["data", "veri"]]
+  note: >-
+    [tablo] Beklenen: Posted, Non-Posted ve Completion; her biri için ayrı Header ve Data kredisi (PH, PD, NPH,
+    NPD, CplH, CplD).
+- id: h-pcie-06
+  status: draft
+  kind: value
+  domain: pcie
+  question: PCIe 128b/130b kodlamada 2 bitlik sync header hangi değerleri alır ve ne anlama gelir?
+  keywords: ["01", ["ordered set"], ["data block", "data blok", "veri blo"]]
+  note: "[tablo] Beklenen: 10b → Data Block, 01b → Ordered Set Block (00b ve 11b geçersiz)."
+
+# ------------------------------------------------------------------ Ethernet
+- id: h-eth-01
+  status: draft
+  kind: value
+  domain: ethernet
+  question: >-
+    100 Mb/s Ethernet'te yalnızca minimum boyutlu çerçeveler gönderilirse saniyede en fazla kaç çerçeve
+    gönderilebilir?
+  keywords: ["84", ["148 809", "148809", "148.809", "148 810", "148810", "148.810", "148.8 k", "148,8 bin"]]
+  note: >-
+    [hesap] Beklenen: 64 bayt çerçeve + 7 bayt preamble + 1 bayt SFD + 12 bayt IPG = 84 bayt = 672 bit →
+    100 Mb/s / 672 bit ≈ 148 810 çerçeve/s.
+- id: h-eth-02
+  status: draft
+  kind: value
+  domain: ethernet
+  question: 1000BASE-T bakır kablo üzerinde hangi modülasyonu, kaç çifti ve hangi sembol hızını kullanır?
+  keywords: [["PAM-5", "PAM5", "PAM 5"], ["4 çift", "dört çift", "4 kablo çifti", "dört kablo", "4 pair",
+                                            "four pair"], ["125"]]
+  note: >-
+    [tablo] Beklenen: 4D-PAM5, dört çiftin hepsi her iki yönde (eko iptaliyle), çift başına 125 Mbaud
+    (çift başına 250 Mb/s).
+- id: h-eth-03
+  status: draft
+  kind: value
+  domain: ethernet
+  question: Etiketsiz ve 802.1Q (VLAN) etiketli Ethernet çerçevesinin maksimum boyutu nedir?
+  keywords: ["1518", "1522"]
+  note: "[tablo] Beklenen: 1518 bayt; Q-etiketiyle 1522 bayt (preamble/SFD hariç)."
+- id: h-eth-04
+  status: draft
+  kind: value
+  domain: ethernet
+  question: Half-duplex Ethernet'te slot time nedir ve 1000 Mb/s half-duplex'te nasıl değişir?
+  keywords: ["512", ["4096", "512 bayt", "512 byte", "carrier extension", "taşıyıcı uzatma"]]
+  note: >-
+    [tablo] Beklenen: 10/100 Mb/s'de 512 bit süresi; 1000 Mb/s half-duplex'te 4096 bit süresi (512 bayt,
+    carrier extension ile).
+
+# ------------------------------------------------------------------ DisplayPort
+- id: h-dp-01
+  status: draft
+  kind: value
+  domain: displayport
+  question: DisplayPort HBR2'de 4 şeritli bir main link'in 8b/10b sonrası etkin veri hızı nedir?
+  keywords: ["17.28"]
+  note: "[hesap] Beklenen: 4 × 5.4 Gbps = 21.6 Gbps ham; × 8/10 = 17.28 Gbps etkin."
+- id: h-dp-02
+  status: draft
+  kind: design
+  domain: displayport
+  question: DisplayPort'ta HPD hattındaki IRQ_HPD darbesi ile cihaz çıkarılması (unplug) nasıl ayırt edilir?
+  keywords: ["0.5", ["2 ms", "2ms", "2 milisaniye"]]
+  note: >-
+    [tasarım] Beklenen: IRQ_HPD 0.5 ms … 1 ms süren low darbedir; HPD 2 ms'den uzun low kalırsa çıkarılma
+    (unplug) sayılır.
+- id: h-dp-03
+  status: draft
+  kind: design
+  domain: displayport
+  question: >-
+    DisplayPort main link hatlarında AC kuplaj kondansatörü hangi aralıkta olmalı ve hatların diferansiyel
+    empedansı nedir?
+  keywords: ["75", "200", ["100 Ω", "100Ω", "100 ohm", "100-ohm", "100ohm"]]
+  note: "[tablo] Beklenen: AC kuplaj 75 nF … 200 nF; diferansiyel empedans 100 Ω."
+- id: h-dp-04
+  status: draft
+  kind: design
+  domain: displayport
+  question: DisplayPort link training hangi aşamalardan oluşur ve ilk aşamada hangi eğitim deseni gönderilir?
+  keywords: [["clock recovery", "clock-recovery", "saat kurtarma"],
+             ["channel equalization", "channel eq", "kanal eşitleme", "equalization", "eşitleme"],
+             ["TPS1", "TPS 1", "training pattern 1", "pattern 1", "TP1"]]
+  note: >-
+    [tasarım] Beklenen: önce Clock Recovery (TPS1), sonra Channel Equalization (TPS2, desteklenirse TPS3/TPS4);
+    ayarlar AUX üzerinden DPCD'ye yazılır, alıcı durumu DPCD'den okunur.
+
+# ------------------------------------------------------------------ USB
+- id: h-usb-01
+  status: draft
+  kind: design
+  domain: usb
+  question: USB 2.0 High-Speed modunda 8b/10b kodlamanın getirdiği ek yük (overhead) yüzde kaçtır?
+  keywords: ["NRZI"]
+  note: >-
+    [yanlış öncül] Beklenen: USB 2.0 8b/10b kullanmaz; NRZI ve bit stuffing kullanır (6 ardışık 1'den sonra bir 0
+    eklenir, ek yük veriye bağlıdır). 8b/10b USB 3.x 5 Gbps içindir. "%20" diye cevaplamak yanlıştır.
+- id: h-usb-02
+  status: draft
+  kind: value
+  domain: usb
+  question: USB 2.0 High-Speed modunda hat sonlandırması ve diferansiyel sinyal genliği nedir?
+  keywords: ["45", "400"]
+  note: "[tablo] Beklenen: her hat 45 Ω ile toprağa sonlandırılır (90 Ω diferansiyel); HS sinyal genliği 400 mV (±%10)."
+- id: h-usb-03
+  status: draft
+  kind: design
+  domain: usb
+  question: >-
+    USB 2.0'da Full-Speed ve Low-Speed cihazlar hızlarını hosta nasıl bildirir? Pull-up direnci hangi hatta ve kaç
+    ohm olmalıdır?
+  keywords: [["1.5 k", "1.5k", "1500"], ["D+"], ["D-", "D−", "D–"]]
+  note: >-
+    [tasarım] Beklenen: 1.5 kΩ pull-up (3.0–3.6 V'a): Full-Speed (ve HS cihazın başlangıcı) D+ hattında, Low-Speed
+    D− hattında. Hostta her iki hatta 15 kΩ pull-down vardır.
+- id: h-usb-04
+  status: draft
+  kind: value
+  domain: usb
+  question: USB 2.0'da bir cihaz yapılandırılmadan (unconfigured) önce ve high-power olarak yapılandırıldıktan sonra VBUS'tan en fazla ne kadar akım çekebilir?
+  keywords: [["100 ma", "100ma"], ["500 ma", "500ma"]]
+  note: "[tablo] Beklenen: yapılandırılmadan önce 100 mA (1 birim yük); yapılandırıldıktan sonra en fazla 500 mA (5 birim yük)."
+
+# ------------------------------------------------------------------ RS-422
+- id: h-rs422-01
+  status: draft
+  kind: value
+  domain: rs422
+  question: RS-422 sürücüsünün açık devre ve 100 Ω yük altındaki diferansiyel çıkış gerilimi gereksinimleri nedir?
+  keywords: [["2 v", "2.0 v", "2v"], "10"]
+  note: >-
+    [tablo] Beklenen: açık devre |Vo| ≤ 10 V (her çıkış toprağa göre ≤ 6 V); 100 Ω yükte |Vt| ≥ 2.0 V ve
+    |Vt| ≥ 0.5·|Vo|; ofset |Vos| ≤ 3 V.
+- id: h-rs422-02
+  status: draft
+  kind: value
+  domain: rs422
+  question: RS-422 alıcısının çalışması gereken giriş ortak mod gerilim aralığı nedir?
+  keywords: [["±7", "± 7", "-7", "−7", "–7"]]
+  note: "[tablo] Beklenen: −7 V … +7 V."
+- id: h-rs422-03
+  status: draft
+  kind: design
+  domain: rs422
+  question: RS-422 hattını 10 Mb/s'de kullanacaksam kablo yaklaşık en fazla ne kadar uzun olabilir?
+  keywords: [["12 m", "12m", "12 metre", "40 ft", "40ft", "40 feet"]]
+  note: >-
+    [tasarım] Beklenen: yaklaşık 12 m (40 ft); veri hızı-kablo uzunluğu kılavuz eğrisinden (~100 kb/s'de
+    ~1200 m). Belgedeki grafiğe göre kontrol edin.
+
+# ------------------------------------------------------------------ I2C
+- id: h-i2c-01
+  status: draft
+  kind: value
+  domain: i2c
+  question: >-
+    VDD = 3.3 V olan Standard-mode bir I2C hattında pull-up direnci en az kaç ohm olabilir (VOL(max) = 0.4 V,
+    IOL = 3 mA)?
+  keywords: [["966", "967", "0.97"]]
+  note: "[hesap] Beklenen: Rp(min) = (VDD − VOL(max)) / IOL = (3.3 − 0.4) / 3 mA ≈ 967 Ω."
+- id: h-i2c-02
+  status: draft
+  kind: value
+  domain: i2c
+  question: Fast-mode'da hat kapasitansı 200 pF ise pull-up direnci en fazla kaç ohm olabilir?
+  keywords: [["1770", "1771", "1.77", "1.8 k"]]
+  note: >-
+    [hesap] Beklenen: Rp(max) = tr / (0.8473 × Cb) = 300 ns / (0.8473 × 200 pF) ≈ 1770 Ω (Fast-mode tr(max) =
+    300 ns).
+- id: h-i2c-03
+  status: draft
+  kind: condition
+  domain: i2c
+  clarify: true
+  question: I2C'de SCL low süresi tLOW en az ne kadar olmalıdır?
+  keywords: ["4.7", "1.3"]
+  note: >-
+    [koşul] Moda bağlı: Standard-mode 4.7 µs, Fast-mode 1.3 µs, Fast-mode Plus 0.5 µs. Sistem modu sormalı ya da
+    her mod için değeri vermeli.
+- id: h-i2c-04
+  status: draft
+  kind: design
+  domain: i2c
+  question: I2C Ultra Fast-mode'da hedef (target/slave) ACK bitini ne kadar süre içinde vermelidir?
+  keywords: [["tek yönlü", "unidirectional", "ack yok", "ack biti yok", "ack bulunmaz", "ack biti bulunmaz",
+              "ack kullanılmaz", "ack biti kullanılmaz", "ack vermez", "ack göndermez", "acknowledge yok",
+              "acknowledge bulunmaz", "onay yok", "onay biti yok", "onay biti bulunmaz", "onay vermez", "no ack",
+              "without acknowledge"]]
+  note: >-
+    [yanlış öncül] Beklenen: Ultra Fast-mode (5 Mbit/s) tek yönlüdür, hedef ACK vermez; 9. bit controller
+    tarafından high sürülür. Bir ACK süresi vermek yanlıştır.
+
+# ------------------------------------------------------------------ Genel
+- id: h-gen-01
+  status: draft
+  kind: value
+  domain: general
+  question: Bir LVDS sürücüsünün tipik çıkış akımı nedir ve 100 Ω sonlandırmada ne kadar diferansiyel gerilim oluşur?
+  keywords: ["3.5", "350"]
+  note: "[hesap] Beklenen: tipik 3.5 mA → 3.5 mA × 100 Ω = 350 mV (TIA/EIA-644: VOD 247–454 mV)."
+- id: h-gen-02
+  status: draft
+  kind: value
+  domain: general
+  question: MIL-STD-1553B'de bir kelime kaç bit sürelidir ve bir mesajda en fazla kaç veri kelimesi bulunabilir?
+  keywords: ["20", "32"]
+  note: >-
+    [tablo] Beklenen: kelime 20 bit süresi (3 bit senkron + 16 bit veri + 1 parite; 1 Mbps'de 20 µs), mesaj
+    başına en fazla 32 veri kelimesi.
