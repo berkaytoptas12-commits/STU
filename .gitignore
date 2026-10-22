@@ -16,3 +16,6 @@ data/library/**
 data/eval_reports/
 *.tgz
 *.zip
+
+# H.264 decoder simulation outputs
+h264_decoder/sim/
