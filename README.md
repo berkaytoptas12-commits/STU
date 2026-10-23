@@ -37,7 +37,7 @@ flowchart TB
         F --> S
         P --> S
         S --> AG["Ajan (tool calling): search_docs, get_parameter, get_table,<br/>get_page_image, calculate - hepsi aynı kapsamda"]
-        AG --> VE["Doğrulama: atıf + birim duyarlı sayı kontrolü (soru kanıt sayılmaz)<br/>-> katı bağımsız denetçi -> 1 kez yeniden üretim<br/>-> cevap yalnızca doğrulanmış ifadelerden yeniden kurulur"]
+        AG --> VE["Doğrulama: atıf + birim duyarlı sayı kontrolü (soru kanıt sayılmaz)<br/>-> katı bağımsız denetçi -> hatalı cümlelerin 1 kez düzeltilmesi<br/>-> cevap yalnızca doğrulanmış ifadelerden yeniden kurulur"]
         VE --> L["Kanıt konumu: her ifade/atıf için cümle veya hücre koordinatları"]
         L --> X["Cevap + doğrulama durumu + [n] -> PDF sayfasında vurgu"]
     end
@@ -55,7 +55,7 @@ flowchart TB
 | Model "biliyorum" diye uyduruyor | Cevap sözleşmesi: giriş cümlesi dahil her teknik ifade [n] atıflı; mühendislik yorumu dayandığı kaynakları ve varsayımlarını gösterir. Atıfsız teknik ifade (başlıktan önce veya sonra, sayılı veya sayısız) denetimden kaçamaz. |
 | Sorudaki değerin "standart değeri" gibi sunulması | Kullanıcının verdiği değerler ayrı bir **kullanıcı girdisi** kaynağıdır; belgeye dayanan ifadeler yalnızca atıf yapılan belge metniyle doğrulanır. Kullanıcı değeri hesapta kullanılabilir ama standart değeri gibi sunulamaz. |
 | Hesap hatası / kaynaksız girdi | Hesaplar `calculate` aracıyla yapılır; ifadedeki her sayı bir kaynağa veya kullanıcı girdisine **izlenir**. Kaynaksız girdi içeren hesap, aritmetiği doğru olsa da doğrulanmış ifadeyi desteklemez. |
-| Yine de hatalı ifade | **Deterministik kontrol** (atıf var mı, sayı+birim atıf yapılan kaynakta mı — 0,35 µs = 350 ns) → **bağımsız denetçi** (taze bağlam: yalnızca iddia + atıf yapılan kaynak). Denetçinin yalnızca o iddia kimliği için açık ve geçerli bir "supported" kararı onay sayılır; zaman aşımı, API hatası, bozuk/eksik/tekrarlı karar, token sınırında kesilmiş yanıt **onay değildir**. Denetçi istekleri modelin bağlam uzunluğuna (ayar veya sunucunun bildirdiği `max_model_len`, hangisi küçükse) yanıt payıyla birlikte sığacak şekilde gruplanır; başarısız bir istek ifade ifade, bağlam aşımı veya kesik yanıtta daha kısa alıntılarla yeniden denenir. Teknik bir denetçi hatası "doğrulanamadı" olarak, denetçinin "desteklenmiyor" kararından ayrı gösterilir. Desteklenmeyen ifadeler bir kez yeniden ürettirilir; cevap yalnızca **doğrulanmış ifadelerden** yeniden kurulur. |
+| Yine de hatalı ifade | **Deterministik kontrol** (atıf var mı, sayı+birim atıf yapılan kaynakta mı — 0,35 µs = 350 ns) → **bağımsız denetçi** (taze bağlam: yalnızca iddia + atıf yapılan kaynak). Denetçinin yalnızca o iddia kimliği için açık ve geçerli bir "supported" kararı onay sayılır; zaman aşımı, API hatası, bozuk/eksik/tekrarlı karar, token sınırında kesilmiş yanıt **onay değildir**. Denetçi istekleri modelin bağlam uzunluğuna (ayar veya sunucunun bildirdiği `max_model_len`, hangisi küçükse) yanıt payıyla birlikte sığacak şekilde gruplanır; başarısız bir istek ifade ifade, bağlam aşımı veya kesik yanıtta daha kısa alıntılarla yeniden denenir. Teknik bir denetçi hatası "doğrulanamadı" olarak, denetçinin "desteklenmiyor" kararından ayrı gösterilir. Desteklenmeyen ifadeler bir kez düzelttirilir: model yalnızca o cümleleri yeniden yazar (veya kaldırır), diğer cümlelere dokunulmaz ve düzeltilen cümleler yeniden denetlenir; cevap yalnızca **doğrulanmış ifadelerden** yeniden kurulur. |
 | Yanlış atıf (değer doğru, köşeli parantezdeki kaynak yanlış) | Bir ifadenin **tek** sorunu değerlerinin atıf yaptığı kaynakta olmaması ise ve cevapla birlikte verilen başka bir doğrulanmış kaynak bu değerlerin **hepsini** yazıyorsa, o kaynağın atfı mevcut atfın yanına eklenir (önce aynı belgeden kaynak). İfade baştan yeniden kontrol edilir ve **denetçinin onayı yine gerekir**; metnin geri kalanı değişmez. Düzeltme ifade ayrıntılarında "atıf düzeltildi" olarak gösterilir. Başka bir sorun varsa (atıfsız ifade, var olmayan kaynak, kaynakta hiç olmayan değer) düzeltme yapılmaz. |
 | Soru tasarım dilinde, standart gereksinimi kendi terimleriyle yazıyor ("length matching gerekir mi?" ↔ intra/inter-pair skew sınırı) | Bunu bir eşleme tablosu değil LLM kurar, iki noktada: (1) planlayıcı, sorulan kavramı standartta hangi gereksinimin (sınır, zamanlama, elektriksel parametre, zorunlu prosedür) belirlediğini düşünüp onlar için de standardın terimleriyle arama sorgusu ve "standart bunu nasıl yazardı" diye değersiz (sayılar X) bir cümle üretir; bu cümle yalnızca anlamsal aramada kullanılır, kanıt olmaz ve gösterilmez. Ek model çağrısı yoktur. (2) Cevap modeli "bulunamadı" derse bir kez, ilgili gereksinimi araçlarla standardın terimleriyle araması istenir (araç çağırma açıksa; yalnızca bu cevaplarda bir model turu daha). Cevap kuralı: gereksinim atıfla verilir, tasarım sonucu "Mühendislik yorumu" bölümünde açıklanır; kaynakta olmayan bir değere dayanan sayısal dönüşüm (ör. ps → mm için kartın mm başına gecikmesi) sayı olarak verilmez — kullanıcı o değeri soruda verirse hesap onun varsayımı olarak yapılır. Doğrulama aynı. |
 | Kanıt başka tabloda / bölümde ("bkz. Tablo 4-12") | Bulunan bir pasaj "Table 4-12", "Section 3.2", "clause 5.4.1", "§ 4.5" diye başka bir tabloya/bölüme başvuruyorsa, o tablo (başlık satırından bulunur; düz metindeki bir anma değil) veya bölüm **aynı belgeden** ayrı bir kaynak olarak eklenir — en fazla 3 başvuru, her biri ~1200 token; kaynak listesinde "↪ başvurulan Tablo 4-12" diye işaretlenir. Kapsam dışına çıkılmaz (başvuru belgesinin kendisindedir). |
@@ -81,7 +81,7 @@ yapılmaz; konumlar indekslemede bir kez çıkarılır.
 
 **Soru başına LLM çağrısı (doğruluk öncelikli mod):** planlayıcı 1 + cevap 1 (+ araç turları, en fazla 4) +
 denetçi: bağlama sığan bir veya birkaç istek (paralel; başarısız istekteki ifadeler tek tek, bağlam aşımı veya
-kesik yanıtta bir kez daha kısa alıntılarla) + gerekirse yeniden üretim 1 + yeniden denetim. Model ilk turda
+kesik yanıtta bir kez daha kısa alıntılarla) + gerekirse hatalı cümlelerin düzeltilmesi 1 + yalnızca düzeltilen cümlelerin yeniden denetimi. Model ilk turda
 "bulunamadı" derse bir tur daha (ilgili gereksinimi arama hatırlatması; araç turu sınırı içinde). Embedding 1, rerank 1 istek (karşılaştırma sorularında standart başına 1). Standart yüklü
 değilse veya netleştirici soru soruluyorsa cevap modeli hiç çağrılmaz.
 
@@ -93,7 +93,9 @@ uzunluğundan tahmin edilir (≈). Aynı döküm günlüğe de yazılır. Tipik 
 ürettiği token'lardır: düşünme açıkken her araç turu ayrı ayrı düşünür. Hızlandırmak için (doğrulama
 gevşetilmeden): Ayarlar → Düşünme `auto`/`off`, Gelişmiş → en fazla araç turu (varsayılan 4), sunucuda vLLM önek
 önbelleği (prefix caching; araç turları aynı uzun istemi paylaşır) ve modelin token/sn hızı. Hatalı ifadeleri
-düzeltme turu düşünmeden çalışır; şekil sayfası dökümleri (en fazla 2) aynı anda yapılır.
+düzeltme turu düşünmeden ve yalnızca hatalı cümleleri yeniden yazarak çalışır; şekil sayfası dökümleri (en fazla
+2) aynı anda yapılır. Speculative decoding ve quantization gibi hızlandırmalar model sunucusunun (vLLM)
+ayarlarıdır; uygulamadan açılamaz.
 
 ---
 
@@ -602,7 +604,7 @@ techrag/
   launcher.py      mikroçip simgesi (Win32 katmanlı pencere, DPI/çoklu monitör, sağ tık menüsü, aç/gizle için
                    "pencere önde mi" denetimi), tek örnek kilidi
   server.py        API: ayarlar, kütüphane (yayımla, geçiş), dokümanlar, sayfa görüntüsü/bilgisi, SSE soru akışı
-  engine.py        plan -> kapsam -> arama -> ajan döngüsü -> doğrulama/denetçi/yeniden üretim -> kanıt konumu
+  engine.py        plan -> kapsam -> arama -> ajan döngüsü -> doğrulama/denetçi/hatalı cümle düzeltmesi -> kanıt konumu
   tools.py         ajan araçları (ortak kapsam) + atıf kayıt defteri + izlenebilir hesap makinesi
   verify.py        çerçeve/teknik ifade ayrımı, deterministik kontrol, katı denetçi ayrıştırma, cevabı yeniden kurma
   evidence.py      ifade -> kaynak cümlesi/hücresi -> sayfa koordinatları

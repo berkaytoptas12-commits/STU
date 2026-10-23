@@ -2,8 +2,8 @@
 
 plan (LLM) -> scope (named standards hard-filtered; a standard that is not loaded is reported, ambiguous
 scope asks back) -> scoped retrieval + verified parameter rows + figure pages -> tool-using agent loop
-(streamed draft = progress only) -> verification (deterministic + strict judge) -> one regeneration ->
-answer rebuilt from verified claims -> evidence locations for the citation highlights.
+(streamed draft = progress only) -> verification (deterministic + strict judge) -> one targeted correction of
+the failed statements -> answer rebuilt from verified claims -> evidence locations for the citation highlights.
 
 Events from ask_stream():
   plan, sources, sources_add, status, reasoning, tool, draft, draft_reset, clarify, final, error
@@ -28,7 +28,7 @@ from techrag.ingest.metadata import AMENDING_TYPES
 from techrag.ingest.quality import scrub
 from techrag.ingest.vlm import render_page as _render
 from techrag.llm import LLMClient, ToolsUnsupported, image_part, parse_json_object
-from techrag.prompts import (JUDGE_SYSTEM, NOT_FOUND, REGENERATE_PROMPT, answer_system_prompt,
+from techrag.prompts import (JUDGE_SYSTEM, NOT_FOUND, answer_system_prompt, correct_prompt,
                              answer_user_prompt, judge_user_prompt, message, search_before_not_found)
 from techrag.query import QueryPlan, QueryPlanner
 from techrag.reranker import Reranker, create_reranker
@@ -451,6 +451,7 @@ class RAGEngine:
             user_content = user_text
         messages = [{"role": "system", "content": system}, *self._history_messages(history),
                     {"role": "user", "content": user_content}]
+        base_messages, initial_sources = list(messages), len(registry.items)   # what the correction builds on
 
         executor = ToolExecutor(self.store, self.retriever, registry, plan, self.render_page,
                                 vision_input=self.chat_sees_images, scope=scope, expand=self.domains.expand_terms,
@@ -532,7 +533,7 @@ class RAGEngine:
             askctx.check()
             yield {"type": "status", "stage": "regenerating", "failed": len(verification.failing)}
             tr = time.time()
-            revised = self._regenerate(system, registry, plan, draft, verification, note)
+            revised = self._correct(base_messages, registry, initial_sources, draft, parsed, verification)
             regen_time = time.time() - tr
             timings["regenerate"] = round(regen_time, 3)
             if revised:
@@ -709,22 +710,41 @@ class RAGEngine:
                             v.judge_errors.append(f"claim {c.id}: {reason}")
                         apply_verdict(c, verdict, reason)
 
-    def _regenerate(self, system: str, registry: SourceRegistry, plan: QueryPlan, draft: str,
-                    verification: Verification, scope_note: str = "") -> str:
-        """Rewrite the draft so that the listed problems are fixed. A focused edit, made without thinking (with a
-        reasoning model this step took minutes); the revision is verified again exactly like the draft."""
-        sources = "\n\n---\n\n".join(s.prompt_text() for s in registry.items)
-        msgs = [{"role": "system", "content": system},  # the same scope rules as the first draft
-                {"role": "user", "content": answer_user_prompt(plan.standalone, sources, [], scope_note)},
-                {"role": "assistant", "content": draft},
-                {"role": "user", "content": REGENERATE_PROMPT.format(problems=verification.problems_text())}]
+    def _correct(self, base: list[dict], registry: SourceRegistry, initial_sources: int, draft: str,
+                 parsed: ParsedAnswer, verification: Verification) -> str:
+        """Fix only the statements that failed verification: the model returns a corrected text (or nothing,
+        to remove it) for each one, and only those lines change - instead of writing the whole answer again,
+        which took minutes on a slow server. The request continues the answer's own conversation (the same
+        sources, and a prefix the model server may have cached). The revised answer is verified again exactly
+        like the draft. "" when there is no usable correction."""
+        failing = {c.id: c for c in verification.failing}
+        extra = "\n\n---\n\n".join(s.prompt_text() for s in registry.items[initial_sources:])
+        msgs = base + [{"role": "assistant", "content": draft},
+                       {"role": "user", "content": correct_prompt(verification.problems_text(), extra)}]
         try:
             with askctx.stage("regenerate"):
-                return self.llm.chat(msgs, thinking=False).content.strip()
+                res = self.llm.chat(msgs, json_mode=True, thinking=False, temperature=0.0,
+                                    max_tokens=min(4096, 300 + 250 * len(failing)))
         except askctx.Cancelled:
             raise
         except Exception:
             return ""
+        obj = parse_json_object(res.content) or {}
+        raw = obj.get("fixes") or []
+        if isinstance(raw, dict):   # {"3": "text"} instead of [{"id": 3, "text": "text"}]
+            raw = [{"id": k, "text": v} for k, v in raw.items()]
+        fixes: dict[int, str] = {}
+        for f in raw if isinstance(raw, list) else []:
+            if not isinstance(f, dict):
+                continue
+            try:
+                cid = int(f.get("id"))
+            except (TypeError, ValueError):
+                continue
+            if cid in failing and isinstance(f.get("text"), str):
+                fixes[cid] = f["text"]
+        revised = render(parsed, lambda c: "keep", fixes) if fixes else ""
+        return "" if revised == render(parsed, lambda c: "keep") else revised   # nothing usable changed
 
     def _compose(self, v: Verification, parsed: ParsedAnswer, draft: str, lang: str) -> str:
         """The final answer is built from the claims: supported ones stay, unsupported/unverified ones are

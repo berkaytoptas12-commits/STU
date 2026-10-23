@@ -47,7 +47,8 @@ class FakeOpenAI:
         # override the judge: return the response text, an httpx.Response, or raise (e.g. httpx.ReadTimeout)
         self.judge: Optional[Callable[[list], object]] = None
         self.vlm: Optional[Callable[[str], dict]] = None  # override VLM table extraction (page text -> JSON)
-        self.plan_extra: dict = {}  # fields merged into every retrieval plan (e.g. spec_phrasing)
+        self.plan_extra: dict = {}
+        self.corrections: list = []   # the failed statements each correction request listed  # fields merged into every retrieval plan (e.g. spec_phrasing)
         self.reasoning = ""
         self.rate_limited = 0      # answer this many embedding requests with HTTP 429 first
         self.retry_after = "2"
@@ -184,9 +185,11 @@ class FakeOpenAI:
 
     def _answer(self, msgs, tools) -> dict:
         last = _text(msgs[-1]["content"])
-        if "FAILED verification" in last:
-            draft = _text(msgs[-2]["content"])
-            return {"content": "\n".join(l for l in draft.split("\n") if "3.9 us" not in l)}
+        if "CORRECTION REQUEST" in last:   # remove the statement the sources do not support
+            failed = re.findall(r'^- id (\d+): "(.*)" ->', last, re.M)
+            self.corrections.append(failed)
+            return {"content": json.dumps({"fixes": [{"id": int(i), "text": ""} for i, t in failed
+                                                     if "3.9 us" in t]})}
         src = sources_in(msgs)
         used_tool = any(m.get("role") == "tool" for m in msgs)
         if tools and not used_tool and "trfc" in last.lower():

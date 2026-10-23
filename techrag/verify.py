@@ -610,12 +610,29 @@ class Verification:
         }
 
     def problems_text(self) -> str:
-        return "\n".join(f"- \"{c.text}\" -> {'; '.join(c.reasons)}" for c in self.failing)
+        return "\n".join(f"- id {c.id}: \"{c.text}\" -> {'; '.join(c.reasons)}" for c in self.failing)
 
 
-def render(parsed: ParsedAnswer, decide: Callable[[Claim], str]) -> str:
+def _replacement(kind: str, text: Optional[str]) -> Optional[str]:
+    """A corrected statement that fits where the old one stood: one line; a table row only by a table row.
+    None = no usable replacement (the statement stays as it was); "" = remove it."""
+    if text is None:
+        return None
+    text = " ".join(text.split())
+    if not text:
+        return ""
+    if kind in ("table_row", "table_head"):
+        return text if text.startswith("|") and text.endswith("|") else None
+    if kind == "code":
+        return None
+    return text
+
+
+def render(parsed: ParsedAnswer, decide: Callable[[Claim], str], replace: Optional[dict] = None) -> str:
     """Rebuild the answer from its parsed lines. decide(claim) -> 'keep' | 'flag' | 'drop'. Lines whose
-    claims are all dropped disappear, then empty tables, lead-ins and headings."""
+    claims are all dropped disappear, then empty tables, lead-ins and headings. ``replace``: {claim id:
+    corrected text ("" = remove)} - the targeted correction of failed statements; the rest stays as written."""
+    replace = replace or {}
     out: list[tuple[str, str]] = []  # (kind, text)
     skip_table = False
     for ln in parsed.lines:
@@ -623,6 +640,10 @@ def render(parsed: ParsedAnswer, decide: Callable[[Claim], str]) -> str:
             continue
         skip_table = False
         if ln.kind == "table_head" and ln.segments:
+            new = _replacement(ln.kind, replace.get(ln.segments[0].claim))
+            if new:   # a header is only ever replaced by a header, never removed by a correction
+                out.append(("table_head", new))
+                continue
             d = decide(parsed.claim(ln.segments[0].claim))
             if d == "drop":  # a header stating values that failed: the rows cannot stand without it
                 skip_table = True
@@ -639,8 +660,14 @@ def render(parsed: ParsedAnswer, decide: Callable[[Claim], str]) -> str:
             if c is None:
                 parts.append(seg.text)
                 continue
+            new = _replacement(ln.kind, replace.get(c.id)) if c.id in replace else None
+            if new == "":
+                continue                      # removed by the correction
             d = decide(c)
-            if d == "keep":
+            if new is not None and d != "drop":
+                parts.append(new)
+                kept = True
+            elif d == "keep":
                 parts.append(seg.text)
                 kept = True
             elif d == "flag":

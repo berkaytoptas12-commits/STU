@@ -1,5 +1,18 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.8.1 — düzeltmede yalnızca hatalı cümleler yeniden yazılır
+- Doğrulamada desteklenmeyen bir ifade bulununca model artık cevabın **tamamını** yeniden yazmıyor; yalnızca o
+  cümleleri düzeltiyor ya da kaldırıyor. Diğer cümlelere dokunulmuyor. Düzeltme isteği kısa bir JSON cevap
+  bekliyor (hatalı ifade başına en fazla ~250 token) ve cevabın kendi konuşmasının devamı olarak gönderiliyor:
+  aynı kaynaklar, aynı istem başlangıcı (model sunucusunda önek önbelleği açıksa yeniden kullanılır).
+  Örnek ölçümde tam yeniden yazma 2.132 token / 3 dakika sürüyordu; birkaç hatalı cümle için artık birkaç yüz
+  token beklenir. Gerçek sunucuda ölçülmedi; "Süre" dökümündeki "düzeltme" satırında görünür.
+- Doğrulama gevşetilmedi: düzeltilen cümleler ilk taslak gibi yeniden doğrulanır, denetçiye yalnızca değişen
+  cümleler gider (önceden onaylanan cümlelerin kararı korunur). Kullanılamayan bir düzeltme (bozuk JSON, tablo
+  satırı yerine düz cümle) yok sayılır; hatalı ifade önceki gibi çıkarılır veya işaretlenir.
+- Ayardaki adı: "Doğrulanamayan ifadeleri bir kez düzelttir (yalnızca o cümleler yeniden yazılır)".
+- Yeniden indeksleme gerekmez.
+
 ### 0.8.0 — durdur, bildirim, süre dökümü ve hızlandırmalar
 - **Durdur:** model düşünürken veya cevap yazarken gönder düğmesinin yerinde kırmızı **Durdur** düğmesi ve geçen
   süre görünür. Durdur yalnızca ekranı değil, modele giden isteği de keser; sunucu o cevap için token üretmeyi

@@ -83,11 +83,19 @@ def search_before_not_found(language: str) -> str:
     return SEARCH_BEFORE_NOT_FOUND.replace("{not_found}", NOT_FOUND.get(language, NOT_FOUND["en"]))
 
 
-REGENERATE_PROMPT = """Your answer was checked against the sources. These statements FAILED verification:
+CORRECT_PROMPT = """CORRECTION REQUEST. Your answer was checked against the sources. These statements FAILED verification (id, statement, problem):
 
 {problems}
 
-Rewrite the complete answer following the same answer contract. For each failed statement: correct it using the sources (exact value, right citation, right conditions/version) or remove it. Keep the statements that were not listed unchanged, with their citations. Do not add new facts without citations. Return only the rewritten answer."""
+{extra}Correct ONLY these statements; the rest of the answer stays exactly as it is. For each one write the corrected statement from the sources: the value, unit, conditions and version exactly as printed in the source, with the citation [n] of the source that states it. If the sources do not support the statement, give an empty text: it is removed. Keep the language of the answer. A table row stays one table row ("| ... |"); any other statement stays one sentence. Do not add facts that are not in the sources.
+
+Return only JSON: {"fixes": [{"id": <id>, "text": "<corrected statement, or empty to remove it>"}]}"""
+
+
+def correct_prompt(problems: str, extra_sources: str = "") -> str:
+    extra = f"Sources found while answering (tool results):\n\n{extra_sources}\n\n" if extra_sources else ""
+    return CORRECT_PROMPT.replace("{problems}", problems).replace("{extra}", extra)
+
 
 MESSAGES = {
     "tr": {
