@@ -300,8 +300,8 @@ def test_notes_feature_is_gone_and_saved_notes_are_left_alone(ui):
     assert ui.inner_text("#viewer-panel .viewer-head h2") == "Kaynak"
     _ask(ui, "DDR5 tRFC değeri nedir?")
     actions = ui.evaluate("() => [...document.querySelectorAll('.msg.assistant .msg-actions button')].map((b) => b.className)")
-    assert actions == ["ghost small btn-copy", "ghost small icon btn-fb-up", "ghost small icon btn-fb-down"], \
-        "Copy and the answer feedback buttons; no note button"
+    assert actions == ["ghost small btn-copy", "ghost small icon btn-fb-up", "ghost small icon btn-fb-down",
+                       "ghost small timing"], "Copy, the answer feedback buttons and the time; no note button"
     _cite(ui)  # sources, PDF page and highlight still work
     ui.wait_for_selector("#tab-source .hl.current")
     assert "Not" not in ui.inner_text("#viewer-panel .viewer-head")
@@ -513,12 +513,16 @@ def test_advanced_settings_are_shown_and_saved(ui):
     assert ui.input_value("#set-context") == "16000" and ui.input_value("#set-judge-batch") == "8"
     assert ui.is_checked("#set-repair-cites") and ui.input_value("#set-follow-refs") == "3"
     ui.wait_for_function("() => document.querySelector('#ctx-info').textContent.length > 0")
+    assert ui.input_value("#set-tool-rounds") == "4" and ui.is_checked("#set-notify")
     ui.fill("#set-judge-batch", "4")
     ui.fill("#set-follow-refs", "2")
+    ui.fill("#set-tool-rounds", "2")
+    ui.uncheck("#set-notify")
     ui.click("#btn-save-settings")
     ui.wait_for_function("() => document.querySelector('#settings-status').textContent.length > 0")
     s = ui.evaluate("async () => (await (await fetch('/api/settings')).json())")
     assert s["answer"]["judge_batch"] == 4 and s["retrieval"]["follow_references"] == 2
+    assert s["llm"]["max_tool_rounds"] == 2 and s["ui"]["notify"] is False
 
 
 def test_evaluation_results_show_each_answer(ui, tmp_path):
@@ -577,3 +581,43 @@ def test_send_button_moves_out_from_under_the_launcher_icon(ui):
     mid = [(q[0] - 30) / q[2], q[1] / q[3], (q[0] + 30) / q[2], (q[1] + 60) / q[3]]
     ui.evaluate(f"window.techragHost.setIconArea({json.dumps(mid)})")   # dragged onto the middle of the box
     assert ui.evaluate("document.querySelector('#composer').style.paddingRight") == "", "layout left alone"
+
+
+def test_stop_button_stops_a_slow_answer(ui, fake):
+    """While the model works the send button becomes Stop; Stop cancels the answer (nothing unverified is shown as
+    an answer) and the send button comes back."""
+    from techrag import askctx
+
+    def slow(msgs, tools):
+        ctx = askctx.current()
+        for _ in range(750):
+            if ctx is not None and ctx.stopped:
+                break
+            time.sleep(0.02)
+        return {"content": "tRFC is 295 ns [1]."}
+
+    fake.answer = slow
+    ui.fill("#question", "DDR5 tRFC?")
+    ui.press("#question", "Enter")
+    ui.wait_for_selector("#btn-stop:not([hidden]):not([disabled])")
+    assert ui.is_hidden("#btn-send") and ui.inner_text("#btn-stop") == "Durdur"
+    ui.wait_for_selector(".msg.assistant .elapsed:not([hidden])")
+    assert "Geçen süre" in ui.inner_text(".msg.assistant .elapsed")
+    ui.click("#btn-stop")
+    ui.wait_for_selector(".msg.assistant .notice.stopped", timeout=10000)
+    ui.wait_for_selector("#btn-send:not([hidden]):not([disabled])")
+    assert ui.is_hidden("#btn-stop") and ui.is_hidden(".msg.assistant .msg-actions")
+    assert ui.is_hidden(".msg.assistant .elapsed")
+
+
+def test_answer_shows_where_its_time_went(ui):
+    _ask(ui, "DDR5 tRFC değeri nedir?")
+    btn = ui.locator(".msg.assistant .timing")
+    assert btn.is_visible() and btn.inner_text().startswith("Süre:")
+    btn.click()
+    text = ui.inner_text(".msg.assistant .timing-detail")
+    for part in ("Soru çözümleme", "Arama", "Cevap yazma", "Doğrulama", "Toplam", "Model çağrıları", "cevap:",
+                 "denetçi:"):
+        assert part in text, (part, text)
+    btn.click()
+    assert ui.is_hidden(".msg.assistant .timing-detail")

@@ -85,6 +85,16 @@ kesik yanıtta bir kez daha kısa alıntılarla) + gerekirse yeniden üretim 1 +
 "bulunamadı" derse bir tur daha (ilgili gereksinimi arama hatırlatması; araç turu sınırı içinde). Embedding 1, rerank 1 istek (karşılaştırma sorularında standart başına 1). Standart yüklü
 değilse veya netleştirici soru soruluyorsa cevap modeli hiç çağrılmaz.
 
+**Süre nereye gidiyor:** her cevabın altındaki **"Süre: …"** düğmesi dökümü açar: soru çözümleme, arama,
+şekil sayfaları, cevap yazma (kaç model çağrısı, düşünme açık mı, araç çağrılarının payı), doğrulama, hatalı
+ifadeleri düzeltme, kanıt konumu; ayrıca her aşamanın model çağrıları (sayı, süre, üretilen token, bunun
+düşünme kısmı, token/sn, ilk token'a kadar en uzun bekleme). Sunucu token sayısını bildirmiyorsa sayılar metin
+uzunluğundan tahmin edilir (≈). Aynı döküm günlüğe de yazılır. Tipik olarak sürenin büyük kısmı cevap modelinin
+ürettiği token'lardır: düşünme açıkken her araç turu ayrı ayrı düşünür. Hızlandırmak için (doğrulama
+gevşetilmeden): Ayarlar → Düşünme `auto`/`off`, Gelişmiş → en fazla araç turu (varsayılan 4), sunucuda vLLM önek
+önbelleği (prefix caching; araç turları aynı uzun istemi paylaşır) ve modelin token/sn hızı. Hatalı ifadeleri
+düzeltme turu düşünmeden çalışır; şekil sayfası dökümleri (en fazla 2) aynı anda yapılır.
+
 ---
 
 ## 2. Kurulum
@@ -126,9 +136,12 @@ Sunucu araç çağrısını desteklemiyorsa uygulama bunu fark eder ve araçsız
 * Düşünme modu: `auto` (karşılaştırma / çok parçalı sorularda açık), `on`, `off`; kontrol yöntemi
   `chat_template` (Qwen `enable_thinking`) veya `reasoning_effort`.
 * Doğrulanamayan iddialar: **Kaldır** (varsayılan) veya **İşaretle**.
+* **Bildirim:** pencere küçültülmüş, simgenin arkasına gizlenmiş veya başka pencerelerin arkasındayken cevap
+  hazır olunca Windows bildirimi (varsayılan açık; Windows'un odak yardımı / sessiz saatleri geçerlidir).
 * **Gelişmiş:** model bağlam uzunluğu (token; sunucunun bildirdiği değer yanında gösterilir, küçük olan
   kullanılır), denetçinin bir istekte göreceği en fazla ifade, yanlış atıf düzeltmesi (açık/kapalı), "bulunamadı"
-  demeden önce ilgili gereksinimi bir kez daha aratma (açık/kapalı), izlenecek
+  demeden önce ilgili gereksinimi bir kez daha aratma (açık/kapalı), en fazla araç turu (0–10, varsayılan 4;
+  her tur ayrı bir model çağrısıdır), izlenecek
   tablo/bölüm başvurusu sayısı (0 = kapalı), VLM tablo sayfası eşiği ve belge başına VLM sayfa sınırı. Değerler
   aralık denetiminden geçer. VLM eşiği veya sayfa sınırı değişirse belgeler bir sonraki taramada yeniden işlenir
   (daha önce okunan sayfalar önbellekten gelir).
@@ -312,6 +325,13 @@ kullanıcıların onu açması önerilir (açıkken üzerine yazmayın).
 
 ### Sohbet penceresi
 
+* **Durdur:** model çalışırken gönder düğmesinin yerinde kırmızı **Durdur** düğmesi ve geçen süre görünür.
+  Durdur, modele giden isteği de keser (sunucu o cevap için üretmeyi bırakır); yarım taslak doğrulanmadığı için
+  cevap olarak gösterilmez. "Yeni sohbet" de süren cevabı aynı şekilde durdurur.
+* **Bildirim:** pencere küçültülmüş, gizli veya başka pencerelerin arkasındayken cevap (ya da netleştirme
+  sorusu) hazır olunca Windows bildirimi çıkar; tıklayınca sohbet açılır. Küçültülmüş pencerenin görev çubuğu
+  düğmesi de yanıp söner. Pencere öndeyken bildirim çıkmaz. Ayarlar'dan kapatılabilir.
+
 * **Sol panel (Kaynaklar):** belgeler bucket başlıkları altında gruplanır; bucket'lar başlangıçta kapalıdır,
   başlığa tıklayınca açılır, yanında belge sayısı görünür. Üstteki arama kutusu belge ve bucket adına göre
   süzer. Uzun adlar üç noktayla kısalır; üzerine gelince tam ad ve göreli konum görünür. Liste kendi içinde
@@ -476,6 +496,8 @@ doğrulama, hücre eşleştirme, konum, geçiş) sınar, gerçek bir modelin do�
 | "indexed with embedding model …" | Embedding modeli değişti: Kütüphane → "Tamamen yeniden oluştur" veya `ingest --rebuild` |
 | Araç kullanılmıyor | vLLM'i `--enable-auto-tool-choice --tool-call-parser …` ile başlatın |
 | Cevapta `<think>` / düşünme metni | vLLM'de `--reasoning-parser` kullanın veya Ayarlar → Düşünme `off` |
+| Cevap çok uzun sürüyor | Cevabın altındaki "Süre: …" dökümüne bakın. Cevap yazma uzunsa: düşünme token'ları ve araç turları (Ayarlar → Düşünme, Gelişmiş → en fazla araç turu); "ilk token" uzunsa sunucu kuyruğu veya uzun istem (vLLM önek önbelleği); doğrulama uzunsa denetçi çağrıları. Beklemek istemezseniz **Durdur**. |
+| Bildirim gelmiyor | Ayarlar → bildirim açık mı; Windows odak yardımı / Rahatsız etmeyin kapalı mı; pencere öndeyken bildirim çıkmaz. Günlükte "notification" satırı nedeni yazar. |
 | Tablolar/parametreler "doğrulanmadı" | Görsel model tanımlı mı, sayfada metin katmanı var mı (OCR)? Doküman uyarılarında hangi hücrenin neden eşleşmediği yazar (yanlış sütun, birim, satır koşulu). `inspect --table-pages` |
 | "Kaynak sayfası bulundu, kesin konum eşleştirilemedi" | Kaynak metni sayfada tek bir yere eşlenemedi (tekrarlanan metin, metin katmanı farklı). Sayfa yine de doğrudur; ifadenin doğruluğu "Doğrulama" durumundadır. |
 | "Eski indeks" uyarısı / vurgu yok | Kütüphane → "Konum verisini oluştur" veya `SayisalTasarimUzmani.exe migrate` |

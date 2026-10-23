@@ -167,7 +167,8 @@ def update_settings(cfg: Config, patch: dict) -> Config:
 # Advanced settings the UI edits: (section, key) -> (lowest, highest)
 RANGES = {("llm", "context_tokens"): (2048, 1_048_576), ("vision", "min_page_score"): (0.0, 50.0),
           ("vision", "max_pages_per_doc"): (0, 100_000), ("answer", "judge_batch"): (1, 32),
-          ("retrieval", "follow_references"): (0, 10), ("retrieval", "reference_tokens"): (100, 8000)}
+          ("retrieval", "follow_references"): (0, 10), ("retrieval", "reference_tokens"): (100, 8000),
+          ("llm", "max_tool_rounds"): (0, 10)}
 
 
 def check_ranges(cfg: Config, changed: dict) -> None:

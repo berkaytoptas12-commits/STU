@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+import queue
 import re
 import shutil
 import subprocess
@@ -21,7 +22,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from techrag import __version__, tls
+from techrag import __version__, askctx, tls
 from techrag.api import APIClient, check_service, configure_tls, current_tls, normalize_base_url
 from techrag.config import Config, ServiceConfig, resource_path, same_path
 from techrag.engine import RAGEngine
@@ -197,6 +198,11 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
     app = FastAPI(title="techrag", version=__version__, docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.jobs = jobs
     app.state.state = state
+    # desktop: called with {"kind": final|clarify|error, "question", "status"} when an answer is ready (the app
+    # tells the user when its window is minimized, hidden or behind other windows)
+    app.state.on_answer = None
+    asks: dict[str, askctx.AskContext] = {}   # answers in progress, by the id their stream starts with
+    app.state.asks = asks
 
     def auth(request: Request) -> None:
         token = state["cfg"].server.api_token
@@ -481,17 +487,68 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         if not req.stream:
             return e.ask(req.question, history, req.domains, req.doc_ids, req.top_k, req.buckets, req.clarification)
 
-        def events():
-            try:
-                for ev in e.ask_stream(req.question, history, req.domains, req.doc_ids, req.top_k, req.buckets,
-                                       req.clarification):
-                    yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
-            except Exception as exc:
-                err = {"type": "error", "message": f"{exc.__class__.__name__}: {exc}"}
-                yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n"
+        ctx = askctx.AskContext()
+        ask_id = uuid.uuid4().hex
+        asks[ask_id] = ctx
+        q: queue.Queue = queue.Queue()
 
+        def work() -> None:
+            """The answer runs in a thread of its own: the response only relays its events. Stop (or the page going
+            away) stops it - also the model request in progress."""
+            last: dict = {}
+            with askctx.active(ctx):
+                try:
+                    for ev in e.ask_stream(req.question, history, req.domains, req.doc_ids, req.top_k, req.buckets,
+                                           req.clarification):
+                        if ev.get("type") == "final":
+                            last = ev
+                        q.put(ev)
+                except askctx.Cancelled:
+                    q.put({"type": "cancelled"})
+                    return
+                except Exception as exc:
+                    last = {"type": "error", "message": f"{exc.__class__.__name__}: {exc}"}
+                    q.put(last)
+                finally:
+                    q.put(None)
+                    asks.pop(ask_id, None)
+            hook = getattr(app.state, "on_answer", None)
+            if hook is not None and last and not ctx.stopped:
+                v = last.get("verification") or {}
+                kind = "error" if last.get("type") == "error" else ("clarify" if v.get("status") == "clarify"
+                                                                      else "final")
+                try:
+                    hook({"kind": kind, "question": req.question, "status": v.get("status", "")})
+                except Exception:
+                    pass
+
+        def events():
+            yield f"data: {json.dumps({'type': 'started', 'id': ask_id})}\n\n"
+            try:
+                while True:
+                    try:
+                        ev = q.get(timeout=2.0)
+                    except queue.Empty:
+                        yield ": waiting\n\n"   # keeps the connection alive and lets a closed page be noticed
+                        continue
+                    if ev is None:
+                        return
+                    yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+            finally:
+                ctx.stop()   # the page went away (or the answer is complete: then this changes nothing)
+
+        threading.Thread(target=work, name="answer", daemon=True).start()
         return StreamingResponse(events(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    @app.post("/api/ask/{ask_id}/stop", dependencies=guard)
+    def ask_stop(ask_id: str):
+        """Stop an answer in progress: the model request is closed (the server stops generating for it)."""
+        ctx = asks.get(ask_id)
+        if ctx is None:
+            return {"ok": False, "reason": "not running"}
+        ctx.stop()
+        return {"ok": True}
 
     # ------------------------------------------------------------- ingestion
     def start_job(kind: str, target: Optional[Path] = None, rebuild: bool = False, root_id: Optional[int] = None,

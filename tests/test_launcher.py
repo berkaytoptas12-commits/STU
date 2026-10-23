@@ -283,6 +283,17 @@ def test_real_icon_stays_on_top_of_the_active_chat(real_launcher):
 
 
 @win
+def test_real_notification_opens_the_chat_when_clicked(real_launcher):
+    ln, events, key = real_launcher
+    assert ln.notify("Cevap hazır", "DDR5 tRFC?\nSohbeti açmak için tıklayın.")
+    assert _wait(lambda: ln.notes_shown or ln.note_error), "shown, or the shell said why not"
+    assert ln.notes_shown == 1 and ln._tray, ln.note_error
+    L.win32().PostMessageW(ln.hwnd, L.WM_APP_TRAY, 0, L.NIN_BALLOONUSERCLICK | (L.TRAY_ID << 16))
+    assert _wait(lambda: L.IDM_OPEN in events["commands"]), "a click on the notification opens the chat"
+    assert _wait(lambda: not ln._tray), "its icon goes once used"
+
+
+@win
 def test_real_in_front_detection():
     from techrag.desktop import _cover_window
 

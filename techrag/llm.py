@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 import re
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Iterator, Optional, Sequence
 
 import httpx
 
 from techrag import api as _api
+from techrag import askctx
 from techrag.api import RETRY_STATUS, APIClient, APIError, backoff, connect_error, retry_after_seconds
 from techrag.config import LLMConfig, ServiceConfig
 
@@ -49,6 +52,7 @@ class ChatResult:
     reasoning: str = ""
     tool_calls: list[ToolCall] = field(default_factory=list)
     finish_reason: str = ""
+    usage: dict = field(default_factory=dict)   # the server's token counts (stream_options.include_usage)
 
 
 class ThinkFilter:
@@ -97,6 +101,7 @@ class LLMClient:
         self._send_template_kwargs = cfg.thinking_control == "chat_template"
         self._send_effort = cfg.thinking_control == "reasoning_effort"
         self._json_mode_ok = True
+        self._usage_ok = True   # ask for token counts at the end of the stream (dropped if the server refuses)
         self.tools_supported: Optional[bool] = None if cfg.tools == "auto" else cfg.tools == "on"
         self._context: Optional[int] = None
         self._context_probed = False
@@ -119,6 +124,8 @@ class LLMClient:
             p["reasoning_effort"] = self.cfg.reasoning_effort
         if json_mode and self._json_mode_ok:
             p["response_format"] = {"type": "json_object"}
+        if self._usage_ok:
+            p["stream_options"] = {"include_usage": True}
         return p
 
     # ------------------------------------------------------------------- stream
@@ -150,60 +157,91 @@ class LLMClient:
                 if exc.status in (400, 422) and "response_format" in body and json_mode and self._json_mode_ok:
                     self._json_mode_ok = False
                     continue
+                if exc.status in (400, 422) and "stream_options" in body and self._usage_ok:
+                    self._usage_ok = False
+                    continue
                 if tools and exc.status in (400, 422) and "tool" in body:
                     self.tools_supported = False
                     raise ToolsUnsupported(str(exc)) from exc
                 raise LLMError(str(exc), getattr(exc, "code", "")) from exc
 
     def _stream_once(self, payload: dict) -> Iterator[tuple[str, object]]:
+        """One request. When the question it belongs to is stopped (askctx), the response is closed at once - the
+        server stops generating - and Cancelled is raised. The call's time and tokens are recorded there."""
+        ctx = askctx.current()
+        if ctx is not None:
+            ctx.check()
         result = ChatResult()
         calls: dict[int, ToolCall] = {}
         filt = ThinkFilter()
+        t0, first = time.time(), None
+        ok = False
         try:
             with self.api.http.stream("POST", self.api.url("chat/completions"), json=payload) as r:
-                if r.status_code >= 400:
-                    body = r.read().decode("utf-8", "replace")
-                    raise APIError(f"LLM HTTP {r.status_code}: {body[:400]}", r.status_code, body,
-                                   retry_after=retry_after_seconds(r.headers))
-                for line in r.iter_lines():
-                    line = line.strip()
-                    if not line.startswith("data:"):
-                        continue
-                    data = line[5:].strip()
-                    if data == "[DONE]":
-                        break
-                    obj = json.loads(data)
-                    for choice in obj.get("choices") or []:
-                        delta = choice.get("delta") or choice.get("message") or {}
-                        rc = delta.get("reasoning_content") or delta.get("reasoning") or ""
-                        if rc:
-                            result.reasoning += rc
-                            yield "reasoning", rc
-                        text = delta.get("content") or ""
-                        if text:
-                            c, rs = filt.feed(text)
-                            if rs:
-                                result.reasoning += rs
-                                yield "reasoning", rs
-                            if c:
-                                result.content += c
-                                yield "content", c
-                        for tc in delta.get("tool_calls") or []:
-                            idx = tc.get("index", len(calls))
-                            call = calls.setdefault(idx, ToolCall(id=tc.get("id") or f"call_{idx}", name=""))
-                            if tc.get("id"):
-                                call.id = tc["id"]
-                            fn = tc.get("function") or {}
-                            if fn.get("name"):
-                                call.name += fn["name"]
-                            if fn.get("arguments"):
-                                args = fn["arguments"]
-                                call.arguments += args if isinstance(args, str) else json.dumps(args)
-                        if choice.get("finish_reason"):
-                            result.finish_reason = choice["finish_reason"]
+                with (ctx.closing(r.close) if ctx is not None else _nothing()):
+                    if r.status_code >= 400:
+                        body = r.read().decode("utf-8", "replace")
+                        raise APIError(f"LLM HTTP {r.status_code}: {body[:400]}", r.status_code, body,
+                                       retry_after=retry_after_seconds(r.headers))
+                    for line in r.iter_lines():
+                        if ctx is not None and ctx.stopped:
+                            raise askctx.Cancelled()
+                        line = line.strip()
+                        if not line.startswith("data:"):
+                            continue
+                        data = line[5:].strip()
+                        if data == "[DONE]":
+                            break
+                        obj = json.loads(data)
+                        if obj.get("usage"):
+                            result.usage = obj["usage"]
+                        for choice in obj.get("choices") or []:
+                            delta = choice.get("delta") or choice.get("message") or {}
+                            if first is None and (delta.get("content") or delta.get("reasoning_content")
+                                                  or delta.get("reasoning") or delta.get("tool_calls")):
+                                first = time.time() - t0
+                            rc = delta.get("reasoning_content") or delta.get("reasoning") or ""
+                            if rc:
+                                result.reasoning += rc
+                                yield "reasoning", rc
+                            text = delta.get("content") or ""
+                            if text:
+                                c, rs = filt.feed(text)
+                                if rs:
+                                    result.reasoning += rs
+                                    yield "reasoning", rs
+                                if c:
+                                    result.content += c
+                                    yield "content", c
+                            for tc in delta.get("tool_calls") or []:
+                                idx = tc.get("index", len(calls))
+                                call = calls.setdefault(idx, ToolCall(id=tc.get("id") or f"call_{idx}", name=""))
+                                if tc.get("id"):
+                                    call.id = tc["id"]
+                                fn = tc.get("function") or {}
+                                if fn.get("name"):
+                                    call.name += fn["name"]
+                                if fn.get("arguments"):
+                                    args = fn["arguments"]
+                                    call.arguments += args if isinstance(args, str) else json.dumps(args)
+                            if choice.get("finish_reason"):
+                                result.finish_reason = choice["finish_reason"]
+            ok = True
         except httpx.ConnectError as exc:
+            if ctx is not None and ctx.stopped:
+                raise askctx.Cancelled() from exc
             err = connect_error(exc, self.api.base)
             raise LLMError(f"LLM server unreachable: {err}", err.code) from exc
+        except Exception as exc:
+            # Closing the response under a blocked reader surfaces as whatever the read hits (ReadError,
+            # StreamClosed, OSError...): when the question was stopped, that is the stop.
+            if ctx is not None and ctx.stopped and not isinstance(exc, askctx.Cancelled):
+                raise askctx.Cancelled() from exc
+            raise
+        finally:
+            if ctx is not None:
+                result.tool_calls = [calls[k] for k in sorted(calls) if calls[k].name]
+                ctx.record(_call_stat(result, time.time() - t0, first, ok))
         c, rs = filt.flush()
         if c:
             result.content += c
@@ -287,3 +325,26 @@ def image_part(png_bytes: bytes) -> dict:
     import base64
 
     return {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(png_bytes).decode()}}
+
+
+@contextmanager
+def _nothing() -> Iterator[None]:
+    yield
+
+
+def _call_stat(result: ChatResult, seconds: float, first: Optional[float], ok: bool) -> askctx.CallStat:
+    """Token counts from the server's usage report, or estimated from the streamed text (~3.5 characters per
+    token for technical text)."""
+    usage = result.usage or {}
+    est_reason = round(len(result.reasoning) / 3.5)
+    if usage.get("completion_tokens") is not None:
+        details = usage.get("completion_tokens_details") or {}
+        prompt_details = usage.get("prompt_tokens_details") or {}
+        completion = int(usage.get("completion_tokens") or 0)
+        reasoning = int(details.get("reasoning_tokens") or 0) or min(est_reason, completion)
+        return askctx.CallStat(askctx.stage_name(), round(seconds, 3), None if first is None else round(first, 3),
+                               completion, reasoning, int(usage.get("prompt_tokens") or 0),
+                               int(prompt_details.get("cached_tokens") or 0), False, ok)
+    content = round(len(result.content) / 3.5) + sum(round(len(c.arguments) / 3.5) for c in result.tool_calls)
+    return askctx.CallStat(askctx.stage_name(), round(seconds, 3), None if first is None else round(first, 3),
+                           content + est_reason, est_reason, 0, 0, True, ok)

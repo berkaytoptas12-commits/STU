@@ -20,6 +20,7 @@ import json
 import logging
 import math
 import os
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -49,6 +50,9 @@ TEXTS = {
         "busy": ("Belge indeksleme devam ediyor. Şimdi çıkarsanız o an yazılmakta olan kayıt tamamlanır; işlenmekte "
                  "olan ve kalan belgeler bir sonraki taramada işlenir. İndeks bozulmaz.\n\nUygulamadan çıkılsın mı?"),
         "running": f"{APP_TITLE} zaten çalışıyor fakat yanıt vermiyor. Biraz bekleyip yeniden deneyin.",
+        "note_final": "Cevap hazır", "note_notfound": "Cevap hazır: kaynaklarda bulunamadı",
+        "note_clarify": "Netleştirme sorusu var", "note_error": "Cevap verilemedi (hata)",
+        "note_click": "Sohbeti açmak için tıklayın.",
     },
     "en": {
         "open": "Open chat", "settings": "Settings", "quit": "Quit",
@@ -62,12 +66,26 @@ TEXTS = {
                  "document in progress and the remaining ones are processed by the next rescan. The index stays "
                  "consistent.\n\nQuit now?"),
         "running": f"{APP_TITLE} is already running but does not respond. Please wait a moment and try again.",
+        "note_final": "Answer ready", "note_notfound": "Answer ready: not found in the sources",
+        "note_clarify": "A clarifying question is waiting", "note_error": "No answer (error)",
+        "note_click": "Click to open the chat.",
     },
 }
 
 
 def text(lang: str, key: str) -> str:
     return (TEXTS.get(lang) or TEXTS["en"]).get(key) or TEXTS["en"][key]
+
+
+def answer_note(lang: str, info: dict) -> tuple[str, str]:
+    """Title and text of the notification for a finished answer: what kind of reply it is and the question."""
+    kind, status = info.get("kind"), info.get("status")
+    key = {"clarify": "note_clarify", "error": "note_error"}.get(kind) or \
+        ("note_notfound" if status == "not_found" else "note_final")
+    q = " ".join(str(info.get("question") or "").split())
+    if len(q) > 160:
+        q = q[:157].rstrip() + "…"
+    return text(lang, key), f"{q}\n{text(lang, 'note_click')}" if q else text(lang, "note_click")
 
 
 # ------------------------------------------------------------------------------------------- geometry
@@ -296,6 +314,12 @@ WM_SETTINGCHANGE, WM_MOUSEACTIVATE, WM_CONTEXTMENU, WM_DISPLAYCHANGE = 0x001A, 0
 WM_COMMAND, WM_MOUSEMOVE, WM_LBUTTONDOWN, WM_LBUTTONUP = 0x0111, 0x0200, 0x0201, 0x0202
 WM_CAPTURECHANGED, WM_MOUSELEAVE, WM_DPICHANGED = 0x0215, 0x02A3, 0x02E0
 WM_APP_HIDE, WM_APP_SHOW, WM_APP_ZORDER = 0x8000 + 1, 0x8000 + 2, 0x8000 + 3
+WM_APP_NOTIFY, WM_APP_TRAY, WM_APP_UNNOTIFY = 0x8000 + 4, 0x8000 + 5, 0x8000 + 6
+NIM_ADD, NIM_MODIFY, NIM_DELETE, NIM_SETVERSION, NOTIFYICON_VERSION_4 = 0, 1, 2, 4, 4
+NIF_MESSAGE, NIF_ICON, NIF_TIP, NIF_INFO, NIF_SHOWTIP = 0x01, 0x02, 0x04, 0x10, 0x80
+NIIF_INFO, NIIF_USER, NIIF_LARGE_ICON, NIIF_RESPECT_QUIET_TIME = 0x01, 0x04, 0x20, 0x80
+NIN_SELECT, NIN_KEYSELECT, NIN_BALLOONUSERCLICK = 0x0400, 0x0401, 0x0405
+FLASHW_ALL, FLASHW_TIMERNOFG, TRAY_ID = 0x03, 0x0C, 1
 WM_TIMER, OVERLAP_TIMER, OVERLAP_MS = 0x0113, 1, 400
 MK_LBUTTON, MA_NOACTIVATE, SPI_SETWORKAREA = 0x0001, 3, 0x002F
 WS_POPUP = 0x80000000
@@ -367,6 +391,21 @@ def win32():
     class TRACKMOUSEEVENT(ctypes.Structure):
         _fields_ = [("cbSize", W.DWORD), ("dwFlags", W.DWORD), ("hwndTrack", W.HWND), ("dwHoverTime", W.DWORD)]
 
+    class GUID(ctypes.Structure):
+        _fields_ = [("Data1", W.DWORD), ("Data2", W.WORD), ("Data3", W.WORD), ("Data4", W.BYTE * 8)]
+
+    class NOTIFYICONDATAW(ctypes.Structure):
+        _fields_ = [("cbSize", W.DWORD), ("hWnd", W.HWND), ("uID", W.UINT), ("uFlags", W.UINT),
+                    ("uCallbackMessage", W.UINT), ("hIcon", W.HICON), ("szTip", W.WCHAR * 128),
+                    ("dwState", W.DWORD), ("dwStateMask", W.DWORD), ("szInfo", W.WCHAR * 256),
+                    ("uVersion", W.UINT), ("szInfoTitle", W.WCHAR * 64), ("dwInfoFlags", W.DWORD),
+                    ("guidItem", GUID), ("hBalloonIcon", W.HICON)]
+
+    class FLASHWINFO(ctypes.Structure):
+        _fields_ = [("cbSize", W.UINT), ("hwnd", W.HWND), ("dwFlags", W.DWORD), ("uCount", W.UINT),
+                    ("dwTimeout", W.DWORD)]
+
+    a.NOTIFYICONDATAW, a.FLASHWINFO = NOTIFYICONDATAW, FLASHWINFO
     a.WNDCLASSEXW, a.MONITORINFOEXW, a.BLENDFUNCTION = WNDCLASSEXW, MONITORINFOEXW, BLENDFUNCTION
     a.BITMAPINFOHEADER, a.TRACKMOUSEEVENT = BITMAPINFOHEADER, TRACKMOUSEEVENT
     P = ctypes.POINTER
@@ -436,6 +475,17 @@ def win32():
     fn(user32, "GetWindow", H, H, U)
     fn(user32, "GetAncestor", H, H, U)
     fn(user32, "GetDoubleClickTime", U)
+    fn(user32, "LoadIconW", W.HICON, W.HINSTANCE, W.LPVOID)
+    fn(user32, "DestroyIcon", B, W.HICON)
+    fn(user32, "FlashWindowEx", B, P(FLASHWINFO))
+    try:
+        shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+    except OSError:
+        shell32 = None
+    a.Shell_NotifyIconW = a.ExtractIconExW = None
+    if shell32 is not None:
+        fn(shell32, "Shell_NotifyIconW", B, W.DWORD, P(NOTIFYICONDATAW), optional=True)
+        fn(shell32, "ExtractIconExW", U, W.LPCWSTR, I, P(W.HICON), P(W.HICON), U, optional=True)
     try:
         dwmapi = ctypes.WinDLL("dwmapi")
     except OSError:
@@ -493,6 +543,16 @@ def window_state(hwnd) -> dict:
     a = win32()
     return {"visible": bool(a.IsWindowVisible(hwnd)), "minimized": bool(a.IsIconic(hwnd)),
             "foreground": (a.GetForegroundWindow() or 0) == hwnd}
+
+
+def flash_window(hwnd) -> None:
+    """Flash a window's taskbar button until it comes to the front (a minimized chat with a new answer)."""
+    a = win32()
+    info = a.FLASHWINFO()
+    info.cbSize = a.ctypes.sizeof(info)
+    info.hwnd = hwnd
+    info.dwFlags = FLASHW_ALL | FLASHW_TIMERNOFG
+    a.FlashWindowEx(a.ctypes.byref(info))
 
 
 def bring_to_front(hwnd) -> None:
@@ -697,6 +757,12 @@ class Launcher:
         self.on_close_request = on_close_request or (lambda: on_command(IDM_QUIT))
         self.on_overlap = on_overlap or (lambda area: None)
         self._overlap: Optional[tuple] = None
+        self._note: Optional[tuple[str, str]] = None   # the notification to show (title, text)
+        self._note_lock = threading.Lock()
+        self._tray = False                              # our notification-area icon is there
+        self._icons: tuple = ()                         # (small, large) app icons for it
+        self.notes_shown = 0
+        self.note_error = ""
         self._closing = False
         self.hwnd = None
         self.companion = None     # chat window: the page is told which part of it the icon covers
@@ -736,6 +802,19 @@ class Launcher:
         self._closing = True  # our own close; a WM_CLOSE from elsewhere is a request to quit the whole app
         if self.post(WM_CLOSE):
             self.closed.wait(wait)
+
+    def notify(self, title: str, body: str) -> bool:
+        """Show a Windows notification: a notification-area balloon, which Windows 10/11 shows as a toast (Focus
+        assist / quiet hours are respected). A click on it - or on its icon, which stays until the chat is opened -
+        opens the chat. Any thread."""
+        with self._note_lock:
+            self._note = (title, body)
+        return self.post(WM_APP_NOTIFY)
+
+    def clear_notification(self) -> None:
+        """The chat was opened: the notification icon goes."""
+        if self._tray:
+            self.post(WM_APP_UNNOTIFY)
 
     def set_companion(self, hwnd) -> None:
         self.companion = int(hwnd) if hwnd else None
@@ -884,6 +963,17 @@ class Launcher:
         if msg == WM_TIMER and wp == OVERLAP_TIMER:
             self._check_overlap()
             return 0
+        if msg == WM_APP_NOTIFY:
+            self._show_note(hwnd)
+            return 0
+        if msg == WM_APP_UNNOTIFY:
+            self._remove_note(hwnd)
+            return 0
+        if msg == WM_APP_TRAY:   # NOTIFYICON_VERSION_4: the event is the low word
+            if (lp & 0xFFFF) in (NIN_BALLOONUSERCLICK, NIN_SELECT, NIN_KEYSELECT):
+                self._remove_note(hwnd)
+                self._call(self.on_command, IDM_OPEN)
+            return 0
         if msg == WM_APP_HIDE:
             a.ShowWindow(hwnd, SW_HIDE)
             return 0
@@ -899,12 +989,82 @@ class Launcher:
             return 0
         if msg == WM_DESTROY:
             a.KillTimer(hwnd, OVERLAP_TIMER)
+            self._remove_note(hwnd)
+            for icon in self._icons:
+                if icon:
+                    a.DestroyIcon(icon)
             a.PostQuitMessage(0)
             return 0
         if self._activate_msg and msg == self._activate_msg:
             self._call(self.on_activate)
             return 0
         return None
+
+    def _note_data(self, hwnd):
+        a = win32()
+        d = a.NOTIFYICONDATAW()
+        d.cbSize = a.ctypes.sizeof(d)
+        d.hWnd = hwnd
+        d.uID = TRAY_ID
+        return d
+
+    def _app_icons(self) -> tuple:
+        """The exe's own icon (small for the notification area, large for the toast)."""
+        if not self._icons:
+            a = win32()
+            small, large = a.W.HICON(), a.W.HICON()
+            if a.ExtractIconExW is not None:
+                a.ExtractIconExW(sys.executable, 0, a.ctypes.byref(large), a.ctypes.byref(small), 1)
+            fallback = a.LoadIconW(None, a.W.LPVOID(32512))   # IDI_APPLICATION
+            self._icons = (small.value or fallback, large.value or small.value or fallback)
+        return self._icons
+
+    def _show_note(self, hwnd) -> None:
+        a = win32()
+        with self._note_lock:
+            note, self._note = self._note, None
+        if not note:
+            return
+        if a.Shell_NotifyIconW is None:
+            self.note_error = "Shell_NotifyIconW unavailable"
+            return
+        title, body = note
+        small, large = self._app_icons()
+        tip = f"{self.title} — {title}"[:127]
+        if not self._tray:
+            d = self._note_data(hwnd)
+            d.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP
+            d.uCallbackMessage = WM_APP_TRAY
+            d.hIcon = small
+            d.szTip = tip
+            if not a.Shell_NotifyIconW(NIM_ADD, a.ctypes.byref(d)):
+                self.note_error = f"Shell_NotifyIconW(NIM_ADD) failed ({a.ctypes.get_last_error()})"
+                log.warning("notification icon could not be added: %s", self.note_error)
+                return
+            d.uVersion = NOTIFYICON_VERSION_4
+            a.Shell_NotifyIconW(NIM_SETVERSION, a.ctypes.byref(d))
+            self._tray = True
+        d = self._note_data(hwnd)
+        d.uFlags = NIF_INFO | NIF_TIP | NIF_SHOWTIP
+        d.szTip = tip
+        d.szInfoTitle = title[:63]
+        d.szInfo = (body or " ")[:255]
+        d.hBalloonIcon = large
+        d.dwInfoFlags = NIIF_USER | NIIF_LARGE_ICON | NIIF_RESPECT_QUIET_TIME
+        if a.Shell_NotifyIconW(NIM_MODIFY, a.ctypes.byref(d)):
+            self.notes_shown += 1
+            self.note_error = ""
+        else:
+            self.note_error = f"Shell_NotifyIconW(NIM_MODIFY) failed ({a.ctypes.get_last_error()})"
+            log.warning("notification could not be shown: %s", self.note_error)
+
+    def _remove_note(self, hwnd) -> None:
+        if not self._tray:
+            return
+        a = win32()
+        d = self._note_data(hwnd)
+        a.Shell_NotifyIconW(NIM_DELETE, a.ctypes.byref(d))
+        self._tray = False
 
     def _call(self, func, *args) -> None:
         try:

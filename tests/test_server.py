@@ -46,7 +46,8 @@ def test_ask_stream_events(client):
     with client.stream("POST", "/api/ask", json={"question": "DDR5 tRFC değeri nedir?"}) as r:
         events = [json.loads(line[5:]) for line in r.iter_lines() if line.startswith("data:")]
     kinds = [e["type"] for e in events]
-    assert kinds[0] == "status" and "plan" in kinds and "tool" in kinds and kinds[-1] == "final"
+    assert kinds[0] == "started" and kinds[1] == "status" and "plan" in kinds and "tool" in kinds
+    assert kinds[-1] == "final"
     fin = events[-1]
     assert "295 ns" in fin["answer"] and fin["verification"]["status"] == "supported"
 

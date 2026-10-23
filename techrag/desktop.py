@@ -172,7 +172,8 @@ class DesktopApp:
         self.session_ending = False   # Windows asked to log off / shut down (may still be cancelled)
         self.visible = not hide_on_close
         self.stats = {"opened": 0, "hidden": 0, "activations": 0, "hints": 0, "toggled_hidden": 0,
-                      "double_clicks": 0}
+                      "double_clicks": 0, "notified": 0, "flashed": 0}
+        self.notify_enabled: Callable[[], bool] = lambda: True   # Settings: notification when an answer is ready
         self._shutdown_lock = threading.Lock()
         self._shutdown_done = False
         self._q: queue.Queue = queue.Queue()
@@ -225,6 +226,33 @@ class DesktopApp:
     def _icon_area_script(self) -> str:
         return f"window.techragHost && window.techragHost.setIconArea && window.techragHost.setIconArea(" \
                f"{json.dumps(self.icon_area)})"
+
+    def answer_ready(self, info: dict) -> None:
+        """An answer is complete (called from the backend). When the chat is not what the user is looking at -
+        minimized, hidden behind the icon or behind other windows - Windows shows a notification; a minimized
+        window's taskbar button also flashes. Nothing happens while the chat is in front."""
+        self._post(self._answer_ready, dict(info))
+
+    def _answer_ready(self, info: dict) -> None:
+        if self.quitting or not self.notify_enabled():
+            return
+        try:
+            front = self.visible and self.front()
+        except Exception:
+            front = False
+        if front:
+            return
+        title, body = self._L.answer_note(self.lang(), info)
+        if self.launcher is not None:
+            self.launcher.notify(title, body)
+        self.stats["notified"] += 1
+        hwnd = self.chat_hwnd() if self.visible else None
+        if hwnd and os.name == "nt":
+            try:
+                self._L.flash_window(hwnd)
+                self.stats["flashed"] += 1
+            except Exception:
+                log.exception("could not flash the chat window")
 
     def request_quit(self, confirm: bool = True) -> None:
         self._post(self._quit, confirm)
@@ -340,6 +368,8 @@ class DesktopApp:
         hwnd = self.chat_hwnd()
         if hwnd and self.launcher is not None:
             self.launcher.set_companion(hwnd)  # the icon reports which part of this window it covers
+        if self.launcher is not None:
+            self.launcher.clear_notification()  # the answer it announced is now in view
         self.chat.show()
         if hwnd and os.name == "nt":
             self._L.bring_to_front(hwnd)  # also restores a minimized window
@@ -481,10 +511,11 @@ def _smoke(desk: DesktopApp, result_path: str) -> None:
     """CI check of the packaged app with real windows: the launcher icon comes first; a drag moves it without opening
     the chat; a click opens the chat (UI, JS<->Python bridge, no notes UI); the icon stays on top of the active chat
     window, also of a maximized one that covers it, and the page's send button moves out from under it; a click on
-    the icon hides the chat when it is in front, shows it again with the page kept, restores it when minimized and raises it when another window
-    covers it; the close button only hides it and the page is kept; a second start of the exe hands over instead of
-    starting a backend; the icon's menu opens the settings and finally quits the app (the CI step checks that the
-    process then ends by itself)."""
+    the icon hides the chat when it is in front, shows it again with the page kept, restores it when minimized and
+    raises it when another window covers it; an answer finishing while the chat is minimized flashes its taskbar
+    button, while it is hidden shows a Windows notification whose click opens the chat; the close button only hides
+    it and the page is kept; a second start of the exe hands over instead of starting a backend; the icon's menu
+    opens the settings and finally quits the app (the CI step checks that the process then ends by itself)."""
     chat = desk.chat
     r: dict = {"ok": False, "checks": {}}
     checks = r["checks"]
@@ -590,6 +621,9 @@ def _smoke(desk: DesktopApp, result_path: str) -> None:
                 "[window.__smoke, document.querySelector('#question').value]") == ["kept", "draft"], 10))
             a.ShowWindow(hwnd, 6)  # SW_MINIMIZE
             _wait(lambda: L.window_state(hwnd)["minimized"], 10)
+            flashed = desk.stats["flashed"]
+            desk.answer_ready({"kind": "final", "question": "smoke", "status": "supported"})
+            check("minimized_chat_answer_flashes_taskbar", _wait(lambda: desk.stats["flashed"] > flashed, 10))
             pause()
             click()
             check("click_restores_minimized_chat", _wait(
@@ -610,6 +644,17 @@ def _smoke(desk: DesktopApp, result_path: str) -> None:
             time.sleep(1.0)
             check("app_keeps_running_after_close", lw.hwnd and not desk.quitting)
             check("close_hint_only_the_first_time", desk.stats["hints"] == (0 if hint_before else 1))
+            # an answer finishes while the chat is hidden: a Windows notification; a click on it opens the chat
+            shown = lw.notes_shown
+            desk.answer_ready({"kind": "final", "question": "smoke", "status": "supported"})
+            check("hidden_chat_answer_notifies", _wait(lambda: lw.notes_shown > shown or lw.note_error, 10)
+                  and lw.notes_shown > shown)
+            r["note_error"] = lw.note_error
+            a.PostMessageW(lw.hwnd, L.WM_APP_TRAY, 0, L.NIN_BALLOONUSERCLICK | (L.TRAY_ID << 16))
+            check("notification_click_opens_chat", _wait(lambda: L.window_state(hwnd)["visible"], 30))
+            a.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE: hidden again
+            check("closed_again", _wait(lambda: not L.window_state(hwnd)["visible"], 30))
+            pause()
             click()
             check("click_reopens_chat", _wait(lambda: L.window_state(hwnd)["visible"], 30))
             check("page_state_kept", chat.evaluate_js(
@@ -797,6 +842,8 @@ def _run_gui(key: str, log_path: Path) -> int:
     api._window = chat
     desk = DesktopApp(chat, app.state.jobs, lambda: app.state.state["cfg"].ui.language, state,
                       hide_on_close=use_launcher)
+    desk.notify_enabled = lambda: bool(getattr(app.state.state["cfg"].ui, "notify", True))
+    app.state.on_answer = desk.answer_ready
     chat.events.closing += desk.on_chat_closing
     try:
         chat.events.loaded += lambda: log.info("page loaded")

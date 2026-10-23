@@ -11,6 +11,7 @@ Events from ask_stream():
 
 from __future__ import annotations
 
+import logging
 import re
 import threading
 import time
@@ -18,7 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Iterator, Optional, Sequence
 
-from techrag import clarify
+from techrag import askctx, clarify
 from techrag.config import Config, write_text_atomic
 from techrag.domains import DomainRegistry
 from techrag.embeddings import Embedder, create_embedder
@@ -38,6 +39,7 @@ from techrag.verify import (CITATION, NOT_CHECKED, SUPPORTED, UNSUPPORTED, UNVER
                             Verification, apply_verdict, deterministic_check, is_not_found, judge_failed,
                             parse_answer, parse_citations, parse_verdicts, render, repair_citations)
 
+log = logging.getLogger("techrag.engine")
 _UNSET = object()
 PAGE_DESCRIBE_PROMPT = ("Transcribe this page of a technical standard for an engineer. For figures, timing diagrams, "
                         "waveforms, pinouts and state diagrams: give the figure title, every label, signal/pin name, "
@@ -151,6 +153,8 @@ class RAGEngine:
             text = self.vision.chat([{"role": "user", "content": [
                 {"type": "text", "text": PAGE_DESCRIBE_PROMPT}, image_part(png)]}],
                 max_tokens=1500, temperature=0.0, thinking=False).content.strip()
+        except askctx.Cancelled:
+            raise
         except Exception:
             return None
         if text:
@@ -165,12 +169,15 @@ class RAGEngine:
                  domains: Optional[Sequence[str]] = None, doc_ids: Optional[Sequence[int]] = None,
                  top_k: Optional[int] = None, buckets: Optional[Sequence[str]] = None) -> RetrievalResult:
         t = time.time()
-        plan = self.planner.plan(question, history)
+        with askctx.stage("plan"):
+            plan = self.planner.plan(question, history)
         plan_time = time.time() - t
+        askctx.check()
         self.check_index_compatibility()
         res = self.retriever.search(plan, domains=domains, doc_ids=doc_ids, top_k=top_k, buckets=buckets,
                                     budget_tokens=int(self.context_tokens() * 0.6))
         res.timings["plan"] = round(plan_time, 3)
+        askctx.check()
         return res
 
     # --------------------------------------------------------------- relations
@@ -399,12 +406,18 @@ class RAGEngine:
         for r in res.parameters:
             registry.add_parameter(r, self.doc_meta(r.doc_id))
 
-        # Figures referenced by top passages go to the (multimodal) model as page images.
+        # Figures referenced by top passages go to the (multimodal) model as page images, or are transcribed by the
+        # vision model first - those transcriptions run side by side (each one is a slow model call).
         images = []
         if self.cfg.vision.enabled:
-            for p in res.passages:
-                if not p.figure_page or len(images) >= MAX_FIGURES:
-                    continue
+            t = time.time()
+            figures = [p for p in res.passages if p.figure_page][:MAX_FIGURES]
+            descs: list = [None] * len(figures)
+            if figures and not self.chat_sees_images:
+                with askctx.stage("figure"), ThreadPoolExecutor(max_workers=len(figures)) as pool:
+                    futs = [askctx.submit(pool, self.describe_page, p.doc_id, p.figure_page) for p in figures]
+                    descs = [f.result() for f in futs]
+            for p, desc in zip(figures, descs):
                 page_text = "\n".join(c.text for c in self.store.page_chunks(p.doc_id, p.figure_page))[:4000]
                 if self.chat_sees_images:
                     png = self.render_page(p.doc_id, p.figure_page)
@@ -413,12 +426,12 @@ class RAGEngine:
                                                    "(page image attached)\n" + page_text, self.doc_meta(p.doc_id),
                                                    evidence_text=page_text, image=True)
                         images.append((src.n, png))
-                else:
-                    desc = self.describe_page(p.doc_id, p.figure_page)
-                    if desc:
-                        registry.add_page(p.doc_id, p.figure_page, p.doc_title,
-                                          f"{desc}\n\nPage text (text layer):\n{page_text}",
-                                          self.doc_meta(p.doc_id), evidence_text=page_text)
+                elif desc:
+                    registry.add_page(p.doc_id, p.figure_page, p.doc_title,
+                                      f"{desc}\n\nPage text (text layer):\n{page_text}",
+                                      self.doc_meta(p.doc_id), evidence_text=page_text)
+            if figures:
+                timings["figures"] = round(time.time() - t, 3)
         images = [(n, png) for n, png in images if png]
         user_src = registry.add_user_input(question if plan.standalone == question
                                            else f"{question}\n{plan.standalone}")
@@ -449,17 +462,21 @@ class RAGEngine:
         t = time.time()
         yield {"type": "status", "stage": "answering"}
         round_no = 0
+        model_calls, tool_calls, tool_time = 0, 0, 0.0
         nudged = not self.cfg.answer.search_before_not_found
         while True:
+            askctx.check()
             use_tools = tools if round_no < max_rounds else None
+            model_calls += 1
             try:
-                for kind, value in self.llm.stream(messages, tools=use_tools, thinking=thinking):
-                    if kind == "content":
-                        yield {"type": "draft", "text": value}
-                    elif kind == "reasoning":
-                        yield {"type": "reasoning", "text": value}
-                    elif kind == "result":
-                        result = value
+                with askctx.stage("answer"):
+                    for kind, value in self.llm.stream(messages, tools=use_tools, thinking=thinking):
+                        if kind == "content":
+                            yield {"type": "draft", "text": value}
+                        elif kind == "reasoning":
+                            yield {"type": "reasoning", "text": value}
+                        elif kind == "result":
+                            result = value
             except ToolsUnsupported:
                 tools = None
                 yield {"type": "status", "stage": "tools_unsupported"}
@@ -470,7 +487,12 @@ class RAGEngine:
                                  "tool_calls": [tc.to_message() for tc in result.tool_calls]})
                 pngs = []
                 for tc in result.tool_calls:
-                    out = executor.run(tc.name, tc.args())
+                    askctx.check()
+                    tt = time.time()
+                    with askctx.stage("tools"):
+                        out = executor.run(tc.name, tc.args())
+                    tool_time += time.time() - tt
+                    tool_calls += 1
                     messages.append({"role": "tool", "tool_call_id": tc.id, "content": out.text})
                     yield {"type": "tool", "name": tc.name, "args": tc.args(), "summary": out.summary}
                     if out.new_sources:
@@ -494,15 +516,25 @@ class RAGEngine:
             break
         draft = (result.content if result else "").strip()
         timings["generate"] = round(time.time() - t, 3)
+        timings["model_calls"] = model_calls
+        if tool_calls:
+            timings["tool_calls"] = tool_calls
+            timings["tools"] = round(tool_time, 3)
 
         # ------------------------------------------------------------ verification
+        askctx.check()
         t = time.time()
+        regen_time = 0.0
         if self.cfg.answer.verify and draft:
             yield {"type": "status", "stage": "verifying"}
         verification, parsed = self._verify(draft, registry)
         if verification.failing and self.cfg.answer.regenerate:
+            askctx.check()
             yield {"type": "status", "stage": "regenerating", "failed": len(verification.failing)}
-            revised = self._regenerate(system, registry, plan, draft, verification, thinking, note)
+            tr = time.time()
+            revised = self._regenerate(system, registry, plan, draft, verification, note)
+            regen_time = time.time() - tr
+            timings["regenerate"] = round(regen_time, 3)
             if revised:
                 known = {(c.text, tuple(c.citations)): (c.judge["verdict"], c.judge["reason"])
                          for c in verification.claims if c.status == SUPPORTED}
@@ -514,12 +546,18 @@ class RAGEngine:
                     draft, verification, parsed = revised, v2, parsed2
         final = self._compose(verification, parsed, draft, lang)
         if self.cfg.answer.verify:
-            timings["verify"] = round(time.time() - t, 3)
+            timings["verify"] = round(time.time() - t - regen_time, 3)
 
+        askctx.check()
         t = time.time()
         self._locate(verification.claims, registry)
         timings["locate"] = round(time.time() - t, 3)
         timings["total"] = round(time.time() - t0, 3)
+        ctx = askctx.current()
+        calls = ctx.summary() if ctx is not None else {}
+        log.info("answer took %.1f s: %s; model calls (count, s, tokens): %s", timings["total"],
+                 {k: v for k, v in timings.items() if k != "total"},
+                 {k: (v["calls"], v["seconds"], v["completion_tokens"]) for k, v in calls.items()})
         cited = {n for c in verification.claims if c.outcome in ("kept", "flagged") for n in c.citations}
         cited.update(int(n) for n in re.findall(r"\[(\d+)\]", final))
         sources = []
@@ -531,7 +569,8 @@ class RAGEngine:
             sources.append(d)
         notice = clarify.text(lang, "conditional", conditions=clarify.kind_labels(lang, unknown)) if unknown else ""
         yield {"type": "final", "answer": final, "verification": verification.summary(), "sources": sources,
-               "timings": timings, "cite_claims": cite_claims(final, verification.claims), "scope": scope.to_dict(),
+               "timings": timings, "calls": calls, "thinking": thinking,
+               "cite_claims": cite_claims(final, verification.claims), "scope": scope.to_dict(),
                "user_input": user_src.n if user_src else None, "notice": notice,
                "merged_question": reply.question if reply else None}
 
@@ -648,11 +687,14 @@ class RAGEngine:
             if not todo:
                 return
             batches = self._judge_batches(todo, registry, batch_size, limit)
-            with ThreadPoolExecutor(max_workers=min(4, len(batches))) as pool:
-                futures = [(b, pool.submit(self._judge_batch, b, registry, items)) for b, items in batches]
+            askctx.check()
+            with askctx.stage("judge"), ThreadPoolExecutor(max_workers=min(4, len(batches))) as pool:
+                futures = [(b, askctx.submit(pool, self._judge_batch, b, registry, items)) for b, items in batches]
                 for batch, fut in futures:
                     try:
                         verdicts = fut.result()
+                    except askctx.Cancelled:
+                        raise
                     except Exception as exc:
                         err = f"judge error: {exc.__class__.__name__}: {scrub(exc, 160)}"
                         v.judge_errors.append(err)
@@ -668,14 +710,19 @@ class RAGEngine:
                         apply_verdict(c, verdict, reason)
 
     def _regenerate(self, system: str, registry: SourceRegistry, plan: QueryPlan, draft: str,
-                    verification: Verification, thinking: bool, scope_note: str = "") -> str:
+                    verification: Verification, scope_note: str = "") -> str:
+        """Rewrite the draft so that the listed problems are fixed. A focused edit, made without thinking (with a
+        reasoning model this step took minutes); the revision is verified again exactly like the draft."""
         sources = "\n\n---\n\n".join(s.prompt_text() for s in registry.items)
         msgs = [{"role": "system", "content": system},  # the same scope rules as the first draft
                 {"role": "user", "content": answer_user_prompt(plan.standalone, sources, [], scope_note)},
                 {"role": "assistant", "content": draft},
                 {"role": "user", "content": REGENERATE_PROMPT.format(problems=verification.problems_text())}]
         try:
-            return self.llm.chat(msgs, thinking=thinking).content.strip()
+            with askctx.stage("regenerate"):
+                return self.llm.chat(msgs, thinking=False).content.strip()
+        except askctx.Cancelled:
+            raise
         except Exception:
             return ""
 

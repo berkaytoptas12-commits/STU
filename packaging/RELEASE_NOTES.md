@@ -1,5 +1,34 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.8.0 — durdur, bildirim, süre dökümü ve hızlandırmalar
+- **Durdur:** model düşünürken veya cevap yazarken gönder düğmesinin yerinde kırmızı **Durdur** düğmesi ve geçen
+  süre görünür. Durdur yalnızca ekranı değil, modele giden isteği de keser; sunucu o cevap için token üretmeyi
+  bırakır, kuyruktaki diğer işler beklemez. Yarım kalan taslak doğrulanmadığı için cevap olarak gösterilmez.
+  "Yeni sohbet" de süren cevabı aynı şekilde durdurur. Pencereyi kapatmak (gizlemek) cevabı durdurmaz; cevap
+  arka planda tamamlanır ve bildirim gelir.
+- **Cevap hazır bildirimi:** pencere küçültülmüş, çip simgesinin arkasına gizlenmiş veya başka programların
+  arkasındayken cevap ya da netleştirme sorusu hazır olunca Windows bildirimi çıkar (başlık: "Cevap hazır",
+  "Cevap hazır: kaynaklarda bulunamadı", "Netleştirme sorusu var" veya hata; metin: sorulan soru). Bildirime
+  tıklamak sohbeti açar. Küçültülmüş pencerenin görev çubuğu düğmesi de yanıp söner. Pencere öndeyken bildirim
+  çıkmaz; Windows'un odak yardımı / sessiz saatleri geçerlidir. Ayarlar'dan kapatılabilir.
+- **Süre dökümü:** her cevabın altındaki "Süre: …" düğmesi sürenin nereye gittiğini gösterir: soru çözümleme,
+  arama, şekil sayfaları, cevap yazma (model çağrısı sayısı, düşünme, araç çağrılarının payı), doğrulama,
+  düzeltme, kanıt konumu; her aşamanın model çağrıları için üretilen token (düşünme kısmı ayrı), token/sn ve ilk
+  token'a kadar bekleme. Sunucu token sayısını bildirmiyorsa metin uzunluğundan tahmin edilir (≈). Döküm günlüğe
+  de yazılır. 15 dakika süren bir cevabın hangi aşamada beklediğini buradan görüp ona göre ayar yapabilirsiniz.
+- **Hızlandırmalar (doğrulama gevşetilmedi):**
+  - Hatalı ifadeleri düzeltme turu artık düşünmeden çalışır (sorunlar zaten tek tek listeleniyor; düzeltilen
+    cevap ilk taslak gibi yeniden doğrulanır). Düşünme açıkken bu adım tek başına dakikalar sürebiliyordu.
+  - Görsel model açıkken şekil sayfası dökümleri sırayla ve sınırsız yapılıyordu (bulunan parçalar arasında
+    şekil sayfası olan her sayfa için ayrı, uzun bir model çağrısı). Artık amaçlandığı gibi en fazla 2 sayfa ve
+    aynı anda; dökümler önbelleğe alındığı için sonraki sorularda tekrar yapılmaz.
+  - Gelişmiş ayarlara **en fazla araç turu** eklendi (varsayılan 4; her tur ayrı bir model çağrısı).
+- Yeniden indeksleme gerekmez. Ayarlar, API anahtarları ve kütüphane aynen kullanılır.
+- Doğrulanan: birim/arayüz testleri (durdurmanın modele giden isteği akış ortasında kapattığı, durdurulan
+  cevabın doğrulanmadığı ve bildirilmediği, süre dökümü, bildirimin yalnızca pencere görünmezken çıktığı),
+  Windows'ta gerçek bildirim ve tıklama testi ve GUI smoke testi. Gerçek model sunucusunda hızın ne kadar arttığı
+  ölçülmedi; bu, sürenin sizde hangi aşamada geçtiğine bağlıdır (döküme bakın).
+
 ### 0.7.3 — değerlendirmede soru soru cevaplar, yeni örnek set
 - **Sorular ve cevaplar:** Değerlendirme penceresinde her raporun altında her soru bir satır: sonuç (doğru,
   yanlış, cevap yok, netleştirme sordu, bulunamadı dedi, hata). Açınca beklenen değer, belge, sayfa ve kontrol

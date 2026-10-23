@@ -75,6 +75,7 @@
       <form class="composer" id="composer">
         <textarea id="question" rows="2" required></textarea>
         <button type="submit" id="btn-send" data-i18n="ask"></button>
+        <button type="button" id="btn-stop" class="btn-stop" data-i18n="stop" data-i18n-title="stopTitle" hidden></button>
       </form>
     </section>
 
@@ -107,6 +108,7 @@
         <label><span data-i18n="failedClaims"></span>
           <select id="set-failed"><option value="strip" data-i18n="strip"></option><option value="flag" data-i18n="flag"></option></select></label>
         <label><input type="checkbox" id="set-vision-enabled"> <span data-i18n="visionEnabled"></span></label>
+        <label><input type="checkbox" id="set-notify"> <span data-i18n="notifySetting"></span></label>
       </fieldset>
       <fieldset id="adv-box">
         <legend data-i18n="advanced"></legend>
@@ -117,6 +119,8 @@
           <input type="number" id="set-judge-batch" min="1" max="32" step="1"></label>
         <label><input type="checkbox" id="set-repair-cites"> <span data-i18n="advRepair"></span></label>
         <label><input type="checkbox" id="set-search-more"> <span data-i18n="advSearchMore"></span></label>
+        <label><span data-i18n="advToolRounds"></span>
+          <input type="number" id="set-tool-rounds" min="0" max="10" step="1"></label>
         <label><span data-i18n="advRefs"></span>
           <input type="number" id="set-follow-refs" min="0" max="10" step="1"></label>
         <label><span data-i18n="advPageScore"></span>
@@ -255,6 +259,7 @@
       <details class="reasoning" hidden><summary data-i18n="reasoning"></summary><pre></pre></details>
       <ul class="tool-log small" hidden></ul>
       <div class="status small"></div>
+      <div class="elapsed small muted" hidden></div>
       <div class="body markdown"></div>
       <div class="verify" hidden></div>
       <div class="cites"></div>
@@ -263,8 +268,9 @@
         <button class="ghost small icon btn-fb-up" data-i18n-title="fbUp">👍</button>
         <button class="ghost small icon btn-fb-down" data-i18n-title="fbDown">👎</button>
         <span class="small muted fb-state"></span>
-        <span class="muted small timing"></span>
+        <button type="button" class="ghost small timing" hidden></button>
       </div>
+      <div class="timing-detail small" hidden></div>
     </div>
   </template>
 

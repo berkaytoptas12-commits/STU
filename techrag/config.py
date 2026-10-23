@@ -234,6 +234,8 @@ class TLSConfig:
 @dataclass
 class UIConfig:
     language: str = "tr"            # tr | en
+    notify: bool = True             # desktop: a Windows notification when an answer is ready while the window is
+                                    # minimized, hidden or behind other windows
 
 
 @dataclass

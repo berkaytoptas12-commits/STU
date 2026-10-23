@@ -96,6 +96,13 @@ class FakeLauncher:
     def set_companion(self, hwnd):
         pass
 
+    def notify(self, title, body):
+        self.calls.append(("notify", title, body))
+        return True
+
+    def clear_notification(self):   # the real one does nothing without a notification
+        self.cleared = getattr(self, "cleared", 0) + 1
+
     # what the user does with the icon (the real one calls on_click = DesktopApp.toggle_chat)
     def click(self):
         self.desk.toggle_chat()
@@ -279,6 +286,43 @@ def test_page_learns_which_part_the_icon_covers(gui):
         icon.menu(L.IDM_QUIT)
 
     assert _run(gui, scenario) == 0
+
+
+def test_answer_ready_notifies_only_when_the_chat_is_out_of_view(gui):
+    """A finished answer: a Windows notification when the chat is hidden (behind the icon), minimized or behind other
+    windows - never while it is in front; off in Settings means off. Opening the chat removes the notification."""
+    def scenario(w, icon, desk):
+        desk.double_click = 0.0
+        front = {"value": True}
+        desk.front = lambda: front["value"]
+        info = {"kind": "final", "question": "DDR5 tRFC değeri nedir?", "status": "supported"}
+
+        def notes():
+            assert desk.idle()
+            return [c for c in icon.calls if isinstance(c, tuple) and c[0] == "notify"]
+
+        desk.answer_ready(info)                        # hidden at start
+        assert len(notes()) == 1 and notes()[0][1] == "Cevap hazır" and "DDR5 tRFC" in notes()[0][2]
+        icon.click()                                   # the user opens the chat
+        assert desk.idle() and w.visible and getattr(icon, "cleared", 0) >= 1
+        desk.answer_ready(info)                        # in front: the user sees it
+        assert len(notes()) == 1
+        front["value"] = False                         # minimized or behind another program
+        desk.answer_ready(dict(info, kind="clarify"))
+        assert len(notes()) == 2 and notes()[1][1] == "Netleştirme sorusu var"
+        desk.notify_enabled = lambda: False            # Settings: off
+        desk.answer_ready(info)
+        assert len(notes()) == 2 and desk.stats["notified"] == 2
+        icon.menu(L.IDM_QUIT)
+
+    assert _run(gui, scenario) == 0
+
+
+def test_answer_note_texts():
+    title, body = L.answer_note("tr", {"kind": "final", "status": "not_found", "question": "  çok   uzun " * 40})
+    assert title == "Cevap hazır: kaynaklarda bulunamadı" and len(body.split("\n")[0]) <= 160
+    assert body.endswith("Sohbeti açmak için tıklayın.")
+    assert L.answer_note("en", {"kind": "error", "question": "x"})[0] == "No answer (error)"
 
 
 def test_double_click_opens_and_keeps_the_window_open(gui):

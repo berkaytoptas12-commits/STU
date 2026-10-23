@@ -28,6 +28,17 @@ const I18N = {
     stRegenerating: "{0} ifade doğrulanamadı, düzeltiliyor…", stNoTools: "Sunucu araç çağrısını desteklemiyor; araçsız devam ediliyor.",
     scopeEntity: "kapsam: {0} (soruda geçen standart)", scopeUser: "kapsam: seçili bucket / dokümanlar", scopeDomain: "koleksiyon: {0}", scopeAll: "kapsam: tüm kütüphane",
     thinkingOn: "düşünme açık", searchAs: "arama",
+    stop: "Durdur", stopTitle: "Cevabı durdur (modele giden istek de kesilir)", stopping: "Durduruluyor…",
+    stoppedNote: "Durduruldu. Taslak doğrulanmadığı için cevap olarak kullanılmaz.", elapsed: "Geçen süre: {0}",
+    durSec: "{0} sn", durMin: "{0} dk {1} sn", timingShow: "Süre: {0}", timingTitle: "Sürenin nereye gittiğini göster",
+    tPlan: "Soru çözümleme (planlayıcı)", tSearch: "Arama (anahtar kelime, anlamsal, yeniden sıralama)",
+    tFigures: "Şekil sayfaları (görsel model)", tGenerate: "Cevap yazma ({0} model çağrısı)", tGenerateThink: "Cevap yazma ({0} model çağrısı, düşünme açık)",
+    tTools: "— bunun {0} araç çağrısı", tVerify: "Doğrulama (bağımsız denetçi)", tRegenerate: "Hatalı ifadeleri düzeltme",
+    tLocate: "Kanıt konumu", tTotal: "Toplam", tCalls: "Model çağrıları",
+    cStage_plan: "planlayıcı", cStage_answer: "cevap", cStage_judge: "denetçi", cStage_regenerate: "düzeltme", cStage_figure: "görsel model", cStage_tools: "araçlar", cStage_other: "diğer",
+    cLine: "{0}: {1} çağrı, {2} — {3} token{4}{5}{6}", cThink: " (düşünme {0})", cSpeed: ", {0} token/sn", cFirst: ", ilk token en geç {0}",
+    notifySetting: "Pencere küçültülmüş, gizli veya arkadayken cevap hazır olunca Windows bildirimi göster",
+    advToolRounds: "En fazla araç turu (her tur ayrı bir model çağrısı; az tur daha hızlı)",
     vSupported: "✓ Cevaptaki {0} ifadenin tamamı kaynaklarla doğrulandı (sayı/atıf kontrolü ve bağımsız denetçi).",
     vCorrected: "✓ Kalan {0} ifade doğrulandı; doğrulanamayan {1} ifade cevaptan çıkarıldı.",
     vWarning: "⚠ {0} ifade doğrulanamadı (⚠ ile işaretli) — kesin bilgi değildir, orijinal sayfadan kontrol edin.",
@@ -228,6 +239,17 @@ const I18N = {
     stRegenerating: "{0} statement(s) failed verification, correcting…", stNoTools: "The server does not support tool calls; continuing without tools.",
     scopeEntity: "scope: {0} (named in the question)", scopeUser: "scope: selected buckets / documents", scopeDomain: "collection: {0}", scopeAll: "scope: whole library",
     thinkingOn: "thinking on", searchAs: "search",
+    stop: "Stop", stopTitle: "Stop the answer (the request to the model is cancelled too)", stopping: "Stopping…",
+    stoppedNote: "Stopped. The draft was not verified and is not used as an answer.", elapsed: "Elapsed: {0}",
+    durSec: "{0} s", durMin: "{0} min {1} s", timingShow: "Time: {0}", timingTitle: "Show where the time went",
+    tPlan: "Question analysis (planner)", tSearch: "Search (keyword, semantic, reranking)",
+    tFigures: "Figure pages (vision model)", tGenerate: "Writing the answer ({0} model calls)", tGenerateThink: "Writing the answer ({0} model calls, thinking on)",
+    tTools: "— of which {0} tool calls", tVerify: "Verification (independent judge)", tRegenerate: "Correcting failed statements",
+    tLocate: "Evidence location", tTotal: "Total", tCalls: "Model calls",
+    cStage_plan: "planner", cStage_answer: "answer", cStage_judge: "judge", cStage_regenerate: "correction", cStage_figure: "vision model", cStage_tools: "tools", cStage_other: "other",
+    cLine: "{0}: {1} calls, {2} — {3} tokens{4}{5}{6}", cThink: " (thinking {0})", cSpeed: ", {0} tokens/s", cFirst: ", first token at most {0}",
+    notifySetting: "Show a Windows notification when an answer is ready while the window is minimized, hidden or behind",
+    advToolRounds: "Maximum tool rounds (each round is a separate model call; fewer rounds are faster)",
     vSupported: "✓ All {0} statements of the answer were verified against the sources (number/citation check and independent judge).",
     vCorrected: "✓ The remaining {0} statements were verified; {1} unverifiable statement(s) were removed.",
     vWarning: "⚠ {0} statement(s) could not be verified (marked ⚠) — not established facts; check the original page.",
@@ -1110,6 +1132,45 @@ function renderVerification(el, v, confidence) {
   box.innerHTML = html;
 }
 
+function fmtDuration(sec) {
+  if (sec == null || !Number.isFinite(sec)) return "";
+  if (sec < 60) return t("durSec", sec < 10 ? sec.toFixed(1) : Math.round(sec));
+  const m = Math.floor(sec / 60);
+  return t("durMin", m, Math.round(sec - m * 60));
+}
+const fmtInt = (n) => Number(n || 0).toLocaleString(LANG === "tr" ? "tr-TR" : "en-US");
+
+// Where an answer's time went: the stages in order, then the model calls of each stage (tokens, speed, wait for
+// the first token). Counts marked ≈ are estimated from the text (the server reported no token usage).
+function timingDetailHtml(ev) {
+  const tm = ev.timings || {};
+  const search = ["bm25", "dense", "rerank"].reduce((a, k) => a + (tm[k] || 0), 0);
+  const rows = [
+    [t("tPlan"), tm.plan],
+    [t("tSearch"), search || null],
+    [t("tFigures"), tm.figures],
+    [t(ev.thinking ? "tGenerateThink" : "tGenerate", tm.model_calls || 1), tm.generate],
+    [tm.tool_calls ? t("tTools", tm.tool_calls) : "", tm.tool_calls ? tm.tools : null],
+    [t("tVerify"), tm.verify],
+    [t("tRegenerate"), tm.regenerate],
+    [t("tLocate"), tm.locate],
+  ].filter(([label, v]) => label && v != null);
+  let html = `<table>${rows.map(([label, v]) => `<tr><td>${esc(label)}</td><td class="num">${esc(fmtDuration(v))}</td></tr>`).join("")}`;
+  html += `<tr><td><b>${esc(t("tTotal"))}</b></td><td class="num"><b>${esc(fmtDuration(tm.total))}</b></td></tr></table>`;
+  const calls = ev.calls || {};
+  const order = ["plan", "figure", "answer", "tools", "judge", "regenerate", "other"];
+  const lines = Object.keys(calls).sort((a, b) => order.indexOf(a) - order.indexOf(b)).map((k) => {
+    const c = calls[k];
+    const approx = c.estimated ? "≈" : "";
+    return t("cLine", t("cStage_" + k) || k, c.calls, fmtDuration(c.seconds), approx + fmtInt(c.completion_tokens),
+      c.reasoning_tokens ? t("cThink", approx + fmtInt(c.reasoning_tokens)) : "",
+      c.tokens_per_second ? t("cSpeed", c.tokens_per_second) : "",
+      c.first_token_max ? t("cFirst", fmtDuration(c.first_token_max)) : "");
+  });
+  if (lines.length) html += `<div class="calls">${esc(t("tCalls"))}:<br>${lines.map(esc).join("<br>")}</div>`;
+  return html;
+}
+
 function stageText(ev) {
   return { planning: t("stPlanning"), answering: t("stAnswering"), verifying: t("stVerifying"),
     regenerating: t("stRegenerating", ev.failed || ""), tools_unsupported: t("stNoTools"),
@@ -1194,6 +1255,7 @@ function renderClarify(el, body, clar) {
 
 function newChat(note) {
   state.chatId++;  // events of an answer still streaming no longer touch the new chat
+  if (state.stopAsk) state.stopAsk();  // the model stops working on it too
   if (state.abort) state.abort.abort();
   state.history = [];
   setPending(null);
@@ -1212,6 +1274,11 @@ async function ask(question, reply) {
   setPending(null);
   let asked = question;
   $("#btn-send").disabled = true;
+  $("#btn-send").hidden = true;
+  const stopBtn = $("#btn-stop");
+  stopBtn.hidden = false;
+  stopBtn.disabled = true;   // until the server says which answer this is
+  stopBtn.textContent = t("stop");
   const empty = $("#empty-state");
   if (empty) empty.remove();
   const u = document.createElement("div");
@@ -1247,9 +1314,32 @@ async function ask(question, reply) {
     });
   };
   scrollDown();
+  const elapsed = $(".elapsed", el);
+  const started = Date.now();
+  const tick = () => { elapsed.hidden = false; elapsed.textContent = t("elapsed", fmtDuration((Date.now() - started) / 1000)); };
+  const timer = setInterval(tick, 1000);
+  let askId = null;
+  const stop = () => {
+    if (!askId) return;
+    stopBtn.disabled = true;
+    stopBtn.textContent = t("stopping");
+    postJSON(`/api/ask/${askId}/stop`, {}).catch(() => {});
+  };
+  stopBtn.onclick = stop;
+  state.stopAsk = stop;
 
   const handle = (ev) => {
     switch (ev.type) {
+      case "started": askId = ev.id; stopBtn.disabled = false; break;
+      case "cancelled": {
+        el._final = true;
+        status.textContent = "";
+        const n = document.createElement("div");
+        n.className = "notice stopped";
+        n.textContent = t("stoppedNote");
+        body.prepend(n);
+        break;
+      }
       case "status": status.textContent = stageText(ev); break;
       case "plan": {
         const s = ev.scope || {};
@@ -1305,7 +1395,17 @@ async function ask(question, reply) {
         }
         const acts = $(".msg-actions", el);
         acts.hidden = false;
-        $(".timing", acts).textContent = ev.timings && ev.timings.total ? `${ev.timings.total.toFixed(1)} s` : "";
+        if (ev.timings && ev.timings.total) {
+          const tb = $(".timing", acts);
+          const detail = $(".timing-detail", el);
+          tb.hidden = false;
+          tb.textContent = t("timingShow", fmtDuration(ev.timings.total));
+          tb.title = t("timingTitle");
+          tb.addEventListener("click", () => {
+            if (detail.hidden) detail.innerHTML = timingDetailHtml(ev);
+            detail.hidden = !detail.hidden;
+          });
+        }
         $(".btn-copy", acts).addEventListener("click", (e) => {
           const refs = el._sources.filter((s) => s.cited).map((s) => `[${s.n}] ${s.doc_title} — ${s.section} — p.${s.page_start}`).join("\n");
           navigator.clipboard && navigator.clipboard.writeText(`${text}\n\n${refs}`);
@@ -1350,8 +1450,14 @@ async function ask(question, reply) {
     status.textContent = "";
     body.innerHTML = `<div class="verify warning">${t("errorPrefix")}: ${esc(e.message)}</div>`;
   } finally {
+    clearInterval(timer);
+    elapsed.hidden = true;
     if (state.abort === ctrl) state.abort = null;
+    if (state.stopAsk === stop) state.stopAsk = null;
     state.busy = false;
+    stopBtn.hidden = true;
+    stopBtn.onclick = null;
+    $("#btn-send").hidden = false;
     $("#btn-send").disabled = false;
     scrollDown();
   }
@@ -1968,6 +2074,8 @@ async function openSettings() {
   $("#set-regenerate").checked = SETTINGS.answer.regenerate;
   $("#set-failed").value = SETTINGS.answer.failed_claims;
   $("#set-vision-enabled").checked = SETTINGS.vision.enabled;
+  $("#set-notify").checked = !SETTINGS.ui || SETTINGS.ui.notify !== false;
+  $("#set-tool-rounds").value = SETTINGS.llm.max_tool_rounds ?? 4;
   $("#set-context").value = SETTINGS.llm.context_tokens;
   $("#set-judge-batch").value = SETTINGS.answer.judge_batch;
   $("#set-repair-cites").checked = SETTINGS.answer.repair_citations !== false;
@@ -2001,7 +2109,8 @@ async function saveSettings(e) {
   Object.assign(patch.llm, { thinking: $("#set-thinking").value, thinking_control: $("#set-thinking-control").value, tools: $("#set-tools").value });
   patch.vision = Object.assign(patch.vision || {}, { enabled: $("#set-vision-enabled").checked });
   const num = (id, int) => { const v = int ? parseInt($(id).value, 10) : parseFloat($(id).value); return Number.isFinite(v) ? v : undefined; };
-  const adv = { llm: { context_tokens: num("#set-context", true) }, answer: { judge_batch: num("#set-judge-batch", true),
+  patch.ui = { notify: $("#set-notify").checked };
+  const adv = { llm: { context_tokens: num("#set-context", true), max_tool_rounds: num("#set-tool-rounds", true) }, answer: { judge_batch: num("#set-judge-batch", true),
     repair_citations: $("#set-repair-cites").checked, search_before_not_found: $("#set-search-more").checked }, retrieval: { follow_references: num("#set-follow-refs", true) },
     vision: { min_page_score: num("#set-page-score"), max_pages_per_doc: num("#set-max-pages", true) } };
   for (const [sec, vals] of Object.entries(adv)) {

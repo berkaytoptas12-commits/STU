@@ -13,6 +13,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Callable, Optional
 
+from techrag.askctx import Cancelled
 from techrag.ingest.chunker import estimate_tokens
 from techrag.query import QueryPlan
 from techrag.retrieval import Passage, Retriever, Scope
@@ -445,6 +446,8 @@ class ToolExecutor:
             return fn(**{k: v for k, v in args.items() if v not in (None, "")})
         except TypeError as exc:
             return ToolOutput(f"Invalid arguments for {name}: {exc}", summary="invalid arguments")
+        except Cancelled:
+            raise
         except Exception as exc:
             return ToolOutput(f"Tool {name} failed: {exc}", summary=f"error: {exc}")
 

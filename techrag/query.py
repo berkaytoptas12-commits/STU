@@ -10,6 +10,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Optional, Sequence
 
+from techrag.askctx import Cancelled
 from techrag.clarify import COMPAT_KINDS, is_compatibility
 from techrag.domains import DomainRegistry
 from techrag.llm import LLMClient, parse_json_object
@@ -146,6 +147,8 @@ class QueryPlanner:
         if self.use_llm:
             try:
                 self._llm_rewrite(plan, history)
+            except Cancelled:
+                raise
             except Exception as exc:  # planning is an optimisation; never fail the question because of it
                 self.last_error = f"{exc.__class__.__name__}: {exc}"
         if not plan.rewritten_by_llm:
