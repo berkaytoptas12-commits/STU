@@ -59,12 +59,19 @@ def test_search_endpoint(client):
 
 def test_settings_roundtrip_masks_keys(client, tmp_path):
     s = client.get("/api/settings").json()
-    assert set(s) >= {"llm", "vision", "embedding", "reranker", "ui"}
-    r = client.put("/api/settings", json={"llm": {"api_key": "secret-1", "thinking": "on"}, "ui": {"language": "en"}}).json()
-    assert r["settings"]["llm"]["api_key"] == MASK and r["settings"]["llm"]["thinking"] == "on"
-    assert load_user_settings()["llm"]["api_key"] == "secret-1"
-    client.put("/api/settings", json={"llm": {"api_key": MASK}})
-    assert load_user_settings()["llm"]["api_key"] == "secret-1", "masked value keeps the stored key"
+    assert set(s) >= {"auth", "llm", "vision", "embedding", "reranker", "ui"}
+    assert all("api_key" not in s[svc] for svc in ("llm", "vision", "embedding", "reranker")), "no key per service"
+    r = client.put("/api/settings", json={"auth": {"api_key": "secret-1"}, "llm": {"thinking": "on"},
+                                          "ui": {"language": "en"}}).json()
+    assert r["settings"]["auth"]["api_key"] == MASK and r["settings"]["llm"]["thinking"] == "on"
+    assert load_user_settings()["auth"]["api_key"] == "secret-1"
+    c = client.app.state.state["cfg"]
+    assert c.llm.api_key == c.vision.api_key == c.embedding.api_key == c.reranker.api_key == "secret-1", \
+        "every model server gets the one shared key"
+    client.put("/api/settings", json={"auth": {"api_key": MASK}, "llm": {"api_key": "per-service"}})
+    assert load_user_settings()["auth"]["api_key"] == "secret-1", "masked value keeps the stored key"
+    assert "api_key" not in load_user_settings().get("llm", {}), "a key for one service is not taken"
+    assert client.app.state.state["cfg"].llm.api_key == "secret-1"
     assert client.put("/api/settings", json={"retrieval": {"final_top_k": "abc"}}).status_code == 400
 
 
@@ -257,13 +264,19 @@ def test_stored_key_only_goes_to_its_own_server(client, monkeypatch):
 
     monkeypatch.setattr(server, "APIClient", Capture)
     c = client.app.state.state["cfg"]
-    c.llm.base_url, c.llm.api_key = "http://llm.local:8000/v1", "stored-secret"
-    c.vision.base_url, c.vision.api_key = "", ""        # vision uses the chat model's server and key
+    c.llm.base_url, c.auth.api_key = "http://llm.local:8000/v1", "stored-secret"
+    c.vision.base_url = ""                               # vision uses the chat model's server
+    c.embedding.base_url = "http://emb.local:8001/v1"
+    c.share_api_key(adopt_legacy=False)
     client.post("/api/settings/models", json={"service": "llm", "base_url": "http://llm.local:8000/v1", "api_key": MASK})
     client.post("/api/settings/models", json={"service": "llm", "base_url": "http://evil.example:9/v1", "api_key": MASK})
-    client.post("/api/settings/models", json={"service": "vision", "base_url": "http://llm.local:8000/v1", "api_key": ""})
+    client.post("/api/settings/models", json={"service": "vision", "base_url": "http://llm.local:8000/v1", "api_key": MASK})
+    client.post("/api/settings/models", json={"service": "reranker", "base_url": "http://emb.local:8001/v1",
+                                              "api_key": MASK})
+    client.post("/api/settings/models", json={"service": "llm", "base_url": "http://other:9/v1", "api_key": "typed"})
     assert seen == [("http://llm.local:8000/v1", "stored-secret"), ("http://evil.example:9/v1", ""),
-                    ("http://llm.local:8000/v1", "stored-secret")]
+                    ("http://llm.local:8000/v1", "stored-secret"), ("http://emb.local:8001/v1", "stored-secret"),
+                    ("http://other:9/v1", "typed")], "the shared key goes only to the configured model servers"
 
 
 def test_document_files_are_only_document_types(client, engine, tmp_path, monkeypatch):

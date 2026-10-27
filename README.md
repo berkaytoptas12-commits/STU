@@ -129,8 +129,10 @@ Sunucu araç çağrısını desteklemiyorsa uygulama bunu fark eder ve araçsız
 
 ### 2.3 İlk açılış: Ayarlar
 
-**Ayarlar** penceresinde her servis için **API adresi** (`http://sunucu:8000/v1`), **API anahtarı** ve
-**Model** girilir. Model listesi sunucunun `/v1/models` ucundan **otomatik çekilir** ve açılır listede gösterilir;
+**Ayarlar** penceresinin üstünde **tek bir ortak API anahtarı** girilir: sohbet (vLLM), görsel model,
+embedding ve reranker sunucularının hepsine bu anahtar gönderilir; servis başına ayrı anahtar yoktur. Her servis için
+yalnızca **API adresi** (`http://sunucu:8000/v1`) ve **Model** girilir. Eski bir sürümde servis başına girilmiş
+anahtarlar ilk kayıtta ortak anahtara taşınır (sohbet modelininki esas alınır; şifreli hâliyle taşınır). Model listesi sunucunun `/v1/models` ucundan **otomatik çekilir** ve açılır listede gösterilir;
 **Test et** düğmesi bağlantıyı ve modeli dener (embedding boyutu, rerank skoru, LLM cevabı).
 
 * Görsel model: "Sohbet modeliyle aynı" (çok kipli Qwen: şekil sayfaları cevap modeline görüntü olarak gider)
@@ -174,7 +176,7 @@ Teknik_Belgeler\                    <- seçilen ana klasör
 └── Genel_Not.pdf                                          -> "Genel (ana klasör)"
 ```
 
-1. Sol panelde **Belge klasörü ekle** → Windows klasör seçme penceresinde ana klasörü seçin.
+1. **Admin › Ortak kütüphane › Belge klasörü ekle** → Windows klasör seçme penceresinde ana klasörü seçin.
 2. Önizleme penceresi bulunan **bucket'ları ve belge sayılarını**, atlanacak desteklenmeyen dosyaları, boş
    klasörleri, izlenmeyen bağlantıları ve okunamayan öğeleri gösterir (bu aşamada hiçbir şey indekslenmez).
 3. **İndeksle** → tüm koleksiyon arka planda işlenir; panelde ilerleme (bucket, dosya, tamamlanan/toplam,
@@ -193,7 +195,7 @@ Kurallar:
 
 ### 3.2 Yeniden tara
 
-Sol paneldeki **⟳ (Yeniden tara)** önce neyin değiştiğini gösterir, onaydan sonra uygular:
+**Admin › Ortak kütüphane › Yeniden tara** önce neyin değiştiğini gösterir, onaydan sonra uygular:
 
 | Durum | Ne yapılır | API maliyeti |
 |---|---|---|
@@ -211,7 +213,8 @@ bekleme (`max_retries`, `max_retry_wait`). Eşzamanlılık sınırlıdır (`embe
 
 ### 3.3 İndeksleme kalite raporu
 
-Sol paneldeki **📋** düğmesi (veya indeksleme bittiğinde iş kutusundaki "Kalite raporu") raporu açar. Rapor
+**Admin › Ortak kütüphane › İndeksleme kalite raporu** (veya indeksleme bittiğinde iş kutusundaki "Kalite raporu")
+raporu açar. Rapor
 indekste kalıcıdır (yeniden açılışta kaybolmaz) ve **indekslemenin ne yaptığını** anlatır; cevap doğruluğu ölçüsü
 değildir.
 
@@ -262,8 +265,8 @@ işlenmez (mevcut tablolar korunur), yeni/değişen belgelere ve yeniden indeksl
 └── cache\vlm\        (VLM ve meta veri sonuçları; aynı sayfa ikinci kez ücretlendirilmez)
 ```
 
-* Varsayılan konum `%USERPROFILE%\SayisalTasarimUzmani\library`; **Kütüphane** penceresinden değiştirilir.
-* **Doküman ekle** (sol panelin altında): koleksiyon adı + dosyalar → `sources\<koleksiyon>` içine kopyalanır ve
+* Varsayılan konum `%USERPROFILE%\SayisalTasarimUzmani\library`; **Admin › Ortak kütüphane** sekmesinden değiştirilir.
+* **Doküman ekle** (Admin › Ortak kütüphane): koleksiyon adı + dosyalar → `sources\<koleksiyon>` içine kopyalanır ve
   indekslenir. Aynı adlı farklı bir dosya varsa `Ad (2).pdf` olarak kaydedilir.
 * Dosya adına standart ve sürümü yazmak etiketlemeyi kesinleştirir (`JESD79-5B_DDR5.pdf`, `PCIe_Base_5.0.pdf`).
   Errata/ECN dosyalarının adında "Errata"/"ECN" geçsin.
@@ -279,7 +282,7 @@ kütüphanede rapor "mevcut değil" der.
 
 **Eski sürümle indekslenmiş kütüphane (0.1.x):** açılışta şema yerinde güncellenir; eski sürümün sayfa
 düzeyi kontrolle "doğrulanmış" saydığı parametre satırları ve VLM tabloları güvenilmez kabul edilir (cevapta
-kullanılmaz). Arayüzde uyarı çıkar. **Kütüphane → "Konum verisini oluştur (hızlı geçiş)"** (veya
+kullanılmaz). Arayüzde uyarı çıkar. **Admin › Ortak kütüphane → "Konum verisini oluştur (hızlı geçiş)"** (veya
 `SayisalTasarimUzmani.exe migrate`) kaynak PDF'lerden sayfa geometrisini çıkarır ve önbellekteki VLM tablolarını hücre
 düzeyinde yeniden doğrular — **yeniden embedding ve VLM çağrısı yapmaz**. Eski sürüm, doğrulanan VLM tablosunun
 orijinal PDF metnini indekse koymuyordu; hücre düzeyinde doğrulanamayan bu tür tablolar için geçiş raporu tam
@@ -287,12 +290,46 @@ yeniden indeksleme önerir (`ingest --rebuild`: VLM sonuçları önbellekten gel
 hesaplanır). Salt-okunur paylaşılan kütüphaneler yerinde güncellenemez: hazırlayan kişi geçişi yapıp yeniden
 yayımlamalıdır.
 
-**Paylaşım:** kütüphaneyi hazırlayan kişi **Kütüphane → Yayımla** ile temiz bir kopya üretir (tek dosya
+**Paylaşım:** kütüphaneyi hazırlayan kişi **Admin › Ortak kütüphane → Yayımla** ile temiz bir kopya üretir (tek dosya
 indeks + kaynaklar + VLM önbelleği). Belge klasörlerinden okunan dosyalar pakete **açıkça kopyalanır**
 (`sources\<bucket>\<alt yol>\...`) ve kopyadaki indeks bunları gösterir; böylece paket başka bilgisayarda da
 çalışır. Kaynak dosyalar yalnızca okunur. Diğer kullanıcılar bu klasörü (ağ paylaşımı dahil, `\\sunucu\paylaşım\...`)
 **salt-okunur** açar: kilit kullanmaz, ağ paylaşımında güvenlidir. Güncellemeyi yeni bir klasöre yayımlayıp
 kullanıcıların onu açması önerilir (açıkken üzerine yazmayın).
+
+### 3.5 Kişisel dosyalar
+
+Sol paneldeki **Kişisel** bölümü her kullanıcının kendi dosyaları içindir; ortak kütüphaneye hiçbir şey yazmaz,
+ortak kütüphane salt-okunur açılmış olsa da çalışır.
+
+* **Dosya seç…** ile bilgisayarınızdan dosya seçersiniz. Dosyalar **kişisel klasörünüze kopyalanır** (varsayılan
+  `%USERPROFILE%\SayisalTasarimUzmani\Kisisel`; "değiştir" ile istediğiniz klasörü seçin) ve o klasörün içindeki
+  ayrı bir kişisel indekste (`<kişisel klasör>\_indeks`) indekslenir. Doğrudan klasördeki dosyalar **Kişisel**
+  bucket'ında, klasöre elle açtığınız alt klasörler kendi kişisel bucket'larında görünür; klasöre elle
+  kopyaladığınız veya sildiğiniz dosyalar **⟳** ile işlenir.
+* Soru sorulunca ortak ve kişisel kütüphane **birlikte** aranır; bir kişisel bucket'ı işaretleyip aramayı yalnızca
+  ona sınırlayabilirsiniz. Kaynak, PDF görüntüsü ve kanıt vurgusu kişisel belgelerde de aynı şekilde çalışır.
+* Kişisel indeks aynı embedding modelini kullanır. Başka bir klasöre geçmek başka bir kişisel kütüphaneye geçmektir
+  (eski klasör ve indeksi olduğu gibi kalır).
+
+### 3.6 Admin
+
+Üst çubuktaki **Admin** düğmesi herkese açık bir pencere açar (yetki kontrolü yok; normal bir sorunun gerektirmediği
+her şey burada toplanır):
+
+* **Ortak kütüphane:** ortak dosyaların nereden geldiği (kütüphane klasörü, eklenen belge klasörleri ve belge
+  sayıları, bucket'lar), belge klasörü ekleme, yeniden tarama, kalite raporu, kütüphane açma/yayımlama.
+* **Düşünme ve aramalar:** bu oturumdaki sorular; her birinin altında açılır-kapanır **Düşünme** (modelin düşünme
+  metni) ve **Aranan belgeler** (araç çağrıları ve modele verilen kaynaklar, atıf yapılanlar işaretli).
+* **Değerlendirme:** soru setlerini çalıştırma ve raporlar (bkz. 5).
+* **Kullanım günlüğü:** her soru, soranın **Windows kullanıcı adı** ve bilgisayar adıyla, sorunun kendisi, sonucu,
+  süresi ve token sayılarıyla (istem, üretilen, düşünme, toplam, model çağrısı sayısı; sunucu bildirmiyorsa tahmini
+  olduğu belirtilir) seçilen klasörde **kullanıcı başına bir CSV dosyasına** (`<kullanıcı>.csv`; UTF-8, `;` ayraçlı,
+  Excel'de doğrudan açılır) eklenir. **Cevap metni yazılmaz.** Klasör bir ağ klasörü olabilir: her bilgisayar yalnızca
+  kendi kullanıcısının dosyasına ekleme yaptığı için kullanıcılar birbirinin dosyasına yazmaz. Klasöre
+  yazılamazsa (ağ kapalı) kayıt yerel ayarlar klasörüne (`usage_local`) yazılır ve Admin'de uyarı görünür.
+  Sekmede kullanıcı başına soru ve token toplamları özetlenir. Varsayılan klasör `%APPDATA%\SayisalTasarimUzmani\usage`;
+  günlük kapatılabilir.
 
 ---
 
@@ -334,7 +371,8 @@ kullanıcıların onu açması önerilir (açıkken üzerine yazmayın).
   sorusu) hazır olunca Windows bildirimi çıkar; tıklayınca sohbet açılır. Küçültülmüş pencerenin görev çubuğu
   düğmesi de yanıp söner. Pencere öndeyken bildirim çıkmaz. Ayarlar'dan kapatılabilir.
 
-* **Sol panel (Kaynaklar):** belgeler bucket başlıkları altında gruplanır; bucket'lar başlangıçta kapalıdır,
+* **Sol panel (Kaynaklar):** iki bölümdür: **Ortak** (ortak kütüphanenin bucket'ları) ve **Kişisel** (kendi
+  dosyalarınız; bkz. 3.5). Belgeler bucket başlıkları altında gruplanır; bucket'lar başlangıçta kapalıdır,
   başlığa tıklayınca açılır, yanında belge sayısı görünür. Üstteki arama kutusu belge ve bucket adına göre
   süzer. Uzun adlar üç noktayla kısalır; üzerine gelince tam ad ve göreli konum görünür. Liste kendi içinde
   kayar. Panel **«** ile tamamen daraltılır, üst çubuktaki **☰** ile yeniden açılır; açık/kapalı durumu ve
@@ -371,8 +409,9 @@ kullanıcıların onu açması önerilir (açıkken üzerine yazmayın).
   kullanılır; "tablo halinde", "madde madde" gibi bir biçim isterseniz ona uyulur. Atıflar desteklediği ifadenin
   hemen yanındadır; paragraftaki her ifade ayrı ayrı doğrulanır (paragraf sonundaki tek atıf önceki ifadeleri
   doğrulamaz). Kaynakta yazan bilgi ile mühendislik yorumu ayrı bölümlerde kalır.
-* **Cevap akışı:** taslak, "doğrulanmamış" etiketli katlanmış bir alanda ilerleme olarak görünür; araç
-  çağrıları ve isteğe bağlı model düşünmesi listelenir. Doğrulama bitince yalnızca doğrulanmış ifadelerden
+* **Cevap akışı:** taslak, "doğrulanmamış" etiketli katlanmış bir alanda ilerleme olarak görünür. Modelin
+  düşünmesi, kapsam satırı, araç çağrıları ve aranan belgeler sohbette gösterilmez; **Admin › Düşünme ve
+  aramalar** sekmesinde, bu oturumdaki her soru için açılır-kapanır bölümlerde durur. Doğrulama bitince yalnızca doğrulanmış ifadelerden
   kurulan son cevap gösterilir.
 * **Doğrulama kutusu:** cevap durumu, denetçinin tamamlanıp tamamlanmadığı, çıkarılan/işaretlenen ifadeler
   (gerekçesi arayüz dilinde: "'1.25 V' değeri atıf yapılan kaynaklarda bulunamadı", "Bağımsız denetleyici:
@@ -383,7 +422,7 @@ kullanıcıların onu açması önerilir (açıkken üzerine yazmayın).
   form açar: doğru değer, birim, parametre, belge, sayfa, not ve "belgeler bu soruyu cevaplamıyor". Kayıtlar
   yalnızca bu bilgisayarda kullanıcı klasöründe (`%APPDATA%\SayisalTasarimUzmani\feedback.json`) tutulur;
   kütüphaneye yazılmaz (salt okunur paylaşılan kütüphanede de çalışır). Kaynak metni, kütüphane yolu, sunucu
-  adresi veya anahtar saklanmaz. **Değerlendirme** penceresinden aday değerlendirme maddeleri olarak dışa
+  adresi veya anahtar saklanmaz. **Admin › Değerlendirme** sekmesinden aday değerlendirme maddeleri olarak dışa
   aktarılabilir.
 
 ### PDF'de kanıt vurgulama
@@ -445,7 +484,7 @@ cevabı, atıf yaptığı kaynaklar, doğrulamanın çıkardığı ifadeler (ger
 (kaynaklar, PDF vurgusu ve 👍/👎 ile). Örnek set "Dosyayı indir" ile indirilip düzenlenebilir ve kendi dosya olarak
 yüklenebilir.
 
-**Değerlendirme penceresi** (üst çubuk): bir soru setini mevcut kütüphaneye karşı arka planda çalıştırır
+**Admin › Değerlendirme** sekmesi: bir soru setini mevcut kütüphaneye karşı arka planda çalıştırır
 (ilerleme çubuğu, "Durdur"; pencere kullanılabilir kalır). Set seçimi: uygulamayla gelen **örnek set** (30 taslak
 soru), **geri bildirimden aday maddeler** veya **kendi `.yaml` dosyanız**; "yalnızca erişim" seçeneği model
 cevabı üretmeden recall@k/MRR ölçer. Sonuç tablosunda her oran **pay/payda** ile gösterilir ("1/1, %100");
@@ -495,19 +534,19 @@ doğrulama, hücre eşleştirme, konum, geçiş) sınar, gerçek bir modelin do�
 | Simge görünmüyor / tıklayınca bir şey olmuyor | Uygulama zaten çalışıyor olabilir: `SayisalTasarimUzmani.exe`'yi yeniden çalıştırmak sohbeti öne getirir. Simgenin yerini sıfırlamak için uygulamadan çıkıp `%APPDATA%\SayisalTasarimUzmani\desktop.json` dosyasını silin. Simge oluşturulamazsa sohbet penceresi doğrudan açılır (günlükte nedeni yazar). |
 | Kapat düğmesi uygulamayı kapatmıyor | Bilerek böyle: pencere gizlenir. Çıkış: simgeye sağ tık → "Uygulamadan çık". |
 | "no chat/embedding model configured" | Ayarlar → model seçin; `SayisalTasarimUzmani.exe doctor` |
-| "indexed with embedding model …" | Embedding modeli değişti: Kütüphane → "Tamamen yeniden oluştur" veya `ingest --rebuild` |
+| "indexed with embedding model …" | Embedding modeli değişti: Admin › Ortak kütüphane → "Tamamen yeniden oluştur" veya `ingest --rebuild` |
 | Araç kullanılmıyor | vLLM'i `--enable-auto-tool-choice --tool-call-parser …` ile başlatın |
 | Cevapta `<think>` / düşünme metni | vLLM'de `--reasoning-parser` kullanın veya Ayarlar → Düşünme `off` |
 | Cevap çok uzun sürüyor | Cevabın altındaki "Süre: …" dökümüne bakın. Cevap yazma uzunsa: düşünme token'ları ve araç turları (Ayarlar → Düşünme, Gelişmiş → en fazla araç turu); "ilk token" uzunsa sunucu kuyruğu veya uzun istem (vLLM önek önbelleği); doğrulama uzunsa denetçi çağrıları. Beklemek istemezseniz **Durdur**. |
 | Bildirim gelmiyor | Ayarlar → bildirim açık mı; Windows odak yardımı / Rahatsız etmeyin kapalı mı; pencere öndeyken bildirim çıkmaz. Günlükte "notification" satırı nedeni yazar. |
 | Tablolar/parametreler "doğrulanmadı" | Görsel model tanımlı mı, sayfada metin katmanı var mı (OCR)? Doküman uyarılarında hangi hücrenin neden eşleşmediği yazar (yanlış sütun, birim, satır koşulu). `inspect --table-pages` |
 | "Kaynak sayfası bulundu, kesin konum eşleştirilemedi" | Kaynak metni sayfada tek bir yere eşlenemedi (tekrarlanan metin, metin katmanı farklı). Sayfa yine de doğrudur; ifadenin doğruluğu "Doğrulama" durumundadır. |
-| "Eski indeks" uyarısı / vurgu yok | Kütüphane → "Konum verisini oluştur" veya `SayisalTasarimUzmani.exe migrate` |
+| "Eski indeks" uyarısı / vurgu yok | Admin › Ortak kütüphane → "Konum verisini oluştur" veya `SayisalTasarimUzmani.exe migrate` |
 | "Doğrulama tamamlanamadı" | Denetçi (sohbet modeli) hata verdi veya geçerli karar döndürmedi; sunucuyu/`techrag.log`'u kontrol edin. Bu durumda ifadeler bilerek gösterilmez. |
 | Belge "kaynak yok" görünüyor | Dosya silinmiş/taşınmış ya da klasör yeniden adlandırılmış. Dosya geri gelirse yeniden taramada otomatik düzelir; gerçekten silindiyse sol paneldeki uyarıdan "İndeksten kaldır". |
 | Yeniden tarama "erişilemeyen" diyor | Ağ paylaşımı bağlı mı / klasör yetkisi var mı? Belgeler bu durumda silinmiş sayılmaz. |
 | Sürekli netleştirme sorusu | Soruya standart/sürümü ve koşulu (hız sınıfı, yoğunluk, sıcaklık) yazın ya da soldan belge seçin; "tüm değerleri listele" gibi bir istek koşul sorusunu atlar; tamamen kapatmak için `retrieval.clarify_ambiguous: false` |
-| Bir belge "kısmen işlendi" / "başarısız" | 📋 Kalite raporunda aşama, sayfa ve önerilen işlem yazar; "Başarısız işlemleri yeniden dene" mevcut indeksi silmeden yeniden dener. |
+| Bir belge "kısmen işlendi" / "başarısız" | Admin › Ortak kütüphane › Kalite raporunda aşama, sayfa ve önerilen işlem yazar; "Başarısız işlemleri yeniden dene" mevcut indeksi silmeden yeniden dener. |
 | Soru yanlış standarda gidiyor / "yüklü değil" | `SayisalTasarimUzmani.exe docs` ile doküman etiketlerini kontrol edin; etiketsiz dokümanlar adı geçen standarda dahil edilmez. Dosya adına standart/sürüm yazın veya `domains.yaml` desenlerini genişletin |
 | `SSL: CERTIFICATE_VERIFY_FAILED` | Aşağıdaki "HTTPS sertifika hataları" bölümü |
 
@@ -618,11 +657,13 @@ techrag/
                    quality (kalite raporu kayıtları, gizli bilgi temizliği)
   store.py         SQLite indeks (şema v5 + yerinde geçiş), belge klasörleri, parametre deposu, sayfa geometrisi,
                    yayımlama (klasör belgelerini pakete kopyalar)
+  library.py       ortak + kişisel kütüphaneyi tek indeks gibi okuyan görünüm (kimlik kaydırma, birleşik arama)
+  usage.py         kullanım günlüğü: kullanıcı başına CSV (soru, sonuç, süre, token; cevap metni yok)
   evaluation.py    olgu tabanlı değerlendirme şeması, metrikler (pay/payda), raporlar
   feedback.py      cevap geri bildirimi (kullanıcı klasöründe) ve aday değerlendirme maddeleri
   api.py, llm.py, embeddings.py, reranker.py   OpenAI uyumlu istemciler (vLLM)
   units.py         nicelik ayrıştırma ve SI normalizasyonu (bilinmeyen birim / ifade / belirsiz sayı ayrı)
-  config.py, settings.py   katmanlı ayarlar, DPAPI ile şifreli API anahtarları
+  config.py, settings.py   katmanlı ayarlar, tek ortak API anahtarı (DPAPI ile şifreli)
   web/             çevrimdışı arayüz (TR/EN, bucket paneli, yeniden boyutlanan kaynak paneli, PDF vurgu katmanı)
   resources/       domains.yaml, eval/questions.yaml (örnek soru seti, exe'ye gömülü)
 packaging/         PyInstaller spec + giriş;  .github/workflows/windows-build.yml

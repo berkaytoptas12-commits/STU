@@ -1,5 +1,32 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.9.0 — tek API anahtarı, Admin, kişisel dosyalar ve kullanım günlüğü
+- **Tek API anahtarı:** sohbet (vLLM), görsel model, embedding ve reranker sunucularının hepsi Ayarlar'ın üstündeki
+  tek ortak anahtarı kullanır; servis başına anahtar alanları kaldırıldı. Eski sürümde servis başına girilmiş
+  anahtarlar ilk kayıtta ortak anahtara taşınır (sohbet modelininki esas alınır; şifreli hâliyle, yeniden girmeniz
+  gerekmez). Kayıtlı anahtar yalnızca ayarlı model sunucularına gönderilir, başka bir adrese gönderilmez.
+- **Admin sekmesi** (üst çubuk, herkese açık): *Ortak kütüphane* (ortak dosyaların hangi klasörlerden ve
+  bucket'lardan geldiği, belge klasörü ekleme, yeniden tarama, kalite raporu, kütüphane açma/yayımlama — eski
+  "Kütüphane" penceresi buraya taşındı), *Düşünme ve aramalar*, *Değerlendirme* (eski "Değerlendirme" penceresi)
+  ve *Kullanım günlüğü*.
+- **Düşünme ve aranan belgeler sohbetten kalktı:** modelin düşünmesi, kapsam satırı, araç çağrıları ve modele
+  verilen kaynaklar Admin › Düşünme ve aramalar'da, bu oturumdaki her soru için açılır-kapanır bölümlerde durur.
+  Sohbette cevap, atıflar ve doğrulama kutusu kalır.
+- **Kaynaklar: Ortak ve Kişisel.** Sol panelin *Kişisel* bölümünde "Dosya seç…" ile bilgisayarınızdan dosya
+  seçersiniz; dosya kişisel klasörünüze kopyalanır (varsayılan `%USERPROFILE%\SayisalTasarimUzmani\Kisisel`,
+  "değiştir" ile seçilir) ve o klasördeki ayrı bir kişisel indekste indekslenir. Ortak kütüphane salt-okunur açık
+  olsa da çalışır; ortak kütüphaneye hiçbir şey yazılmaz. Sorular ortak ve kişisel kütüphanede birlikte aranır;
+  kişisel bucket tek başına da seçilebilir.
+- **Kullanım günlüğü:** her soru Windows kullanıcı adı, bilgisayar, soru, sonuç, süre ve token sayılarıyla
+  (istem / üretilen / düşünme / toplam, model çağrısı sayısı) Admin'de seçilen klasörde kullanıcı başına bir CSV
+  dosyasına yazılır (UTF-8, `;` ayraçlı, Excel'de açılır). Cevap metni yazılmaz. Ağ klasörü kullanılabilir; klasöre
+  yazılamazsa kayıt yerel klasöre düşer ve Admin uyarır. Admin'de kullanıcı başına soru/token özeti görünür.
+- Yeniden indeksleme gerekmez; ortak kütüphane, ayarlar ve anahtarlar aynen kullanılır.
+- Doğrulanan: birim/arayüz testleri (anahtar taşıma ve yalnız ayarlı sunuculara gönderilmesi, kişisel indeksin
+  ortak kütüphaneyle birlikte aranması ve salt-okunur ortak kütüphanede çalışması, kimliklerin karışmaması,
+  günlük satırları ve yerel yedek, Admin sekmeleri, sohbette düşünme/arama gösterilmemesi). Gerçek model
+  sunucusunda ve Windows ağ klasöründe denenmedi.
+
 ### 0.8.1 — düzeltmede yalnızca hatalı cümleler yeniden yazılır
 - Doğrulamada desteklenmeyen bir ifade bulununca model artık cevabın **tamamını** yeniden yazmıyor; yalnızca o
   cümleleri düzeltiyor ya da kaldırıyor. Diğer cümlelere dokunulmuyor. Düzeltme isteği kısa bir JSON cevap

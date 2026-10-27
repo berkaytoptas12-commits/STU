@@ -194,7 +194,8 @@ const I18N = {
 
     page: "Sayfa", pages: "sayfa", chunks: "parça", superseded: "eski revizyon", toc: "İçindekiler", noToc: "Bu dokümanda yer imi yok.",
     readOnly: "salt-okunur", docs: "doküman", params: "parametre", modelsLoad: "Modelleri getir", test: "Test et",
-    sameAsChat: "Sohbet modeliyle aynı", baseUrl: "API adresi (…/v1)", apiKey: "API anahtarı", model: "Model",
+    sameAsChat: "Sohbet modeliyle aynı", baseUrl: "API adresi (…/v1)", apiKey: "Ortak API anahtarı", model: "Model",
+    apiKeyHint: "Tek anahtar: sohbet (vLLM), görsel model, embedding ve reranker sunucularının hepsine bu anahtar gönderilir.",
     svc_llm: "Sohbet modeli (LLM)", svc_vision: "Görsel model (VLM)", svc_embedding: "Embedding", svc_reranker: "Reranker",
     enabled: "etkin", notOnServer: "(sunucuda yok)", savedSettings: "Ayarlar kaydedildi.", noModels: "Model listesi alınamadı",
     errorPrefix: "Hata", needToken: "Bu sunucu bir API anahtarı istiyor:",
@@ -217,6 +218,24 @@ const I18N = {
     err_tls_other: "TLS bağlantısı kurulamadı.", err_connect: "Bağlanılamadı: adresi/portu, sunucunun çalıştığını ve güvenlik duvarını kontrol edin.",
     err_model: "Seçilen model bu sunucuda yok.",
     published: "Yayımlandı: {0}", opened: "Kütüphane açıldı.", pickFolderPrompt: "Klasör yolu:",
+    admin: "Admin", admShared: "Ortak kütüphane", admTrace: "Düşünme ve aramalar", admUsage: "Kullanım günlüğü",
+    admSharedSource: "Ortak kütüphane dosyaları nereden geliyor",
+    admSharedHint: "Ortak belgeler bu kütüphaneden ve aşağıdaki belge klasörlerinden okunur. Kişisel dosyalar burada değil, her kullanıcının kendi klasöründedir.",
+    rootsLibrary: "Kütüphanenin kendi klasörü", rootsNone: "Henüz belge klasörü eklenmedi.", rootsDocs: "{0} belge",
+    rootsBuckets: "Bucket'lar", sharedGroup: "Ortak", personalGroup: "Kişisel", personalAdd: "Dosya seç…",
+    personalRescan: "Kişisel klasörü yeniden tara", personalDir: "Klasör", personalChange: "değiştir",
+    personalEmpty: "Henüz kişisel dosya yok. Seçtiğiniz dosyalar bu klasöre kopyalanır ve yalnızca sizin kişisel indeksinizde aranır.",
+    personalIndexing: "Kişisel dosyalar indeksleniyor", personalDirPrompt: "Kişisel dosyaların kaydedileceği klasör:",
+    personalSaved: "Kişisel klasör değişti.",
+    traceHint: "Bu oturumdaki sorular. Her sorunun altında modelin düşünmesi ve aradığı belgeler açılır-kapanır bölümlerde durur; sohbette gösterilmez.",
+    traceNone: "Bu oturumda henüz soru sorulmadı.", traceThinking: "Düşünme", traceNoThinking: "Bu soruda düşünme metni yok (düşünme kapalıydı ya da sunucu göndermedi).",
+    traceSearches: "Aranan belgeler", traceTools: "Aramalar", traceSources: "Modele verilen kaynaklar", traceCited: "atıf yapıldı",
+    traceRunning: "cevaplanıyor…",
+    usageHint: "Her soru, soranın Windows kullanıcı adı, sorusu, süresi ve harcanan token sayısıyla bu klasörde kullanıcı başına bir CSV dosyasına yazılır (Excel: ';' ayraçlı). Cevap metni yazılmaz.",
+    usageEnabled: "Kullanım günlüğünü tut", usageDir: "Günlük klasörü (boş: bu bilgisayardaki ayarlar klasörü; ağ klasörü olabilir)",
+    openFolder: "Klasörü aç", usageMe: "Bu bilgisayar: {0} @ {1} → {2}", usageSaved: "Kaydedildi.",
+    usageUser: "Kullanıcı", usageQuestions: "Soru", usageTokens: "Toplam token", usageCompletion: "Üretilen token",
+    usageLast: "Son soru", usageNone: "Henüz kayıt yok.", usageError: "Günlük klasörüne yazılamadı ({0}); kayıtlar yerel klasöre yazılıyor.",
     ex: ["DDR4 ile DDR5 arasında VDD ve burst length farkları nelerdir?", "PCIe 5.0 LTSSM Polling alt durumları ve geçiş koşulları nelerdir?",
          "ARINC 429 kelimesinde SSM bitleri hangi bitlerdir ve BNR verisi için anlamları nedir?", "I2C Fast-mode Plus için maksimum yükselme süresi ve bus kapasitansı nedir?"],
   },
@@ -405,7 +424,8 @@ const I18N = {
 
     page: "Page", pages: "pages", chunks: "chunks", superseded: "superseded", toc: "Contents", noToc: "This document has no outline.",
     readOnly: "read-only", docs: "documents", params: "parameters", modelsLoad: "Load models", test: "Test",
-    sameAsChat: "Same as chat model", baseUrl: "API base URL (…/v1)", apiKey: "API key", model: "Model",
+    sameAsChat: "Same as chat model", baseUrl: "API base URL (…/v1)", apiKey: "Shared API key", model: "Model",
+    apiKeyHint: "One key: it is sent to every model server (chat/vLLM, vision, embedding and reranker).",
     svc_llm: "Chat model (LLM)", svc_vision: "Vision model (VLM)", svc_embedding: "Embedding", svc_reranker: "Reranker",
     enabled: "enabled", notOnServer: "(not on server)", savedSettings: "Settings saved.", noModels: "Could not load models",
     errorPrefix: "Error", needToken: "This server requires an API token:",
@@ -428,6 +448,24 @@ const I18N = {
     err_tls_other: "TLS connection failed.", err_connect: "Cannot connect: check the address/port, that the server is running and the firewall.",
     err_model: "The selected model is not served here.",
     published: "Published: {0}", opened: "Library opened.", pickFolderPrompt: "Folder path:",
+    admin: "Admin", admShared: "Shared library", admTrace: "Thinking and searches", admUsage: "Usage log",
+    admSharedSource: "Where the shared library files come from",
+    admSharedHint: "Shared documents are read from this library and the document folders below. Personal files are not here: they stay in each user's own folder.",
+    rootsLibrary: "The library's own folder", rootsNone: "No document folder added yet.", rootsDocs: "{0} documents",
+    rootsBuckets: "Buckets", sharedGroup: "Shared", personalGroup: "Personal", personalAdd: "Choose files…",
+    personalRescan: "Rescan the personal folder", personalDir: "Folder", personalChange: "change",
+    personalEmpty: "No personal files yet. The files you choose are copied into this folder and searched only in your personal index.",
+    personalIndexing: "Indexing personal files", personalDirPrompt: "Folder for your personal files:",
+    personalSaved: "Personal folder changed.",
+    traceHint: "Questions of this session. Under each, the model's thinking and the documents it searched are in collapsible sections; the chat does not show them.",
+    traceNone: "No question asked in this session yet.", traceThinking: "Thinking", traceNoThinking: "No thinking text for this question (thinking was off or the server sent none).",
+    traceSearches: "Searched documents", traceTools: "Searches", traceSources: "Sources given to the model", traceCited: "cited",
+    traceRunning: "answering…",
+    usageHint: "Each question is written with the asker's Windows user name, the question, its duration and the tokens spent, into one CSV file per user in this folder (Excel: ';'-separated). The answer text is not written.",
+    usageEnabled: "Keep the usage log", usageDir: "Log folder (empty: the settings folder on this PC; a network folder is fine)",
+    openFolder: "Open folder", usageMe: "This computer: {0} @ {1} → {2}", usageSaved: "Saved.",
+    usageUser: "User", usageQuestions: "Questions", usageTokens: "Total tokens", usageCompletion: "Generated tokens",
+    usageLast: "Last question", usageNone: "No entries yet.", usageError: "The log folder could not be written ({0}); entries go to a local folder.",
     ex: ["What are the VDD and burst length differences between DDR4 and DDR5?", "What are the PCIe 5.0 LTSSM Polling substates and their exit conditions?",
          "Which bits are the SSM in an ARINC 429 word and what do they mean for BNR data?", "What is the maximum rise time and bus capacitance for I2C Fast-mode Plus?"],
   },
@@ -460,7 +498,8 @@ function applyI18n() {
 
 // ------------------------------------------------------------------ state + api
 const state = { info: null, docs: [], selected: new Set(), selectedBuckets: new Set(), history: [], busy: false,
-  token: TOKEN, filter: "", ui: loadUi(), chatId: 0, abort: null, viewSeq: 0, pendingClarify: null };
+  token: TOKEN, filter: "", ui: loadUi(), chatId: 0, abort: null, viewSeq: 0, pendingClarify: null,
+  traces: [], adminPage: "adm-library" };
 
 // Panel layout preferences (per user, kept across restarts; never affect what is searched).
 function loadUi() {
@@ -628,14 +667,18 @@ function renderInfo() {
   const ro = i.read_only ? ` · ${t("readOnly")}` : "";
   $("#lib-info").textContent = `${i.library} · ${i.stats.documents} ${t("docs")} · ${i.stats.parameters || 0} ${t("params")}${ro}`;
   $("#add-box").hidden = !i.allow_upload;
-  $("#src-actions").hidden = !i.allow_upload;
+  $("#adm-shared-actions").hidden = !i.allow_upload;
+  const pers = i.personal || {};
+  $("#personal-dir").textContent = pers.dir || "";
+  $("#personal-box").hidden = pers.can_add === false;
   const banner = $("#banner");
   const missing = SERVICES.filter((s) => s !== "vision" && !i.models[s]);
   if (i.error) { banner.hidden = false; banner.textContent = `${t("errorPrefix")}: ${i.error}`; }
-  else if (i.legacy_documents && !i.read_only) { banner.hidden = false; banner.textContent = `${t("legacyNotice", i.legacy_documents)} → ${t("library")} › ${t("migrate")}`; }
+  else if (i.legacy_documents && !i.read_only) { banner.hidden = false; banner.textContent = `${t("legacyNotice", i.legacy_documents)} → ${t("admin")} › ${t("admShared")} › ${t("migrate")}`; }
   else if (missing.length) { banner.hidden = false; banner.textContent = `${t("settings")}: ${missing.map((s) => t("svc_" + s)).join(", ")} — ${t("model")}?`; }
   else banner.hidden = true;
-  $("#collection-list").innerHTML = (i.buckets || []).filter((b) => b.name).map((b) => `<option value="${esc(b.name)}"></option>`).join("");
+  $("#collection-list").innerHTML = (i.buckets || []).filter((b) => b.name && !b.personal).map((b) => `<option value="${esc(b.name)}"></option>`).join("");
+  if ($("#dlg-admin").open && state.adminPage === "adm-library") renderAdminLibrary();
 }
 
 async function loadDocs() {
@@ -661,17 +704,24 @@ const fold = (x) => String(x || "").toLocaleLowerCase("tr").normalize("NFD").rep
 const docLocation = (d) => [d.bucket || t("generalBucket"), d.subpath, (d.rel_path || d.path).split("/").pop()].filter(Boolean).join(" / ");
 
 function renderCollections() {
-  const wrap = $("#collections");
-  wrap.innerHTML = "";
-  const buckets = (state.info && state.info.buckets) || [];
+  const all = (state.info && state.info.buckets) || [];
   const q = fold(state.filter.trim());
-  let shown = 0;
+  fillBuckets($("#collections"), all.filter((b) => !b.personal), q, t("viewerEmpty").replace(/\s*\[n\].*$/, ""));
+  fillBuckets($("#personal-collections"), all.filter((b) => b.personal), q, t("personalEmpty"));
+  $("#doc-count").textContent = state.docs.length ? `${state.docs.length} ${t("docsShort")}` : "";
+  renderScopeLine();
+  renderMissing();
+}
+
+// One bucket list (the shared library's or the personal one): a bucket opens into its documents; a bucket or single
+// documents can be selected to restrict the search.
+function fillBuckets(wrap, buckets, q, emptyText) {
+  wrap.innerHTML = "";
   for (const b of buckets) {
     const docs = state.docs.filter((x) => (x.bucket_id || "") === b.id);
     const bucketHit = !q || fold(bucketName(b)).includes(q);
     const visibleDocs = bucketHit ? docs : docs.filter((d) => fold(`${d.title} ${d.rel_path || d.path}`).includes(q));
     if (!visibleDocs.length && !bucketHit) continue;
-    shown += visibleDocs.length;
     const open = q ? visibleDocs.length > 0 : state.ui.openBuckets.includes(b.id);
     const bsel = state.selectedBuckets.has(b.id);
     const sec = document.createElement("div");
@@ -708,9 +758,10 @@ function renderCollections() {
     sec.append(list);
     wrap.append(sec);
   }
-  if (!wrap.children.length) wrap.innerHTML = `<p class="muted small">${esc(q ? t("nothingFound") : t("viewerEmpty").replace(/\s*\[n\].*$/, ""))}</p>`;
-  $("#doc-count").textContent = state.docs.length ? `${state.docs.length} ${t("docsShort")}` : "";
-  renderScopeLine();
+  if (!wrap.children.length) wrap.innerHTML = `<p class="muted small">${esc(q ? t("nothingFound") : emptyText)}</p>`;
+}
+
+function renderMissing() {
   const missing = state.docs.filter((d) => d.missing);
   const mb = $("#missing-box");
   mb.hidden = !missing.length;
@@ -1291,6 +1342,10 @@ async function ask(question, reply) {
   $("#messages").append(el);
   el._sources = [];
   el._final = false;
+  // Thinking and searches are not shown in the chat: they are kept for Admin › Thinking and searches.
+  const trace = { question, at: new Date(), plan: "", reasoning: "", tools: [], sources: [], status: "" };
+  state.traces.unshift(trace);
+  state.traces.length = Math.min(state.traces.length, 50);
   const body = $(".body", el);
   const status = $(".status", el);
   let text = "";
@@ -1333,6 +1388,7 @@ async function ask(question, reply) {
       case "started": askId = ev.id; stopBtn.disabled = false; break;
       case "cancelled": {
         el._final = true;
+        trace.status = "cancelled";
         status.textContent = "";
         const n = document.createElement("div");
         n.className = "notice stopped";
@@ -1344,31 +1400,22 @@ async function ask(question, reply) {
       case "plan": {
         const s = ev.scope || {};
         const parts = [];
-        if (s.missing && s.missing.length) parts.push(t("scopeMissing", s.missing.join(", ")));
-        if (s.reason === "entity") parts.push(t("scopeEntity", (s.entities || []).join(", ")));
+        if (s.missing && s.missing.length) parts.push(t("scopeMissing", esc(s.missing.join(", "))));
+        if (s.reason === "entity") parts.push(t("scopeEntity", esc((s.entities || []).join(", "))));
         else if (s.reason === "user" || (s.buckets || []).length) parts.push(t("scopeUser"));
-        else if (s.reason === "domain") parts.push(t("scopeDomain", (s.domains || []).join(", ")));
+        else if (s.reason === "domain") parts.push(t("scopeDomain", esc((s.domains || []).join(", "))));
         else parts.push(t("scopeAll"));
         if (ev.merged_question) { asked = ev.merged_question; parts.push(esc(t("mergedAs", ev.merged_question))); }
         if ((ev.plan.carried_entities || []).length) parts.push(esc(t("carried", ev.plan.carried_entities.join(", "))));
         if (ev.plan.english && ev.plan.english !== ev.plan.question) parts.push(`${t("searchAs")}: “${esc(ev.plan.english)}”`);
         if (ev.thinking) parts.push(t("thinkingOn"));
-        const p = $(".plan", el);
-        p.innerHTML = parts.join(" · ");
-        p.hidden = false;
+        trace.plan = parts.join(" · ");
         break;
       }
-      case "sources": el._sources = ev.sources; confidence = ev.confidence; renderChips(el); break;
-      case "sources_add": el._sources = el._sources.concat(ev.sources); renderChips(el); break;
-      case "reasoning": { const d = $(".reasoning", el); d.hidden = false; $("pre", d).textContent += ev.text; break; }
-      case "tool": {
-        const ul = $(".tool-log", el);
-        ul.hidden = false;
-        const li = document.createElement("li");
-        li.textContent = `${ev.name}: ${ev.summary}`;
-        ul.append(li);
-        break;
-      }
+      case "sources": el._sources = ev.sources; trace.sources = el._sources; confidence = ev.confidence; renderChips(el); break;
+      case "sources_add": el._sources = el._sources.concat(ev.sources); trace.sources = el._sources; renderChips(el); break;
+      case "reasoning": trace.reasoning += ev.text; break;
+      case "tool": trace.tools.push(`${ev.name}: ${ev.summary}`); break;
       case "draft": status.textContent = t("draftProgress"); text += ev.text; render(); break;
       case "draft_reset": text = ""; render(); break;
       case "clarify": el._clarify = ev; break;
@@ -1379,6 +1426,8 @@ async function ask(question, reply) {
         body.innerHTML = renderMarkdown(text);
         $$("button.cite", body).forEach((b, i) => { const c = (ev.cite_claims || [])[i]; if (c != null) b.dataset.claim = c; });
         el._sources = ev.sources || el._sources;
+        trace.sources = el._sources;
+        trace.status = (ev.verification || {}).status || "final";
         el._verification = ev.verification;
         renderChips(el);
         renderVerification(el, ev.verification, confidence);
@@ -1421,7 +1470,7 @@ async function ask(question, reply) {
         }
         break;
       }
-      case "error": el._final = true; status.textContent = ""; body.innerHTML = `<div class="verify warning">${t("errorPrefix")}: ${esc(ev.message)}</div>`; break;
+      case "error": el._final = true; trace.status = "error"; status.textContent = ""; body.innerHTML = `<div class="verify warning">${t("errorPrefix")}: ${esc(ev.message)}</div>`; break;
       default: break;
     }
   };
@@ -1450,6 +1499,7 @@ async function ask(question, reply) {
     status.textContent = "";
     body.innerHTML = `<div class="verify warning">${t("errorPrefix")}: ${esc(e.message)}</div>`;
   } finally {
+    if (!trace.status) trace.status = "error";
     clearInterval(timer);
     elapsed.hidden = true;
     if (state.abort === ctrl) state.abort = null;
@@ -1729,7 +1779,6 @@ function svcCard(svc) {
     : svc === "reranker" ? `<label><input type="checkbox" class="enabled"> ${t("enabled")}</label>` : "";
   div.innerHTML = `<h3>${t("svc_" + svc)}</h3>${extra}
     <label>${t("baseUrl")}<input class="url" value="${esc(s.base_url)}" placeholder="http://server:8000/v1"></label>
-    <label>${t("apiKey")}<input class="key" type="password" value="${esc(s.api_key)}" autocomplete="off"></label>
     <label>${t("model")}<div class="row"><select class="model"></select><button type="button" class="ghost load">${t("modelsLoad")}</button><button type="button" class="ghost test">${t("test")}</button></div></label>
     <label class="insecure-row"><input type="checkbox" class="insecure"> ${t("insecure")}</label>
     <div class="result"></div>`;
@@ -1737,7 +1786,7 @@ function svcCard(svc) {
   const same = $(".same", div);
   if (same) {
     same.checked = !s.base_url && !s.model;
-    const sync = () => $$(".url,.key,.model,.load,.test,.insecure", div).forEach((x) => { x.disabled = same.checked; });
+    const sync = () => $$(".url,.model,.load,.test,.insecure", div).forEach((x) => { x.disabled = same.checked; });
     same.addEventListener("change", sync);
     sync();
   }
@@ -1762,7 +1811,7 @@ function svcCard(svc) {
       else showError(res, r, t("noModels"));
     } catch (e) { res.className = "result bad"; res.textContent = e.message; }
   };
-  const probe = (extra) => Object.assign({ service: svc, base_url: $(".url", div).value, api_key: $(".key", div).value,
+  const probe = (extra) => Object.assign({ service: svc, base_url: $(".url", div).value, api_key: $("#set-api-key").value,
     verify_ssl: !$(".insecure", div).checked }, extra || {});
   const showError = (res, r, prefix) => {
     res.className = "result bad";
@@ -1808,7 +1857,6 @@ function svcCard(svc) {
   $(".load", div).addEventListener("click", load);
   $(".insecure", div).addEventListener("change", load);
   $(".url", div).addEventListener("change", load);
-  $(".key", div).addEventListener("change", load);
   $(".test", div).addEventListener("click", async () => {
     const res = $(".result", div);
     res.className = "result";
@@ -1926,7 +1974,7 @@ function showEvalReport(rep) {
   });
   $$(".ev-ask", box).forEach((b) => b.addEventListener("click", () => {
     const r = rep.results[+b.dataset.i];
-    $("#dlg-eval").close();
+    $("#dlg-admin").close();
     if (!state.busy) ask(r.question);
   }));
 }
@@ -1987,10 +2035,8 @@ async function loadFeedbackInfo() {
     ul.append(li);
   }
 }
-async function openEval() {
-  $$("#dlg-eval [data-i18n]").forEach((x) => { x.textContent = t(x.dataset.i18n); });
+async function loadEvalPage() {
   $("#eval-status").textContent = "";
-  $("#dlg-eval").showModal();
   try {
     const info = await loadEvalInfo();
     await loadFeedbackInfo();
@@ -2066,6 +2112,8 @@ async function openSettings() {
   SETTINGS = await getJSON("/api/settings");
   const grid = $("#svc-grid");
   grid.innerHTML = "";
+  $("#set-api-key").value = (SETTINGS.auth && SETTINGS.auth.api_key) || "";   // before the cards: they list models with it
+  $("#set-api-key").onchange = () => $$("#svc-grid .load").forEach((b) => { if (!b.disabled) b.click(); });
   for (const svc of SERVICES) grid.append(svcCard(svc));
   $("#set-thinking").value = SETTINGS.llm.thinking;
   $("#set-thinking-control").value = SETTINGS.llm.thinking_control;
@@ -2096,12 +2144,13 @@ async function openSettings() {
 }
 async function saveSettings(e) {
   e.preventDefault();
-  const patch = { answer: { judge: $("#set-judge").checked, regenerate: $("#set-regenerate").checked, failed_claims: $("#set-failed").value } };
+  const patch = { auth: { api_key: $("#set-api-key").value },
+    answer: { judge: $("#set-judge").checked, regenerate: $("#set-regenerate").checked, failed_claims: $("#set-failed").value } };
   for (const card of $$(".svc")) {
     const svc = card.dataset.svc;
     const same = $(".same", card);
-    if (same && same.checked) { patch[svc] = { base_url: "", model: "", api_key: "" }; continue; }
-    patch[svc] = { base_url: $(".url", card).value.trim(), api_key: $(".key", card).value, model: $(".model", card).value,
+    if (same && same.checked) { patch[svc] = { base_url: "", model: "" }; continue; }
+    patch[svc] = { base_url: $(".url", card).value.trim(), model: $(".model", card).value,
       verify_ssl: !$(".insecure", card).checked };
     const en = $(".enabled", card);
     if (en) patch[svc].enabled = en.checked;
@@ -2152,7 +2201,7 @@ async function pickFolder(input) {
   if (desk()) { const p = await desk().pick_folder(); if (p) input.value = p; }
   else { const p = prompt(t("pickFolderPrompt"), input.value); if (p) input.value = p; }
 }
-function openLibrary() {
+function fillLibrary() {
   const i = state.info;
   $("#lib-path").textContent = i ? i.library : "";
   $("#lib-ro").hidden = !(i && i.read_only);
@@ -2162,8 +2211,123 @@ function openLibrary() {
   const legacy = (i && i.legacy_documents) || 0;
   $("#lib-legacy").hidden = !legacy || (i && i.read_only);
   $("#lib-legacy-text").textContent = legacy ? t("legacyNotice", legacy) : "";
-  $$("#dlg-library [data-i18n]").forEach((x) => { x.textContent = t(x.dataset.i18n); });
-  $("#dlg-library").showModal();
+}
+
+// ------------------------------------------------------------------ Admin: shared library, thinking and searches,
+// evaluation, usage log (open to everyone: a separate place for what a normal question does not need)
+function openAdmin(page) {
+  const dlg = $("#dlg-admin");
+  $$("#dlg-admin [data-i18n]").forEach((x) => { x.textContent = t(x.dataset.i18n); });
+  if (!dlg.open) dlg.showModal();
+  showAdminPage(page || state.adminPage);
+}
+function showAdminPage(page) {
+  state.adminPage = page;
+  $$(".adm-tab").forEach((b) => {
+    const on = b.dataset.page === page;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-selected", String(on));
+  });
+  $$(".adm-page").forEach((x) => { x.hidden = x.id !== page; });
+  if (page === "adm-library") { fillLibrary(); renderAdminLibrary(); }
+  else if (page === "adm-trace") renderTraces();
+  else if (page === "adm-eval") loadEvalPage();
+  else if (page === "adm-usage") loadUsage();
+}
+function renderAdminLibrary() {
+  const i = state.info || {};
+  const roots = i.roots || [];
+  const rows = [`<li><b>${esc(t("rootsLibrary"))}:</b> <code>${esc(i.library || "")}</code>${i.read_only ? ` <span class="pill">${esc(t("readOnly"))}</span>` : ""}</li>`]
+    .concat(roots.map((r) => `<li><code>${esc(r.path)}</code> — ${esc(t("rootsDocs", r.documents))}${r.missing ? ` · ⚠${r.missing}` : ""}${String(r.last_status || "").startsWith("unreachable") ? ` · <span class="bad">${esc(r.last_status)}</span>` : ""}</li>`));
+  const buckets = (i.buckets || []).filter((b) => !b.personal).map((b) => `<span class="tag">${esc(bucketName(b))} · ${b.documents}</span>`).join(" ");
+  $("#adm-roots").innerHTML = `<ul class="roots-list">${rows.join("")}</ul>${roots.length ? "" : `<p class="muted">${esc(t("rootsNone"))}</p>`}`
+    + `<div class="roots-buckets"><b>${esc(t("rootsBuckets"))}:</b> ${buckets || "—"}</div>`;
+}
+function renderTraces() {
+  const box = $("#trace-list");
+  if (!state.traces.length) { box.innerHTML = `<p class="muted small">${esc(t("traceNone"))}</p>`; return; }
+  box.innerHTML = state.traces.map((tr, i) => {
+    const time = tr.at.toLocaleTimeString(LANG === "tr" ? "tr-TR" : "en-GB");
+    const srcs = tr.sources || [];
+    const src = srcs.map((x) => `<li>[${esc(x.n)}] ${esc(x.doc_title || "")}${x.section ? ` — ${esc(x.section)}` : ""}${x.page_start ? ` — s. ${esc(x.page_start)}` : ""}${x.cited ? ` <span class="tag">${esc(t("traceCited"))}</span>` : ""}</li>`).join("");
+    const tools = tr.tools.map((x) => `<li>${esc(x)}</li>`).join("");
+    return `<details class="trace"${i === 0 ? " open" : ""}><summary><span class="muted small">${esc(time)}</span> ${esc(tr.question)}
+        <span class="small muted">(${esc(tr.status || t("traceRunning"))})</span></summary>
+      ${tr.plan ? `<div class="small muted trace-plan">${tr.plan}</div>` : ""}
+      <details class="trace-part trace-thinking-box"><summary>${esc(t("traceThinking"))}${tr.reasoning ? ` (${fmtInt(tr.reasoning.length)})` : ""}</summary>
+        ${tr.reasoning ? `<pre class="trace-thinking">${esc(tr.reasoning)}</pre>` : `<p class="small muted">${esc(t("traceNoThinking"))}</p>`}</details>
+      <details class="trace-part trace-search-box"><summary>${esc(t("traceSearches"))} (${srcs.length})</summary>
+        ${tools ? `<div class="small"><b>${esc(t("traceTools"))}</b><ul>${tools}</ul></div>` : ""}
+        <div class="small"><b>${esc(t("traceSources"))}</b><ol class="trace-sources">${src || "<li>—</li>"}</ol></div></details>
+    </details>`;
+  }).join("");
+}
+async function loadUsage() {
+  $("#usage-status").textContent = "";
+  try {
+    const u = await getJSON("/api/usage");
+    $("#usage-enabled").checked = u.enabled;
+    $("#usage-dir").value = u.custom ? u.dir : "";
+    $("#usage-dir").placeholder = u.custom ? "" : u.dir;
+    $("#usage-me").textContent = t("usageMe", u.user, u.machine, u.file);
+    $("#btn-usage-open").hidden = !(state.info && state.info.desktop);
+    const head = `<tr><th>${esc(t("usageUser"))}</th><th class="num">${esc(t("usageQuestions"))}</th><th class="num">${esc(t("usageTokens"))}</th>`
+      + `<th class="num">${esc(t("usageCompletion"))}</th><th>${esc(t("usageLast"))}</th></tr>`;
+    const rows = (u.users || []).map((x) => `<tr><td>${esc(x.user)}</td><td class="num">${fmtInt(x.questions)}</td><td class="num">${fmtInt(x.tokens)}</td>`
+      + `<td class="num">${fmtInt(x.completion_tokens)}</td><td>${esc(fmtTime(x.last))}</td></tr>`).join("");
+    $("#usage-table").innerHTML = (u.last_error ? `<div class="verify warning">${esc(t("usageError", u.last_error))}</div>` : "")
+      + (rows ? `<table class="usage-table"><thead>${head}</thead><tbody>${rows}</tbody></table>` : `<p class="muted small">${esc(t("usageNone"))}</p>`)
+      + ((u.errors || []).length ? `<ul class="small bad">${u.errors.map((e) => `<li>${esc(e)}</li>`).join("")}</ul>` : "");
+  } catch (e) { $("#usage-status").textContent = `${t("errorPrefix")}: ${e.message}`; }
+}
+async function saveUsage() {
+  try {
+    const r = await postJSON("/api/settings", { usage: { enabled: $("#usage-enabled").checked, log_dir: $("#usage-dir").value.trim() } }, "PUT");
+    await loadUsage();
+    $("#usage-status").textContent = r.error ? `${t("errorPrefix")}: ${r.error}` : t("usageSaved");
+  } catch (e) { $("#usage-status").textContent = `${t("errorPrefix")}: ${e.message}`; }
+}
+
+// ------------------------------------------------------------------ personal library
+// The user's own files: copied into their personal folder and indexed there, searched with the shared library.
+async function addPersonalFiles() {
+  try {
+    if (desk()) {
+      const paths = await desk().pick_files();
+      if (!paths || !paths.length) return;
+      const r = await postJSON("/api/personal/add", { paths });
+      await pollJob(r.job, t("personalIndexing"));
+    } else {
+      $("#personal-file-input").click();
+    }
+  } catch (e) { alert(`${t("errorPrefix")}: ${e.message}`); }
+}
+async function uploadPersonal(files) {
+  for (const f of files) {
+    const fd = new FormData();
+    fd.append("file", f);
+    try { const r = await (await api("/api/personal/upload", { method: "POST", body: fd })).json(); await pollJob(r.job, t("personalIndexing")); }
+    catch (e) { alert(`${t("errorPrefix")}: ${e.message}`); }
+  }
+}
+async function rescanPersonal() {
+  try { const r = await postJSON("/api/personal/rescan", {}); await pollJob(r.job, t("personalIndexing")); }
+  catch (e) { alert(`${t("errorPrefix")}: ${e.message}`); }
+}
+async function changePersonalDir() {
+  const cur = ((state.info || {}).personal || {}).dir || "";
+  const p = desk() ? await desk().pick_folder() : prompt(t("personalDirPrompt"), cur);
+  if (!p || p === cur) return;
+  try {
+    const r = await postJSON("/api/settings", { paths: { personal_dir: p } }, "PUT");
+    if (r.error) alert(`${t("errorPrefix")}: ${r.error}`);
+    // another personal folder is another personal library: nothing selected or cited in the old one carries over
+    state.selected.clear();
+    state.selectedBuckets.clear();
+    newChat(t("personalSaved"));
+    await loadInfo();
+    await loadDocs();
+  } catch (e) { alert(`${t("errorPrefix")}: ${e.message}`); }
 }
 
 // ------------------------------------------------------------------ wiring
@@ -2196,8 +2360,20 @@ function bind() {
   $("#btn-save-settings").addEventListener("click", saveSettings);
   ["#set-tls-system", "#set-tls-proxy", "#set-tls-ca"].forEach((id) => $(id).addEventListener("change", applyTls));
   $("#btn-pick-ca").addEventListener("click", pickCaFiles);
-  $("#btn-library").addEventListener("click", openLibrary);
-  $("#btn-eval").addEventListener("click", openEval);
+  $("#btn-admin").addEventListener("click", () => openAdmin());
+  $$(".adm-tab").forEach((b) => b.addEventListener("click", () => showAdminPage(b.dataset.page)));
+  $("#btn-usage-save").addEventListener("click", saveUsage);
+  $("#btn-usage-open").addEventListener("click", () => postJSON("/api/usage/open", {})
+    .catch((e) => { $("#usage-status").textContent = `${t("errorPrefix")}: ${e.message}`; }));
+  $("#btn-pick-usage").addEventListener("click", () => pickFolder($("#usage-dir")));
+  $("#btn-personal-add").addEventListener("click", addPersonalFiles);
+  $("#btn-personal-rescan").addEventListener("click", rescanPersonal);
+  $("#personal-change").addEventListener("click", (e) => { e.preventDefault(); changePersonalDir(); });
+  $("#personal-file-input").addEventListener("change", (e) => {
+    const files = [...e.target.files];
+    e.target.value = "";
+    uploadPersonal(files);
+  });
   $("#btn-eval-run").addEventListener("click", runEval);
   $("#btn-eval-stop").addEventListener("click", () => { if (state.evalJob) postJSON(`/api/jobs/${state.evalJob}/cancel`, {}); });
   $("#btn-fb-export").addEventListener("click", exportFeedback);
@@ -2220,15 +2396,16 @@ function bind() {
       await loadInfo();
       await loadDocs();
       $("#lib-path").textContent = state.info.library;
+      renderAdminLibrary();
     } catch (e) { $("#lib-status").textContent = `${t("errorPrefix")}: ${e.message}`; }
   });
   $("#btn-publish").addEventListener("click", async () => {
     try { const r = await postJSON("/api/library/publish", { dest: $("#lib-publish-path").value }); $("#lib-status").textContent = t("published", r.path); }
     catch (e) { $("#lib-status").textContent = `${t("errorPrefix")}: ${e.message}`; }
   });
-  $("#btn-reindex-all").addEventListener("click", () => { $("#dlg-library").close(); rescan($("#lib-rebuild").checked); });
+  $("#btn-reindex-all").addEventListener("click", () => { $("#dlg-admin").close(); rescan($("#lib-rebuild").checked); });
   $("#btn-migrate").addEventListener("click", async () => {
-    $("#dlg-library").close();
+    $("#dlg-admin").close();
     try { const r = await postJSON("/api/library/migrate", {}); await pollJob(r.job, t("migrate")); }
     catch (e) { alert(e.message); }
   });

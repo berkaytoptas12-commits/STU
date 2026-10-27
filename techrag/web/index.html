@@ -13,8 +13,7 @@
     <div class="brand"><span class="brand-name">Sayısal Tasarım Uzmanı</span> <span class="muted small" id="lib-info"></span></div>
     <div class="top-actions">
       <button class="ghost" id="btn-new-chat" data-i18n="newChat"></button>
-      <button class="ghost" id="btn-library" data-i18n="library"></button>
-      <button class="ghost" id="btn-eval" data-i18n="evaluation"></button>
+      <button class="ghost" id="btn-admin" data-i18n="admin"></button>
       <button class="ghost" id="btn-settings" data-i18n="settings"></button>
       <button class="ghost" id="btn-toggle-right" aria-controls="viewer-panel" data-i18n="toggleRight"></button>
       <div class="lang-toggle" role="group">
@@ -29,17 +28,24 @@
       <div class="panel-head">
         <h2 data-i18n="sources"></h2>
         <span class="muted small" id="doc-count"></span>
-        <button class="ghost icon small" id="btn-quality" data-i18n-title="qualityReport">📋</button>
         <button class="ghost icon small" id="btn-collapse-left" data-i18n-title="collapseLeft">«</button>
-      </div>
-      <div class="src-actions" id="src-actions">
-        <button id="btn-add-folder" data-i18n="addFolder"></button>
-        <button class="ghost" id="btn-rescan" data-i18n-title="rescan">⟳</button>
       </div>
       <input type="search" id="doc-filter" class="doc-filter" autocomplete="off">
       <div class="scope-line small" id="scope-line"></div>
       <div class="missing-box small" id="missing-box" hidden></div>
+      <h3 class="src-group" data-i18n="sharedGroup"></h3>
       <div class="bucket-list" id="collections"></div>
+      <h3 class="src-group" data-i18n="personalGroup"></h3>
+      <div class="personal-box" id="personal-box">
+        <div class="row">
+          <button id="btn-personal-add" data-i18n="personalAdd"></button>
+          <button class="ghost" id="btn-personal-rescan" data-i18n-title="personalRescan">⟳</button>
+          <input type="file" id="personal-file-input" accept=".pdf,.txt,.md,.html,.htm,.docx" multiple hidden>
+        </div>
+        <div class="small muted personal-dir"><span data-i18n="personalDir"></span>: <code id="personal-dir"></code>
+          <a href="#" id="personal-change" data-i18n="personalChange"></a></div>
+      </div>
+      <div class="bucket-list" id="personal-collections"></div>
       <div class="job-box" id="job-box" hidden>
         <div class="job-head small"><span id="job-title"></span><button class="ghost icon small" id="btn-job-close">✕</button></div>
         <div class="bar"><div class="bar-fill" id="job-bar"></div></div>
@@ -47,17 +53,6 @@
         <div class="small job-errors" id="job-errors"></div>
         <details><summary class="small" data-i18n="jobLog"></summary><pre class="job-log" id="job-log"></pre></details>
       </div>
-      <details class="add-box" id="add-box">
-        <summary class="small" data-i18n="addDocs"></summary>
-        <label class="small"><span data-i18n="collection"></span>
-          <input id="add-collection" list="collection-list" value="general">
-          <datalist id="collection-list"></datalist>
-        </label>
-        <div class="row">
-          <button class="ghost" id="btn-add-files" data-i18n="chooseFiles"></button>
-          <input type="file" id="add-file-input" accept=".pdf,.txt,.md,.html,.htm,.docx" multiple hidden>
-        </div>
-      </details>
     </aside>
 
     <section class="panel chat">
@@ -94,6 +89,11 @@
   <dialog id="dlg-settings">
     <form method="dialog" class="dlg">
       <h2 data-i18n="settings"></h2>
+      <fieldset id="auth-box">
+        <legend data-i18n="apiKey"></legend>
+        <label class="wide"><input type="password" id="set-api-key" autocomplete="off"></label>
+        <p class="hint wide" data-i18n="apiKeyHint"></p>
+      </fieldset>
       <div class="svc-grid" id="svc-grid"></div>
       <fieldset>
         <legend data-i18n="answering"></legend>
@@ -145,28 +145,6 @@
     </form>
   </dialog>
 
-  <!-- Library -->
-  <dialog id="dlg-library">
-    <form method="dialog" class="dlg">
-      <h2 data-i18n="library"></h2>
-      <p class="small"><span data-i18n="currentLibrary"></span>: <code id="lib-path"></code> <span id="lib-ro" class="pill" data-i18n="readOnly" hidden></span></p>
-      <p class="hint" data-i18n="libraryHint"></p>
-      <div class="verify warning" id="lib-legacy" hidden><span id="lib-legacy-text"></span>
-        <div class="row" style="margin-top:6px"><button type="button" id="btn-migrate" data-i18n="migrate"></button></div></div>
-      <label><span data-i18n="libraryFolder"></span>
-        <div class="row"><input id="lib-new-path" placeholder="C:\SayisalTasarimUzmani\library"><button type="button" class="ghost" id="btn-pick-lib">…</button></div></label>
-      <label><input type="checkbox" id="lib-readonly"> <span data-i18n="openReadOnly"></span></label>
-      <div class="row"><button type="button" id="btn-open-lib" data-i18n="openLibrary"></button></div>
-      <hr>
-      <label><span data-i18n="publishTo"></span>
-        <div class="row"><input id="lib-publish-path"><button type="button" class="ghost" id="btn-pick-publish">…</button></div></label>
-      <div class="row"><button type="button" class="ghost" id="btn-publish" data-i18n="publish"></button>
-        <label class="small"><input type="checkbox" id="lib-rebuild"> <span data-i18n="rebuild"></span></label>
-        <button type="button" class="ghost" id="btn-reindex-all" data-i18n="reindexAll"></button></div>
-      <p class="small muted" id="lib-status"></p>
-      <div class="dlg-actions"><button type="button" data-close data-i18n="close"></button></div>
-    </form>
-  </dialog>
 
   <!-- Indexing quality report -->
   <dialog id="dlg-quality">
@@ -208,10 +186,59 @@
     </form>
   </dialog>
 
-  <!-- Evaluation -->
-  <dialog id="dlg-eval">
-    <form method="dialog" class="dlg">
-      <h2 data-i18n="evaluation"></h2>
+
+  <!-- Admin: the shared library, thinking and searches, evaluation, usage log -->
+  <dialog id="dlg-admin">
+    <form method="dialog" class="dlg dlg-admin">
+      <h2 data-i18n="admin"></h2>
+      <div class="adm-tabs" role="tablist">
+        <button type="button" class="adm-tab" role="tab" data-page="adm-library" data-i18n="admShared"></button>
+        <button type="button" class="adm-tab" role="tab" data-page="adm-trace" data-i18n="admTrace"></button>
+        <button type="button" class="adm-tab" role="tab" data-page="adm-eval" data-i18n="evaluation"></button>
+        <button type="button" class="adm-tab" role="tab" data-page="adm-usage" data-i18n="admUsage"></button>
+      </div>
+      <section class="adm-page" id="adm-library" role="tabpanel">
+        <h3 data-i18n="admSharedSource"></h3>
+        <p class="hint" data-i18n="admSharedHint"></p>
+        <div id="adm-roots" class="adm-roots small"></div>
+        <div class="row" id="adm-shared-actions">
+          <button type="button" id="btn-add-folder" data-i18n="addFolder"></button>
+          <button type="button" class="ghost" id="btn-rescan" data-i18n="rescan"></button>
+          <button type="button" class="ghost" id="btn-quality" data-i18n="qualityReport"></button>
+        </div>
+        <details class="add-box" id="add-box">
+          <summary class="small" data-i18n="addDocs"></summary>
+          <label class="small"><span data-i18n="collection"></span>
+            <input id="add-collection" list="collection-list" value="general">
+            <datalist id="collection-list"></datalist>
+          </label>
+          <div class="row">
+            <button type="button" class="ghost" id="btn-add-files" data-i18n="chooseFiles"></button>
+            <input type="file" id="add-file-input" accept=".pdf,.txt,.md,.html,.htm,.docx" multiple hidden>
+          </div>
+        </details>
+        <hr>
+      <p class="small"><span data-i18n="currentLibrary"></span>: <code id="lib-path"></code> <span id="lib-ro" class="pill" data-i18n="readOnly" hidden></span></p>
+      <p class="hint" data-i18n="libraryHint"></p>
+      <div class="verify warning" id="lib-legacy" hidden><span id="lib-legacy-text"></span>
+        <div class="row" style="margin-top:6px"><button type="button" id="btn-migrate" data-i18n="migrate"></button></div></div>
+      <label><span data-i18n="libraryFolder"></span>
+        <div class="row"><input id="lib-new-path" placeholder="C:\SayisalTasarimUzmani\library"><button type="button" class="ghost" id="btn-pick-lib">…</button></div></label>
+      <label><input type="checkbox" id="lib-readonly"> <span data-i18n="openReadOnly"></span></label>
+      <div class="row"><button type="button" id="btn-open-lib" data-i18n="openLibrary"></button></div>
+      <hr>
+      <label><span data-i18n="publishTo"></span>
+        <div class="row"><input id="lib-publish-path"><button type="button" class="ghost" id="btn-pick-publish">…</button></div></label>
+      <div class="row"><button type="button" class="ghost" id="btn-publish" data-i18n="publish"></button>
+        <label class="small"><input type="checkbox" id="lib-rebuild"> <span data-i18n="rebuild"></span></label>
+        <button type="button" class="ghost" id="btn-reindex-all" data-i18n="reindexAll"></button></div>
+      <p class="small muted" id="lib-status"></p>
+      </section>
+      <section class="adm-page" id="adm-trace" role="tabpanel" hidden>
+        <p class="hint" data-i18n="traceHint"></p>
+        <div id="trace-list" class="trace-list"></div>
+      </section>
+      <section class="adm-page" id="adm-eval" role="tabpanel" hidden>
       <p class="hint" data-i18n="evalHint"></p>
       <div class="eval-sets">
         <label><input type="radio" name="eval-set" value="bundled" checked> <span id="eval-set-bundled"></span>
@@ -236,6 +263,20 @@
         <button type="button" class="ghost" id="btn-fb-export" data-i18n="fbExport"></button>
       </div>
       <details><summary class="small" data-i18n="fbList"></summary><ul class="fb-list" id="fb-list"></ul></details>
+      </section>
+      <section class="adm-page" id="adm-usage" role="tabpanel" hidden>
+        <p class="hint" data-i18n="usageHint"></p>
+        <label class="wide"><input type="checkbox" id="usage-enabled"> <span data-i18n="usageEnabled"></span></label>
+        <label class="wide"><span data-i18n="usageDir"></span>
+          <div class="row"><input id="usage-dir"><button type="button" class="ghost" id="btn-pick-usage">…</button></div></label>
+        <div class="row">
+          <button type="button" id="btn-usage-save" data-i18n="save"></button>
+          <button type="button" class="ghost" id="btn-usage-open" data-i18n="openFolder"></button>
+          <span class="small muted" id="usage-status"></span>
+        </div>
+        <p class="small" id="usage-me"></p>
+        <div id="usage-table"></div>
+      </section>
       <div class="dlg-actions"><button type="button" data-close data-i18n="close"></button></div>
     </form>
   </dialog>
@@ -255,9 +296,6 @@
 
   <template id="tpl-answer">
     <div class="msg assistant">
-      <div class="plan small muted" hidden></div>
-      <details class="reasoning" hidden><summary data-i18n="reasoning"></summary><pre></pre></details>
-      <ul class="tool-log small" hidden></ul>
       <div class="status small"></div>
       <div class="elapsed small muted" hidden></div>
       <div class="body markdown"></div>

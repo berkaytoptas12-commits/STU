@@ -46,7 +46,7 @@ def cmd_ingest(cfg: Config, args) -> int:
     llm = e.llm if (cfg.llm.model and not args.no_llm_meta) else None
     if vision is None and not args.no_vlm:
         _print("note: no vision model configured -> tables from PDF text only (Settings > Vision)")
-    ing = Ingestor(cfg, e.store, e.embedder, e.domains, progress=_print, llm=llm, vision=vision)
+    ing = Ingestor(cfg, e.shared, e.embedder, e.domains, progress=_print, llm=llm, vision=vision)
     report = ing.run(Path(args.path) if args.path else None, rebuild=args.rebuild, prune=not args.no_prune)
     _print("\n" + report.summary())
     for path, err in report.failed.items():
@@ -60,7 +60,7 @@ def _ingestor(cfg: Config, args):
     e = _engine(cfg)
     vision = None if getattr(args, "no_vlm", False) else e.vision
     llm = e.llm if (cfg.llm.model and not getattr(args, "no_llm_meta", False)) else None
-    return e, Ingestor(cfg, e.store, e.embedder, e.domains, progress=_print, llm=llm, vision=vision)
+    return e, Ingestor(cfg, e.shared, e.embedder, e.domains, progress=_print, llm=llm, vision=vision)
 
 
 def _print_report(report) -> int:
@@ -91,7 +91,7 @@ def cmd_add_folder(cfg: Config, args) -> int:
     if args.preview:
         return 0
     e, ing = _ingestor(cfg, args)
-    root_id = e.store.add_root(str(folder))
+    root_id = e.shared.add_root(str(folder))
     return _print_report(ing.sync_root(root_id, rebuild=args.rebuild))
 
 

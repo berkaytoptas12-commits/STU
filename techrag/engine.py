@@ -20,13 +20,14 @@ from pathlib import Path
 from typing import Iterator, Optional, Sequence
 
 from techrag import askctx, clarify
-from techrag.config import Config, write_text_atomic
+from techrag.config import Config, same_path, write_text_atomic
 from techrag.domains import DomainRegistry
 from techrag.embeddings import Embedder, create_embedder
 from techrag.evidence import EvidenceLocator
 from techrag.ingest.metadata import AMENDING_TYPES
 from techrag.ingest.quality import scrub
 from techrag.ingest.vlm import render_page as _render
+from techrag.library import LibraryView
 from techrag.llm import LLMClient, ToolsUnsupported, image_part, parse_json_object
 from techrag.prompts import (JUDGE_SYSTEM, NOT_FOUND, answer_system_prompt, correct_prompt,
                              answer_user_prompt, judge_user_prompt, message, search_before_not_found)
@@ -62,17 +63,49 @@ _CLAUSE_REF = re.compile(r"(?:section|clause|§|sec\.)\s*(\d+(?:\.\d+)+)", re.I)
 class RAGEngine:
     def __init__(self, cfg: Config, *, store: Optional[Store] = None, embedder: Optional[Embedder] = None,
                  reranker=_UNSET, llm: Optional[LLMClient] = None, vision: Optional[LLMClient] = _UNSET,
-                 domains: Optional[DomainRegistry] = None):
+                 domains: Optional[DomainRegistry] = None, personal: Optional[Store] = None):
         self.cfg = cfg
-        self.store = store or Store(cfg.db_path, read_only=cfg.read_only)
+        # shared: the library (indexing of the shared library writes here); personal: the user's own index, when
+        # one exists; store: what answering reads - both of them (techrag.library.LibraryView)
+        self.shared = store or Store(cfg.db_path, read_only=cfg.read_only)
+        self.personal = personal if personal is not None else self._open_personal()
         self.domains = domains or DomainRegistry.load(cfg.domains_file)
         self.llm = llm or LLMClient(cfg.llm)
         self._vision = vision
         self._embedder = embedder
         self._reranker = reranker
         self._lock = threading.Lock()
-        self.catalog = DocCatalog(self.store)
+        self._set_view()
         self.planner = QueryPlanner(self.domains, self.llm, cfg.retrieval.query_rewrite, cfg.answer.history_turns)
+
+    # ------------------------------------------------------------------ libraries
+    def _open_personal(self) -> Optional[Store]:
+        path = self.cfg.personal_config().db_path
+        if not path.exists():
+            return None
+        try:
+            return Store(path)
+        except Exception as exc:  # the shared library still works without it
+            log.warning("the personal library cannot be opened (%s): %s", path, exc.__class__.__name__)
+            return None
+
+    def _set_view(self) -> None:
+        self.store = (LibraryView(self.shared, self.personal, self.cfg.personal_config().sources_dir)
+                      if self.personal is not None else self.shared)
+        self.catalog = DocCatalog(self.store)
+
+    def ensure_personal(self) -> tuple[Store, int]:
+        """The personal library, created on first use: (its store, the id of the personal folder as its document
+        folder)."""
+        with self._lock:
+            folder = self.cfg.personal_dir
+            folder.mkdir(parents=True, exist_ok=True)
+            if self.personal is None:
+                self.personal = Store(self.cfg.personal_config().db_path)
+                self._set_view()
+            store = self.personal
+        known = next((r for r in store.roots() if same_path(r["path"], folder)), None)
+        return store, known["id"] if known else store.add_root(str(folder))
 
     # ------------------------------------------------------------------ services
     @property

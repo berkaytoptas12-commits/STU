@@ -82,8 +82,16 @@ def user_cache_dir() -> Path:
 # ----------------------------------------------------------------------------- sections
 
 @dataclass
+class AuthConfig:
+    """The one API key every model server is called with (chat/vLLM, vision, embedding, reranker)."""
+    api_key: str = ""
+
+
+@dataclass
 class ServiceConfig:
-    """One OpenAI-compatible endpoint. base_url should end with /v1 (it is added when missing)."""
+    """One OpenAI-compatible endpoint. base_url should end with /v1 (it is added when missing).
+
+    api_key is filled from the shared key (Config.auth, see Config.share_api_key); it is not set per service."""
     base_url: str = ""
     api_key: str = ""
     model: str = ""
@@ -156,6 +164,15 @@ def _default_library() -> str:
     return "data/library"
 
 
+def _default_personal() -> str:
+    if getattr(sys, "frozen", False):
+        return str(app_dir(Path.home()) / "Kisisel")
+    return "data/personal"
+
+
+PERSONAL_INDEX_DIR = "_indeks"      # inside the personal folder: the personal index and its VLM cache
+
+
 @dataclass
 class PathsConfig:
     # The library holds sources/<collection>/*.pdf, index.sqlite and cache/vlm. Copy or share the
@@ -164,6 +181,9 @@ class PathsConfig:
     cache_dir: str = ""             # local render cache; "" = per-user cache dir
     domains_file: str = ""          # "" = bundled techrag/resources/domains.yaml
     user_data_dir: str = ""         # answer feedback, evaluation reports; "" = per-user settings folder
+    # The user's own documents: files picked in "Kişisel" are copied here and indexed in <folder>/_indeks,
+    # searched together with the (shared, possibly read-only) library.
+    personal_dir: str = field(default_factory=_default_personal)
 
 
 @dataclass
@@ -232,6 +252,13 @@ class TLSConfig:
 
 
 @dataclass
+class UsageConfig:
+    """Usage log (techrag/usage.py): one CSV per user - time, question, tokens."""
+    enabled: bool = True
+    log_dir: str = ""               # "" = <user settings folder>/usage; the admin can set a network folder
+
+
+@dataclass
 class UIConfig:
     language: str = "tr"            # tr | en
     notify: bool = True             # desktop: a Windows notification when an answer is ready while the window is
@@ -242,6 +269,7 @@ class UIConfig:
 class Config:
     offline: bool = True
     read_only: bool = False         # open a shared library without writing to it
+    auth: AuthConfig = field(default_factory=AuthConfig)
     paths: PathsConfig = field(default_factory=PathsConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     vision: VisionConfig = field(default_factory=VisionConfig)
@@ -253,6 +281,7 @@ class Config:
     server: ServerConfig = field(default_factory=ServerConfig)
     tls: TLSConfig = field(default_factory=TLSConfig)
     ui: UIConfig = field(default_factory=UIConfig)
+    usage: UsageConfig = field(default_factory=UsageConfig)
 
     # ------------------------------------------------------------------ derived paths
     @property
@@ -277,13 +306,40 @@ class Config:
         return base / "pages"
 
     @property
+    def personal_dir(self) -> Path:
+        return Path(self.paths.personal_dir).expanduser()
+
+    def personal_config(self) -> "Config":
+        """The personal library as a library of its own: its index and VLM cache in <personal folder>/_indeks;
+        the folder itself is its one document folder (always writable, also when the shared library is not)."""
+        c = self.copy()
+        c.paths.library_dir = str(self.personal_dir / PERSONAL_INDEX_DIR)
+        c.read_only = False
+        return c
+
+    @property
     def user_data_dir(self) -> Path:
         """Per-user files that never go into the (possibly shared, read-only) library."""
         return Path(self.paths.user_data_dir).expanduser() if self.paths.user_data_dir else user_config_dir()
 
     @property
+    def usage_log_dir(self) -> Path:
+        return Path(self.usage.log_dir).expanduser() if self.usage.log_dir else self.user_data_dir / "usage"
+
+    @property
     def domains_file(self) -> Path:
         return Path(self.paths.domains_file) if self.paths.domains_file else resource_path("resources", "domains.yaml")
+
+    def share_api_key(self, adopt_legacy: bool = True) -> None:
+        """Every model server is called with the one shared key (auth.api_key).
+
+        adopt_legacy: a key set the old way, per service (an older settings file, a config file or
+        TECHRAG_LLM__API_KEY), becomes the shared key when none is set - the chat model's first."""
+        services = (self.llm, self.vision, self.embedding, self.reranker)
+        if adopt_legacy and not self.auth.api_key:
+            self.auth.api_key = next((s.api_key for s in services if s.api_key), "")
+        for s in services:
+            s.api_key = self.auth.api_key
 
     def vision_service(self) -> ServiceConfig:
         """Effective vision endpoint (falls back to the chat LLM)."""
@@ -375,6 +431,7 @@ def load_config(path: Optional[str | Path] = None, user_settings: Optional[bool]
 
         apply_dict(cfg, load_user_settings(), strict=False)
     _apply_env(cfg)
+    cfg.share_api_key()
     if cfg.offline:
         enforce_offline()
     from techrag.api import configure_tls

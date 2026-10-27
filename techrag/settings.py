@@ -1,8 +1,9 @@
 """Per-user settings written by the desktop Settings dialog (%APPDATA%/SayisalTasarimUzmani/settings.json; an
 existing %APPDATA%/TechRAG folder from before the rename keeps being used).
 
-API keys are encrypted with Windows DPAPI (bound to the Windows user account) when available; on
-other platforms the file is created with owner-only permissions.
+One API key is used for every model server (section "auth"); keys saved per service by older versions are moved
+there on the next save. API keys are encrypted with Windows DPAPI (bound to the Windows user account) when
+available; on other platforms the file is created with owner-only permissions.
 """
 
 from __future__ import annotations
@@ -20,7 +21,8 @@ from techrag.config import Config, _apply_env, apply_dict, user_config_dir
 log = logging.getLogger("techrag.settings")
 
 SECRET_KEYS = ("api_key",)
-SECTIONS = ("llm", "vision", "embedding", "reranker", "paths", "ui", "answer", "retrieval", "tls")
+SECTIONS = ("auth", "llm", "vision", "embedding", "reranker", "paths", "ui", "answer", "retrieval", "tls", "usage")
+SERVICE_SECTIONS = ("llm", "vision", "embedding", "reranker")   # the chat model's key first (see _migrate_keys)
 MASK = "••••••••"
 
 
@@ -127,19 +129,44 @@ def save_user_settings(data: dict) -> Path:
 
 
 def public_settings(cfg: Config) -> dict:
-    """Editable settings for the UI, secrets masked."""
+    """Editable settings for the UI, the shared key masked (services have no key of their own)."""
     d = cfg.to_dict()
     out = {s: d[s] for s in SECTIONS}
-    for s in ("llm", "vision", "embedding", "reranker"):
-        out[s]["api_key"] = MASK if out[s].get("api_key") else ""
+    out["auth"]["api_key"] = MASK if cfg.auth.api_key else ""
+    for s in SERVICE_SECTIONS:
+        out[s].pop("api_key", None)
     out["read_only"] = cfg.read_only
     return out
 
 
+def _migrate_keys(stored: dict) -> None:
+    """Settings saved before the shared key: the first per-service key (the chat model's first) becomes the shared
+    key and the per-service keys are removed. A key this Windows account cannot decrypt moves as it is stored."""
+    legacy = [(n, stored[n]) for n in SERVICE_SECTIONS if isinstance(stored.get(n), dict) and "api_key" in stored[n]]
+    if not legacy:
+        return
+    auth = stored["auth"] if isinstance(stored.get("auth"), dict) else {}
+    if not auth.get("api_key") and ("auth", "api_key") not in _UNREADABLE:
+        for name, section in legacy:
+            if section.get("api_key"):
+                auth["api_key"] = section["api_key"]
+                break
+            if (name, "api_key") in _UNREADABLE:
+                _UNREADABLE[("auth", "api_key")] = _UNREADABLE[(name, "api_key")]
+                auth["api_key"] = ""
+                break
+    for name, section in legacy:
+        section.pop("api_key", None)
+        _UNREADABLE.pop((name, "api_key"), None)
+    stored["auth"] = auth
+
+
 def update_settings(cfg: Config, patch: dict) -> Config:
     """Merge a settings patch from the UI into the stored user settings and return a new Config.
-    A masked or missing api_key keeps the stored one."""
+    A masked or missing api_key keeps the stored one; a key given for a single service is ignored (one shared key,
+    section "auth")."""
     stored = load_user_settings()
+    _migrate_keys(stored)
     applied: dict = {}
     for section, values in (patch or {}).items():
         if section == "read_only":
@@ -149,7 +176,7 @@ def update_settings(cfg: Config, patch: dict) -> Config:
             continue
         dest, now = stored.setdefault(section, {}), applied.setdefault(section, {})
         for k, v in values.items():
-            if k in SECRET_KEYS and (v == MASK or v is None):
+            if k in SECRET_KEYS and (v == MASK or v is None or section != "auth"):
                 continue
             dest[k] = now[k] = v
             if k in SECRET_KEYS:
@@ -160,6 +187,7 @@ def update_settings(cfg: Config, patch: dict) -> Config:
     apply_dict(probe, applied, strict=False)  # validates types before persisting
     check_ranges(probe, applied)
     _apply_env(probe)
+    probe.share_api_key(adopt_legacy=False)
     save_user_settings(stored)
     return probe
 

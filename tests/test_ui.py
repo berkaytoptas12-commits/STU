@@ -59,6 +59,13 @@ def ui(cfg, engine, tmp_path, monkeypatch):
         th.join(timeout=5)
 
 
+def _admin(page, tab):
+    page.click("#btn-admin")
+    page.wait_for_selector("#dlg-admin[open]")
+    page.click(f".adm-tab[data-page={tab}]")
+    page.wait_for_selector(f"#{tab}:not([hidden])")
+
+
 def _ask(page, q):
     n = page.locator(".msg.assistant").count()
     page.fill("#question", q)
@@ -276,6 +283,7 @@ def test_add_document_folder_flow(ui, tmp_path):
     simple_pdf(root / "Kök Belge.pdf", "General notes", "Top level document.")
     (root / "PCIe" / "notlar.xlsx").write_bytes(b"x")
     ui.once("dialog", lambda d: d.accept(str(root)))
+    _admin(ui, "adm-library")
     ui.click("#btn-add-folder")
     ui.wait_for_selector("#dlg-folder[open]")
     body = ui.inner_text("#folder-body")
@@ -283,6 +291,9 @@ def test_add_document_folder_flow(ui, tmp_path):
     assert "1 desteklenmeyen" in body and "Toplam 3" in body
     ui.click("#btn-folder-go")
     ui.wait_for_function("() => /bitti/.test(document.querySelector('#job-title').textContent)", timeout=30000)
+    ui.wait_for_function("() => document.querySelector('#adm-roots').textContent.includes('Teknik Belgeler')")
+    assert "3 belge" in ui.inner_text("#adm-roots"), "Admin shows where the shared files come from"
+    ui.click("#dlg-admin [data-close]")
     assert "3 yeni" in ui.inner_text("#job-now")
     ui.wait_for_function("() => document.querySelectorAll('#collections .bucket').length >= 5")
     names = ui.locator("#collections .bucket-name").all_inner_texts()
@@ -347,7 +358,7 @@ def test_clarifying_question_reply_is_merged_and_cleared(ui):
     assert ui.is_visible("#pending-clarify") and "tRFC değeri nedir?" in ui.inner_text("#pending-text")
     _ask(ui, "DDR4")                    # free text reply in the input box
     assert sent[-1]["clarification"]["question"] == "tRFC değeri nedir?"
-    plan = ui.inner_text(".msg.assistant >> nth=1 >> .plan")
+    plan = ui.evaluate("() => state.traces[0].plan")
     assert "tRFC değeri nedir? (DDR4)" in plan
     assert ui.is_hidden("#pending-clarify")
     assert "350" in ui.inner_text(".msg.assistant >> nth=1 >> .body")
@@ -405,6 +416,7 @@ def test_missing_pdf_page_says_so_and_offers_the_text(ui):
 
 
 def test_quality_report_dialog(ui):
+    _admin(ui, "adm-library")
     ui.click("#btn-quality")
     ui.wait_for_selector("#dlg-quality[open]")
     ui.wait_for_function("() => document.querySelector('#q-run').textContent.includes('işlendi')")
@@ -492,8 +504,7 @@ def test_evaluation_dialog_runs_a_question_file(ui, tmp_path):
     f = tmp_path / "set.yaml"
     f.write_text("- id: t1\n  question: DDR5 tRFC değeri nedir?\n  document: DDR5\n  pages: [6]\n"
                  "  facts: [{parameter: [tRFC], value: '295', unit: ns}]\n", encoding="utf-8")
-    ui.click("#btn-eval")
-    ui.wait_for_selector("#dlg-eval[open]")
+    _admin(ui, "adm-eval")
     ui.wait_for_function("() => document.querySelector('#eval-set-bundled').textContent.length > 0")
     assert "Örnek soru seti (" in ui.inner_text("#eval-set-bundled")
     ui.check("input[name=eval-set][value=custom]")
@@ -510,6 +521,8 @@ def test_evaluation_dialog_runs_a_question_file(ui, tmp_path):
 def test_advanced_settings_are_shown_and_saved(ui):
     ui.click("#btn-settings")
     ui.wait_for_selector("#dlg-settings[open]")
+    assert ui.is_visible("#set-api-key") and ui.locator(".svc input[type=password]").count() == 0, \
+        "one shared API key, none per service"
     assert ui.input_value("#set-context") == "16000" and ui.input_value("#set-judge-batch") == "8"
     assert ui.is_checked("#set-repair-cites") and ui.input_value("#set-follow-refs") == "3"
     ui.wait_for_function("() => document.querySelector('#ctx-info').textContent.length > 0")
@@ -522,6 +535,7 @@ def test_advanced_settings_are_shown_and_saved(ui):
     ui.wait_for_function("() => document.querySelector('#settings-status').textContent.length > 0")
     s = ui.evaluate("async () => (await (await fetch('/api/settings')).json())")
     assert s["answer"]["judge_batch"] == 4 and s["retrieval"]["follow_references"] == 2
+    assert "api_key" not in s["llm"] and s["auth"]["api_key"] == ""
     assert s["llm"]["max_tool_rounds"] == 2 and s["ui"]["notify"] is False
 
 
@@ -531,8 +545,7 @@ def test_evaluation_results_show_each_answer(ui, tmp_path):
                  "  facts: [{parameter: [tRFC], value: '295', unit: ns}]\n  note: refresh table\n"
                  "- id: t2\n  kind: value\n  question: DDR5 tRFC değeri nedir?\n"
                  "  facts: [{parameter: [tRFC], value: '999', unit: ns}]\n", encoding="utf-8")
-    ui.click("#btn-eval")
-    ui.wait_for_selector("#dlg-eval[open]")
+    _admin(ui, "adm-eval")
     ui.check("input[name=eval-set][value=custom]")
     ui.set_input_files("#eval-file", str(f))
     ui.click("#btn-eval-run")
@@ -549,7 +562,7 @@ def test_evaluation_results_show_each_answer(ui, tmp_path):
     n = ui.locator(".msg.assistant").count()
     items.nth(0).locator(".ev-ask").click()
     ui.wait_for_selector(f".msg.assistant >> nth={n} >> .msg-actions:not([hidden])", timeout=20000)
-    assert not ui.evaluate("document.querySelector('#dlg-eval').open")
+    assert not ui.evaluate("document.querySelector('#dlg-admin').open")
 
 
 _SEND_CLEAR = """() => {
@@ -621,3 +634,57 @@ def test_answer_shows_where_its_time_went(ui):
         assert part in text, (part, text)
     btn.click()
     assert ui.is_hidden(".msg.assistant .timing-detail")
+
+
+def test_thinking_and_searches_are_in_admin_not_in_the_chat(ui):
+    assert ui.locator("#btn-library").count() == 0 and ui.locator("#btn-eval").count() == 0, \
+        "library and evaluation live in Admin"
+    _ask(ui, "DDR5 tRFC değeri nedir?")
+    msg = ui.locator(".msg.assistant").last
+    assert msg.locator(".reasoning, .tool-log, .plan").count() == 0, "the chat shows no thinking or search log"
+    assert "295" in msg.locator(".body").inner_text()
+    _admin(ui, "adm-trace")
+    trace = ui.locator("#trace-list .trace").first
+    assert "DDR5 tRFC değeri nedir?" in trace.locator("summary").first.inner_text()
+    assert trace.locator(".trace-thinking-box").count() == 1 and not trace.locator(".trace-thinking-box").get_attribute(
+        "open"), "thinking is collapsed until opened"
+    search = trace.locator(".trace-search-box")
+    search.locator("summary").click()
+    text = search.inner_text()
+    assert "DDR5" in text and "atıf yapıldı" in text, "the sources the model got, cited ones marked"
+    assert "search" in text or "Aramalar" in text
+
+
+def test_personal_files_are_chosen_from_the_computer(ui, tmp_path, cfg):
+    groups = ui.evaluate("() => [...document.querySelectorAll('.src-group')].map((h) => h.textContent)")
+    assert groups == ["Ortak", "Kişisel"]
+    assert str(cfg.personal_dir) in ui.inner_text("#personal-dir")
+    assert "Henüz kişisel dosya yok" in ui.inner_text("#personal-collections")
+    f = tmp_path / "picked" / "notlarim.md"
+    f.parent.mkdir()
+    f.write_text("# Notlarım\n\nThe ZQX7 probe ground spring must be shorter than 5 mm.\n", encoding="utf-8")
+    ui.set_input_files("#personal-file-input", str(f))
+    ui.wait_for_selector("#personal-collections .bucket", timeout=30000)
+    assert ui.inner_text("#personal-collections .bucket-name") == "Kişisel"
+    assert (cfg.personal_dir / "notlarim.md").exists(), "saved into the personal folder"
+    assert ui.locator("#collections .bucket-name", has_text="Kişisel").count() == 0, "not mixed into the shared list"
+    _ask(ui, "ZQX7 probe ground spring")
+    titles = ui.evaluate("() => state.traces[0].sources.map((s) => s.doc_title)")
+    assert titles and "notlar" in titles[0].lower(), f"the personal document is searched with the shared ones: {titles}"
+
+
+def test_usage_log_tab(ui, tmp_path):
+    _admin(ui, "adm-usage")
+    ui.wait_for_function("() => document.querySelector('#usage-me').textContent.length > 0")
+    folder = tmp_path / "ortak" / "loglar"
+    ui.fill("#usage-dir", str(folder))
+    ui.click("#btn-usage-save")
+    ui.wait_for_function("() => document.querySelector('#usage-status').textContent === 'Kaydedildi.'")
+    ui.click("#dlg-admin [data-close]")
+    _ask(ui, "DDR5 tRFC değeri nedir?")
+    ui.wait_for_function("async () => (await (await fetch('/api/usage')).json()).users.length === 1")
+    _admin(ui, "adm-usage")
+    ui.wait_for_selector("#usage-table table")
+    row = ui.inner_text("#usage-table tbody tr")
+    assert row.split("\t")[1].strip() == "1", row
+    assert list(folder.glob("*.csv")), "one CSV per user in the chosen folder"

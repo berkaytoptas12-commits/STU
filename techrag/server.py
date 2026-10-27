@@ -29,6 +29,7 @@ from techrag.engine import RAGEngine
 from techrag.ingest.loaders import SUPPORTED_SUFFIXES
 from techrag.ingest.pipeline import IngestStopped, WriteGate
 from techrag.settings import MASK, public_settings, settings_path, update_settings
+from techrag.usage import UsageLog, current_machine, current_user, token_totals
 
 WEB_DIR = resource_path("web")
 SERVICES = ("llm", "vision", "embedding", "reranker")
@@ -251,7 +252,8 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 "missing_documents": sum(b["missing"] for b in e.store.buckets()) if e else 0,
                 "models": {s: getattr(c, s).model for s in SERVICES},
                 "stats": stats, "domains": domains, "error": state["error"],
-                "allow_upload": c.server.allow_upload and not c.read_only}
+                "allow_upload": c.server.allow_upload and not c.read_only,
+                "personal": personal_info()}
 
     # -------------------------------------------------------------- settings
     @app.get("/api/settings", dependencies=guard)
@@ -268,7 +270,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             new_cfg.server = state["cfg"].server
             state["cfg"] = new_cfg
             configure_tls(new_cfg.tls)
-            if set(patch) - {"ui"} or state["engine"] is None:
+            if set(patch) - {"ui", "usage"} or state["engine"] is None:   # these two need no new engine
                 build_engine(new_cfg)
             else:
                 state["engine"].cfg = new_cfg
@@ -294,10 +296,11 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         c: Config = state["cfg"]
         saved = c.vision_service() if p.service == "vision" else getattr(c, p.service)
         url = p.base_url if p.base_url is not None else saved.base_url
-        # The stored key is only reused for the server it belongs to - never sent to another URL given in the
-        # request. The vision service shows "" when it uses the chat model's key (as at run time).
-        reuse = p.api_key in (None, MASK) or (p.service == "vision" and p.api_key == "")
-        key = (saved.api_key if _same_server(url, saved.base_url) else "") if reuse else p.api_key
+        # The shared key is only reused for the model servers it is configured for - never sent to another URL
+        # given in the request.
+        configured = (c.llm.base_url, c.vision_service().base_url, c.embedding.base_url, c.reranker.base_url)
+        reuse = p.api_key in (None, MASK)
+        key = (c.auth.api_key if any(_same_server(url, b) for b in configured) else "") if reuse else p.api_key
         return ServiceConfig(base_url=url, api_key=key or "", model=p.model if p.model is not None else saved.model,
                              timeout=30.0, verify_ssl=saved.verify_ssl if p.verify_ssl is None else p.verify_ssl)
 
@@ -393,7 +396,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
     def library_publish(req: PublishRequest):
         c: Config = state["cfg"]
         dest = Path(req.dest).expanduser()
-        store = eng().store
+        store = eng().shared
         try:
             target = store.publish(dest, c.sources_dir, c.vlm_cache_dir)
         except ValueError as exc:
@@ -480,12 +483,46 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 "timings": res.timings, "sources": [p.to_dict() for p in res.passages],
                 "parameters": [p.__dict__ for p in res.parameters]}
 
+    def usage_log() -> Optional[UsageLog]:
+        c: Config = state["cfg"]
+        if not c.usage.enabled:
+            return None
+        log_ = state.get("usage")
+        if log_ is None or log_.dir != c.usage_log_dir:
+            log_ = state["usage"] = UsageLog(c.usage_log_dir, c.user_data_dir / "usage_local")
+        return log_
+
+    def record_usage(question: str, ctx: askctx.AskContext, last: dict) -> None:
+        """One line in the user's usage log: how the question ended and the tokens it took (no answer text)."""
+        log_ = usage_log()
+        if log_ is None:
+            return
+        v = (last or {}).get("verification") or {}
+        if ctx.stopped:
+            outcome = "durduruldu"
+        elif not last or last.get("type") == "error":
+            outcome = "hata"
+        elif v.get("status") == "clarify":
+            outcome = "soru_soruldu"
+        else:
+            outcome = "cevaplandi"
+        log_.record(question, outcome, v.get("status", ""), time.time() - ctx.started,
+                    token_totals(ctx.summary()), state["cfg"].llm.model)
+
     @app.post("/api/ask", dependencies=guard)
     def ask(req: AskRequest):
         e = eng()
         history = [t.model_dump() for t in req.history]
         if not req.stream:
-            return e.ask(req.question, history, req.domains, req.doc_ids, req.top_k, req.buckets, req.clarification)
+            ctx = askctx.AskContext()
+            res: dict = {}
+            try:
+                with askctx.active(ctx):
+                    res = e.ask(req.question, history, req.domains, req.doc_ids, req.top_k, req.buckets,
+                                req.clarification)
+                return res
+            finally:
+                record_usage(req.question, ctx, dict(res, type="final") if res else {})
 
         ctx = askctx.AskContext()
         ask_id = uuid.uuid4().hex
@@ -512,6 +549,10 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 finally:
                     q.put(None)
                     asks.pop(ask_id, None)
+                    try:
+                        record_usage(req.question, ctx, last)
+                    except Exception:  # the log never breaks an answer
+                        pass
             hook = getattr(app.state, "on_answer", None)
             if hook is not None and last and not ctx.stopped:
                 v = last.get("verification") or {}
@@ -552,12 +593,15 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
 
     # ------------------------------------------------------------- ingestion
     def start_job(kind: str, target: Optional[Path] = None, rebuild: bool = False, root_id: Optional[int] = None,
-                  everything: bool = False, retry: bool = False, retry_paths: Optional[list[str]] = None) -> dict:
-        """Indexing runs in a background thread (the window stays responsive); progress is polled."""
+                  everything: bool = False, retry: bool = False, retry_paths: Optional[list[str]] = None,
+                  personal: bool = False) -> dict:
+        """Indexing runs in a background thread (the window stays responsive); progress is polled.
+        personal: index the user's personal folder (into the personal library; allowed also when the shared library
+        is opened read-only)."""
         from techrag.ingest.pipeline import Ingestor
 
         c: Config = state["cfg"]
-        if c.read_only:
+        if c.read_only and not personal:
             raise HTTPException(403, "the library is opened read-only")
         e = eng()
         job = jobs.create(kind)
@@ -571,11 +615,16 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 ing = None
                 try:
                     jobs.gate.check()
-                    ing = Ingestor(c, e.store, e.embedder, e.domains, progress=lambda m: job["messages"].append(m),
+                    lib_cfg, store, own_root = c, e.shared, None
+                    if personal:
+                        (store, own_root), lib_cfg = e.ensure_personal(), c.personal_config()
+                    ing = Ingestor(lib_cfg, store, e.embedder, e.domains, progress=lambda m: job["messages"].append(m),
                                    llm=e.llm if c.llm.model else None, vision=e.vision, status=status,
                                    gate=jobs.gate)
                     ing.run_kind = kind
-                    if retry:
+                    if personal:
+                        report = ing.sync_root(own_root, rebuild)
+                    elif retry:
                         report = ing.retry_failed(retry_paths)
                     elif root_id is not None:
                         report = ing.sync_root(root_id, rebuild)
@@ -605,7 +654,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         lib = state["cfg"].library_dir
         scan = scan_root(root_path, exclude=(lib,) if Path(root_path) != state["cfg"].sources_dir else ())
         fp = ingest_fingerprint(state["cfg"], e.vision.model if e.vision else None)
-        docs = e.store.root_documents(root_id) if root_id is not None or Path(root_path) == state["cfg"].sources_dir \
+        docs = e.shared.root_documents(root_id) if root_id is not None or Path(root_path) == state["cfg"].sources_dir \
             else []
         if root_id is None:
             docs = [d for d in docs if not Path(d.path).is_absolute()]
@@ -617,7 +666,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         Only reads the folder."""
         path = Path(req.path).expanduser()
         e = eng()
-        known = next((r for r in e.store.roots() if same_path(r["path"], path)), None)
+        known = next((r for r in e.shared.roots() if same_path(r["path"], path)), None)
         out = _plan(str(path), known["id"] if known else None)
         out["known"] = bool(known)
         return out
@@ -636,7 +685,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 raise HTTPException(400, "pick a folder outside the library folder")
         except OSError:
             pass
-        store = eng().store
+        store = eng().shared
         # "c:\docs" and "C:\Docs" are the same folder on Windows: never register (and index) it twice.
         known = next((r for r in store.roots() if same_path(r["path"], path)), None)
         root_id = known["id"] if known else store.add_root(str(path))
@@ -644,14 +693,14 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
 
     @app.get("/api/folders", dependencies=guard)
     def folders():
-        return eng().store.roots()
+        return eng().shared.roots()
 
     @app.post("/api/rescan/preview", dependencies=guard)
     def rescan_preview():
         c: Config = state["cfg"]
         e = eng()
         parts = [dict(_plan(str(c.sources_dir), None), root=str(c.sources_dir), library=True)]
-        for r in e.store.roots():
+        for r in e.shared.roots():
             parts.append(dict(_plan(r["path"], r["id"]), root=r["path"], library=False))
         total: dict = {}
         for p in parts:
@@ -672,7 +721,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         from techrag.ingest.pipeline import retry_plan
 
         e = eng()
-        store = e.store
+        store = e.shared
         records = store.quality()
         docs = store.documents()
         out = []
@@ -708,7 +757,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         """Remove documents whose source file is gone from the index (explicit user action)."""
         if state["cfg"].read_only:
             raise HTTPException(403, "the library is opened read-only")
-        return {"removed": eng().store.purge_missing()}
+        return {"removed": eng().shared.purge_missing()}
 
     def collection_dir(collection: str) -> Path:
         """Folder of a collection inside the library's sources: the name as typed (Turkish letters and spaces
@@ -769,6 +818,92 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 fh.write(chunk)
         return {"job": start_job("upload", dest)["id"], "path": str(dest)}
 
+    # ------------------------------------------------------------------ usage log
+    @app.get("/api/usage", dependencies=guard)
+    def usage_get():
+        """Where the usage log is written and, per user, how many questions and tokens it holds."""
+        c: Config = state["cfg"]
+        log_ = usage_log() or UsageLog(c.usage_log_dir, c.user_data_dir / "usage_local")
+        return {"enabled": c.usage.enabled, "dir": str(c.usage_log_dir), "custom": bool(c.usage.log_dir),
+                "user": current_user(), "machine": current_machine(), "file": str(log_.path),
+                "last_error": log_.last_error, **log_.summary()}
+
+    @app.post("/api/usage/open", dependencies=guard)
+    def usage_open():
+        """Desktop only: open the log folder in Explorer."""
+        if not desktop:
+            raise HTTPException(400, "only available in the desktop app")
+        folder = state["cfg"].usage_log_dir
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise HTTPException(400, f"folder not available: {exc.__class__.__name__}")
+        if sys.platform.startswith("win"):
+            os.startfile(str(folder))  # type: ignore[attr-defined]
+        else:
+            subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(folder)])
+        return {"ok": True}
+
+    # -------------------------------------------------------------- personal library
+    def personal_info() -> dict:
+        c: Config = state["cfg"]
+        e = state["engine"]
+        own = e.personal if e is not None else None
+        buckets = [b for b in e.store.buckets() if b.get("personal")] if (e is not None and own is not None) else []
+        return {"dir": str(c.personal_dir), "exists": c.personal_dir.is_dir(), "indexed": own is not None,
+                "documents": sum(b["documents"] for b in buckets), "buckets": buckets,
+                "can_add": c.server.allow_upload}
+
+    def check_can_add_personal() -> Path:
+        c: Config = state["cfg"]
+        if not c.server.allow_upload:
+            raise HTTPException(403, "adding documents is switched off on this server (server.allow_upload)")
+        eng()
+        try:
+            c.personal_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise HTTPException(400, f"the personal folder cannot be created: {exc.__class__.__name__}")
+        return c.personal_dir
+
+    @app.get("/api/personal", dependencies=guard)
+    def personal_get():
+        return personal_info()
+
+    @app.post("/api/personal/add", dependencies=guard)
+    def personal_add(req: PathsRequest):
+        """Copy the picked files into the personal folder and index them into the personal library."""
+        folder = check_can_add_personal()
+        copied = []
+        for p in req.paths:
+            src = Path(p)
+            if not src.is_file() or src.suffix.lower() not in SUPPORTED_SUFFIXES:
+                continue
+            dest = unique_dest(folder, _safe_filename(src.name), src)
+            if not dest.exists():
+                shutil.copy2(src, dest)
+            copied.append(str(dest))
+        if not copied:
+            raise HTTPException(400, f"no supported files ({', '.join(sorted(SUPPORTED_SUFFIXES))})")
+        return {"job": start_job("personal", personal=True)["id"], "copied": copied}
+
+    @app.post("/api/personal/upload", dependencies=guard)
+    async def personal_upload(file: UploadFile = File(...)):
+        folder = check_can_add_personal()
+        name = _safe_filename(file.filename or "upload")
+        if Path(name).suffix.lower() not in SUPPORTED_SUFFIXES:
+            raise HTTPException(400, f"unsupported file type; allowed: {', '.join(sorted(SUPPORTED_SUFFIXES))}")
+        dest = unique_dest(folder, name)
+        with open(dest, "wb") as fh:
+            while chunk := await file.read(1 << 20):
+                fh.write(chunk)
+        return {"job": start_job("personal", personal=True)["id"], "path": str(dest)}
+
+    @app.post("/api/personal/rescan", dependencies=guard)
+    def personal_rescan():
+        """Index what changed in the personal folder (files copied or removed there by hand too)."""
+        check_can_add_personal()
+        return {"job": start_job("personal", personal=True)["id"]}
+
     @app.post("/api/library/migrate", dependencies=guard)
     def library_migrate():
         """Update an index from an older version in place (no re-embedding, no VLM calls)."""
@@ -784,7 +919,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             with jobs.lock:
                 job["status"] = "running"
                 try:
-                    rep = migrate_index(c, e.store, lambda m: job["messages"].append(m), gate=jobs.gate)
+                    rep = migrate_index(c, e.shared, lambda m: job["messages"].append(m), gate=jobs.gate)
                     job["report"] = rep
                     job["messages"].append(json.dumps(rep, ensure_ascii=False, indent=1))
                     job["status"] = "done"

@@ -97,6 +97,7 @@ def cfg(tmp_path: Path) -> Config:
         getattr(c, svc).model = model
     c.vision.min_page_score = 4.0
     c.paths.user_data_dir = str(tmp_path / "user")
+    c.paths.personal_dir = str(tmp_path / "personal")
     return c
 
 
