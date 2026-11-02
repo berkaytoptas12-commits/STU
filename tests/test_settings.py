@@ -1,6 +1,7 @@
 """settings.json: unreadable files, keys that cannot be decrypted, environment variables."""
 
 import json
+import os
 
 from techrag import settings as S
 
@@ -46,7 +47,9 @@ def test_per_service_keys_become_one_shared_key(tmp_path, monkeypatch, cfg):
     assert {c.llm.api_key, c.vision.api_key, c.embedding.api_key, c.reranker.api_key} == {"chat-key"}
     new = S.update_settings(c, {"ui": {"language": "en"}})
     saved = json.loads(path.read_text(encoding="utf-8"))
-    assert saved["auth"]["api_key"] == "chat-key"
+    assert S.load_user_settings()["auth"]["api_key"] == "chat-key", "stored (DPAPI-encrypted on Windows)"
+    if os.name == "nt":
+        assert "chat-key" not in json.dumps(saved), "never written in plain text on Windows"
     assert all("api_key" not in saved[s] for s in ("llm", "embedding", "reranker")), "per-service keys removed"
     assert new.embedding.api_key == "chat-key"
     cleared = S.update_settings(new, {"auth": {"api_key": ""}})

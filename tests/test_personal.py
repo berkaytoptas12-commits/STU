@@ -61,7 +61,7 @@ def test_picked_file_is_copied_indexed_and_searched_with_the_shared_library(clie
     own = next(d for d in docs if d["title"].lower().startswith("lab notes") or "lab_notes" in d["path"])
     assert own["id"] >= PERSONAL_OFFSET and own["bucket"] == "Kişisel"
     assert len(docs) == 4, "the three shared documents are still there"
-    assert client.get(f"/api/documents/{own['id']}/file").content.decode("utf-8") == NOTE
+    assert client.get(f"/api/documents/{own['id']}/file").content == copied.read_bytes(), "the file is served as is"
 
     found = client.post("/api/search", json={"query": "ZQX7 probe ground spring"}).json()["sources"]
     assert found and found[0]["doc_id"] == own["id"], "the personal document is found"
