@@ -774,3 +774,64 @@ def test_a_personal_document_is_removed_from_the_list(ui, tmp_path, cfg):
     ui.wait_for_function("() => !document.querySelector('#personal-collections .bucket')")
     assert "kaldırıldı" in ui.inner_text("#personal-status")
     assert not (cfg.personal_dir / "silinecek.md").exists() and f.exists(), "the picked original stays"
+
+
+_POS = """() => { const m = document.querySelector('#messages'); const els = m.querySelectorAll('.msg.assistant');
+  const el = els[els.length - 1];
+  return {delta: el.getBoundingClientRect().top - m.getBoundingClientRect().top, top: m.scrollTop,
+          max: m.scrollHeight - m.clientHeight}; }"""
+
+
+def test_sources_come_with_the_answer_and_the_view_starts_at_it(ui, fake):
+    import re
+
+    gate = threading.Event()
+    base = fake._answer
+
+    def answer(msgs, tools):
+        gate.wait(20)
+        out = base(msgs, tools)
+        m = re.search(r"is (\d+) ns \[(\d+)\]", out.get("content") or "")
+        if m:   # a long answer: longer than the chat area
+            line = f"- The refresh cycle time tRFC for an 8Gb device is {m[1]} ns [{m[2]}]."
+            out = {"content": f"tRFC for an 8Gb device is {m[1]} ns [{m[2]}].\n\n### Documented\n" + "\n".join([line] * 40)}
+        return out
+
+    fake.answer = answer
+    ui.set_viewport_size({"width": 1500, "height": 700})
+    gate.set()
+    _ask(ui, "DDR5 tRFC değeri nedir?")   # an earlier answer above
+    gate.clear()
+    ui.fill("#question", "DDR4 tRFC değeri nedir?")
+    ui.press("#question", "Enter")
+    ui.wait_for_function("() => state.traces.length === 2 && state.traces[0].sources.length > 0")
+    assert ui.locator(".msg.assistant >> nth=1 >> .cite-chip").count() == 0, "no sources while the answer is written"
+    gate.set()
+    ui.wait_for_selector(".msg.assistant >> nth=1 >> .msg-actions:not([hidden])", timeout=20000)
+    assert ui.locator(".msg.assistant >> nth=1 >> .cite-chip").count() > 0, "the sources come with the answer"
+    ui.wait_for_function(f"() => {{ const p = ({_POS})(); return Math.abs(p.delta - 8) < 3; }}")
+    pos = ui.evaluate(_POS)
+    assert pos["top"] < pos["max"] - 50, f"the start of the answer, not the end of the chat: {pos}"
+    # a reopened conversation opens at the start of its last answer too
+    ui.click(".side-tab[data-side=side-chats]")
+    ui.wait_for_selector("#chat-list .chat-item")
+    ui.click("#btn-chat-new")
+    ui.locator("#chat-list .chat-item").first.click()
+    ui.wait_for_function("() => document.querySelectorAll('.msg.assistant').length === 2")
+    ui.wait_for_function(f"() => {{ const p = ({_POS})(); return Math.abs(p.delta - 8) < 3 && p.top < p.max - 50; }}")
+
+
+def test_strip_says_why_a_citation_has_no_highlight(ui, fake):
+    fake.answer = lambda msgs, tools: {"content": "Bu bölüm yenileme işlemini anlatır [1]."}
+    _ask(ui, "DDR5 yenileme nasıl çalışır?")
+    _cite(ui)
+    _wait_img(ui)
+    assert ui.locator("#tab-source .hl").count() == 0
+    note = ui.locator("#tab-source .pv-bar .pv-note")
+    assert note.is_visible() and "Konum eşleştirilemedi" in note.inner_text()
+    assert "kesin konum eşleştirilemedi" in note.get_attribute("title")
+    fake.answer = None
+    _ask(ui, "DDR5 tRFC değeri nedir?")
+    ui.locator(".msg.assistant >> nth=1 >> .body button.cite").first.click()
+    ui.wait_for_selector("#tab-source .hl.current")
+    assert ui.locator("#tab-source .pv-note").count() == 0, "no note when the evidence is highlighted"

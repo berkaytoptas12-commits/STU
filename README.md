@@ -430,7 +430,9 @@ her şey burada toplanır):
 * **Cevap akışı:** taslak, "doğrulanmamış" etiketli katlanmış bir alanda ilerleme olarak görünür. Modelin
   düşünmesi, kapsam satırı, araç çağrıları ve aranan belgeler sohbette gösterilmez; **Admin › Düşünme ve
   aramalar** sekmesinde, bu oturumdaki her soru için açılır-kapanır bölümlerde durur. Doğrulama bitince yalnızca doğrulanmış ifadelerden
-  kurulan son cevap gösterilir.
+  kurulan son cevap gösterilir. Kaynak listesi (atıf düğmeleri) de cevapla birlikte gelir; cevap yazılırken bulunan
+  kaynaklar tek tek eklenmez. Cevap gelince sohbet, sonuna değil **cevabın başladığı yere** kaydırılır; kayıtlı bir
+  sohbet açıldığında da son cevabın başı gösterilir.
 * **Doğrulama kutusu:** cevap durumu, denetçinin tamamlanıp tamamlanmadığı, çıkarılan/işaretlenen ifadeler
   (gerekçesi arayüz dilinde: "'1.25 V' değeri atıf yapılan kaynaklarda bulunamadı", "Bağımsız denetleyici:
   kaynaklar bu ifadeyi desteklemiyor", "Denetleyiciye ulaşılamadı … (teknik sorun; ifade yanlış bulunmadı)") ve
@@ -456,7 +458,14 @@ her şey burada toplanır):
    gelince o bölgenin ne olduğu görünür), masaüstünde **Orijinali aç**. İfadenin doğrulama durumu cevabın altındaki
    doğrulama kutusunda ("İfade ayrıntıları") görünür.
 4. Konum bulunması ifadenin doğru olduğu anlamına gelmez; eşleşme belirsizse hiçbir yer işaretlenmez.
-5. Metin katmanı yoksa veya kütüphane eski sürümle indekslenmişse vurgu çıkmaz. Çıkarılan metin sayfanın altında
+   Kaynaktaki cümle/satır şöyle seçilir: ifadedeki sayılar (doğrulamanın birim çevrimleriyle: 1250 ps = 1.25 ns,
+   1200 mV = 1.2 V — sayfada kaynağın yazdığı değer işaretlenir); sayı yoksa kelimeler, Türkçe cevapta İngilizce
+   kaynağa karşı ise ortak **teknik terimler** (RTT, MR1, ODT, tRFC; belgenin kendi standardının adı sayılmaz) ve
+   Türkçe harfler (ı, ş, ç, ğ, ö, ü) kelimeyi bölmez. İki farklı cümle ifadeyi eşit taşıyorsa hiçbiri seçilmez.
+   Tablo başlık satırında yazan değerler (hız sınıfları: "DDR3-800 | DDR3-1066 | …") başlık hücresinde işaretlenir.
+5. Vurgu çıkmadığında nedeni şeritte kısaca yazar (⚠ "Konum eşleştirilemedi", "Konum belirsiz", "Metin katmanı
+   yok", "Eski indeks: konum yok"; üzerine gelince açıklaması). Metin katmanı yoksa veya kütüphane eski sürümle
+   indekslenmişse vurgu çıkmaz. Çıkarılan metin sayfanın altında
    ayrıca listelenmez (metin indekste kalır, arama ve doğrulama onu kullanır).
    Sayfa görüntülenemiyorsa (dosya taşınmış/silinmiş) bu yazılır ve alıntılanan metin incelenebilir. PDF olmayan
    kaynaklarda belge bilgisi, "Orijinal dosyayı aç" ve "Kaynak metnini incele" (kanıt işaretli) gösterilir. **Hesap** kaynaklarında sonuç PDF'te aranmaz; girdileri ve her girdinin kaynağı listelenir

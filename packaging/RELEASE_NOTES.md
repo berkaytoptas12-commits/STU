@@ -1,5 +1,32 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.10.1 — Türkçe cevaplarda PDF vurgusu, kaynaklar cevapla birlikte
+- **Vurgu daha sık çıkıyor:** atıf ve doğrulama yerindeyken PDF'te vurgu çıkmamasının en sık nedenleri giderildi
+  (yalnızca vurgu adımı değişti; doğrulama gevşetilmedi):
+  - Sayı içermeyen Türkçe ifadeler İngilizce kaynakta artık ortak **teknik terimleriyle** (RTT, MR1, ODT, tRFC)
+    bulunuyor; önceden kelime örtüşmesi aranıyordu ve Türkçe cümlede bu neredeyse hiç tutmuyordu. Türkçe harfler
+    (ı, ş, ç, ğ, ö, ü) kelimeleri artık bölmüyor. Belgenin kendi standardının adı (ör. DDR3) her cümlede geçtiği
+    için ayırt edici sayılmıyor.
+  - Başka birimle yazılmış değer (1250 ps ↔ 1.25 ns, 1200 mV ↔ 1.2 V) doğrulamadaki çevrimle eşleşiyor; sayfada
+    kaynağın yazdığı değer işaretleniyor.
+  - Tablo **başlık satırındaki** değerler (hız sınıfları: DDR3-800, DDR3-1600 …) başlık hücresinde işaretleniyor.
+  - Sayının birden fazla satırda geçtiği tablolarda ifadenin andığı terim doğru satırı seçmeye yardım ediyor.
+  - Belirsizlik kuralı aynı: iki farklı cümle ifadeyi eşit taşıyorsa ya da metin sayfada birden fazla yerde
+    geçiyorsa vurgu çizilmez (yanlış yere vurgu yapılmaz).
+- **Vurgu çıkmadığında nedeni:** sayfanın altındaki yarı saydam şeritte kısaca yazar (⚠ "Konum eşleştirilemedi",
+  "Konum belirsiz", "Metin katmanı yok", "Eski indeks: konum yok"; üzerine gelince açıklaması).
+- **Kaynaklar cevapla birlikte:** cevap yazılırken bulunan kaynaklar artık tek tek listelenmiyor; kaynak listesi
+  (atıf düğmeleri) son cevapla birlikte gelir. Bulunan kaynaklar Admin › Düşünme ve aramalar'da görünmeye devam eder.
+- **Cevabın başına kaydırma:** cevap gelince sohbet sonuna değil cevabın başladığı yere kaydırılır; kayıtlı bir
+  sohbet açıldığında da son cevabın başı gösterilir.
+- Yeniden indeksleme gerekmez; vurgular yeni sorulan sorularda hesaplanır (kayıtlı sohbetlerdeki eski cevapların
+  vurguları kaydedildiği gibi kalır).
+- Doğrulanan: sentetik PDF'lerle testler (Türkçe ifadenin doğru cümlede vurgulanması, eşit iki cümlede vurgu
+  yapılmaması, 1250 ps'nin 1.25 ns hücresinde, hız sınıflarının başlık hücresinde işaretlenmesi, aynı sayının
+  ifadenin andığı satırda işaretlenmesi) ve arayüz testleri (kaynakların cevaptan önce görünmemesi, cevabın başına
+  kaydırma, şeritteki neden). Gerçek standart PDF'lerinde ve gerçek model cevaplarında vurgu oranının ne kadar
+  arttığı ölçülmedi.
+
 ### 0.10.0 — sohbet geçmişi, Admin ayarları, sade kaynak paneli, kişisel belge kaldırma
 - **Sohbet geçmişi:** sol panelde **Kaynaklar | Sohbetler** sekmeleri. Sohbetler yeniden eskiye listelenir; birine
   tıklayınca cevaplar, atıflar, doğrulama kutusu ve PDF vurgularıyla açılır ve devam edilebilir. Her soru

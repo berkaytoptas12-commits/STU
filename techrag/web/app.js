@@ -168,6 +168,8 @@ const I18N = {
     loc_no_text_layer: "Bu sayfada metin katmanı yok (taranmış olabilir); konum gösterilemiyor.",
     loc_legacy_index: "Bu doküman eski sürümle indekslenmiş; vurgulama için Kütüphane > 'Konum verisini oluştur'.",
     loc_not_pdf: "PDF değil: kanıt aşağıdaki metinde işaretlendi.", loc_none: "Bu kaynak için konum bilgisi yok (cevapta atıf almadı).",
+    locShort_not_located: "Konum eşleştirilemedi", locShort_ambiguous: "Konum belirsiz", locShort_no_text_layer: "Metin katmanı yok",
+    locShort_legacy_index: "Eski indeks: konum yok",
     loc_calc: "Hesap sonucu PDF'de yer almaz; girdileri ve kaynakları:", loc_user: "Kullanıcı girdisi — sorudan alınan değerler, bir doküman değildir.",
     locNote: "Vurgu kanıtın sayfadaki yerini gösterir; ifadenin doğru olup olmadığını 'Doğrulama' durumu belirtir.",
     role_value: "değer", role_label: "parametre", role_header: "sütun başlığı", role_unit: "birim", role_condition: "koşul", role_footnote: "dipnot", role_text: "metin", role_row: "tablo satırı",
@@ -407,6 +409,8 @@ const I18N = {
     loc_no_text_layer: "This page has no text layer (possibly scanned); no location can be shown.",
     loc_legacy_index: "This document was indexed by an older version; for highlights use Library > 'Build location data'.",
     loc_not_pdf: "Not a PDF: the evidence is marked in the text below.", loc_none: "No location for this source (not cited in the answer).",
+    locShort_not_located: "Location not matched", locShort_ambiguous: "Location ambiguous", locShort_no_text_layer: "No text layer",
+    locShort_legacy_index: "Old index: no location",
     loc_calc: "A calculated result is not in any PDF; its inputs and their sources:", loc_user: "User input — values taken from the question, not a document.",
     locNote: "The highlight shows where the evidence is on the page; whether the statement is right is given by its 'Verification' status.",
     role_value: "value", role_label: "parameter", role_header: "column header", role_unit: "unit", role_condition: "condition", role_footnote: "footnote", role_text: "text", role_row: "table row",
@@ -931,7 +935,7 @@ function pageViewer(container, docId, page, nPages, opts = {}) {
       <span class="pv-label"></span><button type="button" class="pv-btn pv-next" title="${esc(t("next"))}" aria-label="${esc(t("next"))}">›</button>
       <span class="pv-sep"></span><button type="button" class="pv-btn pv-zout" title="${esc(t("zoomOut"))}" aria-label="${esc(t("zoomOut"))}">−</button><span class="pv-zl"></span>
       <button type="button" class="pv-btn pv-zin" title="${esc(t("zoomIn"))}" aria-label="${esc(t("zoomIn"))}">+</button>
-      ${evCtl}${state.info && state.info.desktop ? `<span class="pv-sep"></span><button type="button" class="pv-btn pv-open" title="${esc(t("openOriginal"))}">${t("openShort")}</button>` : ""}</div>`;
+      ${evCtl}${opts.note ? `<span class="pv-sep"></span><span class="pv-note" title="${esc(opts.note.full)}">⚠ ${esc(opts.note.short)}</span>` : ""}${state.info && state.info.desktop ? `<span class="pv-sep"></span><button type="button" class="pv-btn pv-open" title="${esc(t("openOriginal"))}">${t("openShort")}</button>` : ""}</div>`;
   const img = $("img", box);
   const wrap = $(".page-wrap", box);
   const layer = $(".hl-layer", box);
@@ -1010,6 +1014,12 @@ function kindLabel(s) {
   return { parameter: t("parameter"), table: t("table"), page: t("pageKind"), calc: t("calc"), user: t("userKind") }[s.kind] || "";
 }
 
+// Why a cited source got no highlight, for the strip over the page (the full text in its tooltip).
+function locNote(recs) {
+  const st = ["no_text_layer", "legacy_index", "ambiguous", "not_located"].find((k) => (recs || []).some((r) => r.status === k));
+  return st ? { short: t("locShort_" + st), full: t("loc_" + st) } : null;
+}
+
 // Location records of the claims that cite source s (or of one claim) in an answer message.
 function evidenceOf(msg, s, claimId) {
   const v = msg && msg._verification;
@@ -1084,7 +1094,8 @@ function showSource(s, msg, claimId, override) {
     }));
   }
   if (isPdf) {
-    pageViewer($(".pv", pane), s.doc_id, s.page_start || 1, doc ? doc.n_pages : 0, { regions, fallback: () => inspect(true) });
+    pageViewer($(".pv", pane), s.doc_id, s.page_start || 1, doc ? doc.n_pages : 0,
+      { regions, note: regions.length ? null : locNote(recs), fallback: () => inspect(true) });
   }
   $$(".cite-chip.active").forEach((c) => c.classList.remove("active"));
 }
@@ -1117,6 +1128,11 @@ async function showDocument(id, page) {
 
 // ------------------------------------------------------------------ chat
 const scrollDown = () => { const m = $("#messages"); m.scrollTop = m.scrollHeight; };
+// A finished answer is shown from its first line, not from the end of the chat.
+const scrollToAnswer = (el) => {
+  const m = $("#messages");
+  m.scrollTop += el.getBoundingClientRect().top - m.getBoundingClientRect().top - 8;
+};
 
 function renderChips(el) {
   const wrap = $(".cites", el);
@@ -1420,7 +1436,8 @@ async function openConv(id) {
     }
   }
   state.history = state.history.slice(-12);
-  scrollDown();
+  const last = $$("#messages .msg.assistant");
+  if (last.length) scrollToAnswer(last[last.length - 1]); else scrollDown();
   renderChats();
 }
 async function renderChats() {
@@ -1558,8 +1575,9 @@ async function ask(question, reply) {
         trace.plan = parts.join(" · ");
         break;
       }
-      case "sources": el._sources = ev.sources; trace.sources = el._sources; confidence = ev.confidence; renderChips(el); break;
-      case "sources_add": el._sources = el._sources.concat(ev.sources); trace.sources = el._sources; renderChips(el); break;
+      // The sources are listed with the answer (renderFinal), not one by one while it is being written.
+      case "sources": el._sources = ev.sources; trace.sources = el._sources; confidence = ev.confidence; break;
+      case "sources_add": el._sources = el._sources.concat(ev.sources); trace.sources = el._sources; break;
       case "reasoning": trace.reasoning += ev.text; break;
       case "tool": trace.tools.push(`${ev.name}: ${ev.summary}`); break;
       case "draft": status.textContent = t("draftProgress"); text += ev.text; render(); break;
@@ -1617,7 +1635,7 @@ async function ask(question, reply) {
     stopBtn.onclick = null;
     $("#btn-send").hidden = false;
     $("#btn-send").disabled = false;
-    scrollDown();
+    if (chat === state.chatId) scrollToAnswer(el);
   }
 }
 
