@@ -26,26 +26,48 @@
   <main class="layout" id="layout">
     <aside class="panel sources" id="sources-panel">
       <div class="panel-head">
-        <h2 data-i18n="sources"></h2>
-        <span class="muted small" id="doc-count"></span>
+        <div class="side-tabs" role="tablist">
+          <button type="button" class="side-tab active" role="tab" data-side="side-src"><span data-i18n="sources"></span>
+            <span class="count" id="doc-count"></span></button>
+          <button type="button" class="side-tab" role="tab" data-side="side-chats" data-i18n="chats"></button>
+        </div>
         <button class="ghost icon small" id="btn-collapse-left" data-i18n-title="collapseLeft">«</button>
       </div>
-      <input type="search" id="doc-filter" class="doc-filter" autocomplete="off">
-      <div class="scope-line small" id="scope-line"></div>
-      <div class="missing-box small" id="missing-box" hidden></div>
-      <h3 class="src-group" data-i18n="sharedGroup"></h3>
-      <div class="bucket-list" id="collections"></div>
-      <h3 class="src-group" data-i18n="personalGroup"></h3>
-      <div class="personal-box" id="personal-box">
-        <div class="row">
-          <button id="btn-personal-add" data-i18n="personalAdd"></button>
-          <button class="ghost" id="btn-personal-rescan" data-i18n-title="personalRescan">⟳</button>
-          <input type="file" id="personal-file-input" accept=".pdf,.txt,.md,.html,.htm,.docx" multiple hidden>
+      <div class="side-page" id="side-src" role="tabpanel">
+        <input type="search" id="doc-filter" class="doc-filter" autocomplete="off">
+        <div class="scope-line small" id="scope-line"></div>
+        <div class="missing-box small" id="missing-box" hidden></div>
+        <div class="src-split" id="src-split">
+          <div class="src-pane" id="src-shared">
+            <h3 class="src-group" data-i18n="sharedGroup"></h3>
+            <div class="bucket-list" id="collections"></div>
+          </div>
+          <div class="src-splitter" id="src-splitter" role="separator" tabindex="0" aria-orientation="horizontal"
+               aria-controls="src-shared src-personal" aria-valuemin="15" aria-valuemax="85" data-i18n-title="srcSplitter"></div>
+          <div class="src-pane" id="src-personal">
+            <h3 class="src-group" data-i18n="personalGroup"></h3>
+            <div class="personal-box" id="personal-box">
+              <div class="row">
+                <button id="btn-personal-add" data-i18n="personalAdd"></button>
+                <button class="ghost" id="btn-personal-rescan" data-i18n-title="personalRescan">⟳</button>
+                <input type="file" id="personal-file-input" accept=".pdf,.txt,.md,.html,.htm,.docx" multiple hidden>
+              </div>
+              <div class="small muted personal-dir"><span data-i18n="personalDir"></span>: <code id="personal-dir"></code>
+                <a href="#" id="personal-change" data-i18n="personalChange"></a></div>
+              <div class="small personal-status" id="personal-status" hidden></div>
+            </div>
+            <div class="bucket-list" id="personal-collections"></div>
+          </div>
         </div>
-        <div class="small muted personal-dir"><span data-i18n="personalDir"></span>: <code id="personal-dir"></code>
-          <a href="#" id="personal-change" data-i18n="personalChange"></a></div>
       </div>
-      <div class="bucket-list" id="personal-collections"></div>
+      <div class="side-page" id="side-chats" role="tabpanel" hidden>
+        <div class="row chat-actions">
+          <button type="button" id="btn-chat-new" data-i18n="newChat"></button>
+          <button type="button" class="ghost small" id="btn-chat-clear" data-i18n="chatsClear"></button>
+        </div>
+        <p class="hint" data-i18n="chatsHint"></p>
+        <div class="chat-list" id="chat-list"></div>
+      </div>
       <div class="job-box" id="job-box" hidden>
         <div class="job-head small"><span id="job-title"></span><button class="ghost icon small" id="btn-job-close">✕</button></div>
         <div class="bar"><div class="bar-fill" id="job-bar"></div></div>
@@ -95,47 +117,10 @@
         <p class="hint wide" data-i18n="apiKeyHint"></p>
       </fieldset>
       <div class="svc-grid" id="svc-grid"></div>
-      <fieldset>
-        <legend data-i18n="answering"></legend>
-        <label><span data-i18n="thinking"></span>
-          <select id="set-thinking"><option value="auto">auto</option><option value="on">on</option><option value="off">off</option></select></label>
-        <label><span data-i18n="thinkingControl"></span>
-          <select id="set-thinking-control"><option value="chat_template">chat_template (Qwen)</option><option value="reasoning_effort">reasoning_effort</option><option value="none">none</option></select></label>
-        <label><span data-i18n="tools"></span>
-          <select id="set-tools"><option value="auto">auto</option><option value="on">on</option><option value="off">off</option></select></label>
-        <label><input type="checkbox" id="set-judge"> <span data-i18n="judge"></span></label>
-        <label><input type="checkbox" id="set-regenerate"> <span data-i18n="regenerate"></span></label>
-        <label><span data-i18n="failedClaims"></span>
-          <select id="set-failed"><option value="strip" data-i18n="strip"></option><option value="flag" data-i18n="flag"></option></select></label>
-        <label><input type="checkbox" id="set-vision-enabled"> <span data-i18n="visionEnabled"></span></label>
-        <label><input type="checkbox" id="set-notify"> <span data-i18n="notifySetting"></span></label>
-      </fieldset>
-      <fieldset id="adv-box">
-        <legend data-i18n="advanced"></legend>
-        <label><span data-i18n="advContext"></span>
-          <input type="number" id="set-context" min="2048" max="1048576" step="1024">
-          <span class="small muted" id="ctx-info"></span></label>
-        <label><span data-i18n="advJudgeBatch"></span>
-          <input type="number" id="set-judge-batch" min="1" max="32" step="1"></label>
-        <label><input type="checkbox" id="set-repair-cites"> <span data-i18n="advRepair"></span></label>
-        <label><input type="checkbox" id="set-search-more"> <span data-i18n="advSearchMore"></span></label>
-        <label><span data-i18n="advToolRounds"></span>
-          <input type="number" id="set-tool-rounds" min="0" max="10" step="1"></label>
-        <label><span data-i18n="advRefs"></span>
-          <input type="number" id="set-follow-refs" min="0" max="10" step="1"></label>
-        <label><span data-i18n="advPageScore"></span>
-          <input type="number" id="set-page-score" min="0" max="50" step="0.5"></label>
-        <label><span data-i18n="advMaxPages"></span>
-          <input type="number" id="set-max-pages" min="0" max="100000" step="10"></label>
-        <p class="hint wide" data-i18n="advHint"></p>
-      </fieldset>
-      <fieldset id="tls-box">
-        <legend data-i18n="tlsTitle"></legend>
-        <label class="wide"><input type="checkbox" id="set-tls-system"> <span data-i18n="tlsSystem"></span></label>
-        <label class="wide"><input type="checkbox" id="set-tls-proxy"> <span data-i18n="tlsProxy"></span></label>
-        <label class="wide"><span data-i18n="tlsCa"></span>
-          <div class="row"><input id="set-tls-ca" placeholder="C:\certs\company-root.cer"><button type="button" class="ghost" id="btn-pick-ca">…</button></div></label>
-        <p class="hint wide" data-i18n="tlsHint"></p>
+      <fieldset id="user-box">
+        <legend data-i18n="general"></legend>
+        <label class="wide"><input type="checkbox" id="set-notify"> <span data-i18n="notifySetting"></span></label>
+        <p class="hint wide" data-i18n="adminSettingsHint"></p>
       </fieldset>
       <div class="dlg-actions">
         <span class="muted small" id="settings-status"></span>
@@ -193,6 +178,7 @@
       <h2 data-i18n="admin"></h2>
       <div class="adm-tabs" role="tablist">
         <button type="button" class="adm-tab" role="tab" data-page="adm-library" data-i18n="admShared"></button>
+        <button type="button" class="adm-tab" role="tab" data-page="adm-settings" data-i18n="admSettings"></button>
         <button type="button" class="adm-tab" role="tab" data-page="adm-trace" data-i18n="admTrace"></button>
         <button type="button" class="adm-tab" role="tab" data-page="adm-eval" data-i18n="evaluation"></button>
         <button type="button" class="adm-tab" role="tab" data-page="adm-usage" data-i18n="admUsage"></button>
@@ -233,6 +219,55 @@
         <label class="small"><input type="checkbox" id="lib-rebuild"> <span data-i18n="rebuild"></span></label>
         <button type="button" class="ghost" id="btn-reindex-all" data-i18n="reindexAll"></button></div>
       <p class="small muted" id="lib-status"></p>
+      </section>
+      <section class="adm-page" id="adm-settings" role="tabpanel" hidden>
+        <p class="hint" data-i18n="adminSettingsIntro"></p>
+        <div class="svc-grid" id="adm-svc-grid"></div>
+      <fieldset>
+        <legend data-i18n="answering"></legend>
+        <label><span data-i18n="thinking"></span>
+          <select id="set-thinking"><option value="auto">auto</option><option value="on">on</option><option value="off">off</option></select></label>
+        <label><span data-i18n="thinkingControl"></span>
+          <select id="set-thinking-control"><option value="chat_template">chat_template (Qwen)</option><option value="reasoning_effort">reasoning_effort</option><option value="none">none</option></select></label>
+        <label><span data-i18n="tools"></span>
+          <select id="set-tools"><option value="auto">auto</option><option value="on">on</option><option value="off">off</option></select></label>
+        <label><input type="checkbox" id="set-judge"> <span data-i18n="judge"></span></label>
+        <label><input type="checkbox" id="set-regenerate"> <span data-i18n="regenerate"></span></label>
+        <label><span data-i18n="failedClaims"></span>
+          <select id="set-failed"><option value="strip" data-i18n="strip"></option><option value="flag" data-i18n="flag"></option></select></label>
+        <label><input type="checkbox" id="set-vision-enabled"> <span data-i18n="visionEnabled"></span></label>
+      </fieldset>
+      <fieldset id="adv-box">
+        <legend data-i18n="advanced"></legend>
+        <label><span data-i18n="advContext"></span>
+          <input type="number" id="set-context" min="2048" max="1048576" step="1024">
+          <span class="small muted" id="ctx-info"></span></label>
+        <label><span data-i18n="advJudgeBatch"></span>
+          <input type="number" id="set-judge-batch" min="1" max="32" step="1"></label>
+        <label><input type="checkbox" id="set-repair-cites"> <span data-i18n="advRepair"></span></label>
+        <label><input type="checkbox" id="set-search-more"> <span data-i18n="advSearchMore"></span></label>
+        <label><span data-i18n="advToolRounds"></span>
+          <input type="number" id="set-tool-rounds" min="0" max="10" step="1"></label>
+        <label><span data-i18n="advRefs"></span>
+          <input type="number" id="set-follow-refs" min="0" max="10" step="1"></label>
+        <label><span data-i18n="advPageScore"></span>
+          <input type="number" id="set-page-score" min="0" max="50" step="0.5"></label>
+        <label><span data-i18n="advMaxPages"></span>
+          <input type="number" id="set-max-pages" min="0" max="100000" step="10"></label>
+        <p class="hint wide" data-i18n="advHint"></p>
+      </fieldset>
+      <fieldset id="tls-box">
+        <legend data-i18n="tlsTitle"></legend>
+        <label class="wide"><input type="checkbox" id="set-tls-system"> <span data-i18n="tlsSystem"></span></label>
+        <label class="wide"><input type="checkbox" id="set-tls-proxy"> <span data-i18n="tlsProxy"></span></label>
+        <label class="wide"><span data-i18n="tlsCa"></span>
+          <div class="row"><input id="set-tls-ca" placeholder="C:\certs\company-root.cer"><button type="button" class="ghost" id="btn-pick-ca">…</button></div></label>
+        <p class="hint wide" data-i18n="tlsHint"></p>
+      </fieldset>
+        <div class="dlg-actions">
+          <span class="muted small" id="adm-settings-status"></span>
+          <button type="button" id="btn-save-admin-settings" data-i18n="save"></button>
+        </div>
       </section>
       <section class="adm-page" id="adm-trace" role="tabpanel" hidden>
         <p class="hint" data-i18n="traceHint"></p>

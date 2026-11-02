@@ -125,8 +125,7 @@ def test_citation_click_highlights_evidence_and_zoom_keeps_alignment(ui):
     if total > 1:
         ui.click("#tab-source .pv-evnext")
         assert ui.inner_text("#tab-source .pv-evlabel").startswith("2/")
-    status = ui.inner_text("#tab-source .loc-status")
-    assert "destekleniyor" in status and ("işaretlendi" in status)
+    assert ui.get_attribute("#tab-source .pv-evlabel", "title"), "what the current highlight is, on hover"
 
 
 def test_unverified_answer_is_not_shown_as_verified(ui, fake):
@@ -384,13 +383,22 @@ def test_source_panel_shows_the_pdf_page_without_a_text_dump(ui):
     ui.wait_for_selector("#tab-source .hl.current")
     _wait_img(ui)
     assert ui.locator("#tab-source .source-text").count() == 0, "no extracted text under the PDF page"
-    meta = ui.inner_text("#tab-source .source-meta")
-    assert "DDR5" in meta and "Sayfa" in meta and "rev" in ui.inner_text("#tab-source h3")
-    assert "destekleniyor" in ui.inner_text("#tab-source .loc-status")
+    title = ui.inner_text("#tab-source h3")
+    assert title.startswith("[") and "DDR5" in title, "only the citation number and the document title"
+    assert ui.locator("#tab-source .loc-status, #tab-source .source-meta, #tab-source .pv-role").count() == 0, \
+        "no verification / location lines above the page"
+    tip = ui.get_attribute("#tab-source h3", "title")
+    assert "Sayfa" in tip and "rev" in tip, "the details are in the title's tooltip"
     panel = ui.evaluate("() => document.querySelector('#viewer-panel').getBoundingClientRect().height")
     view = ui.evaluate("() => document.querySelector('#tab-source .page-view').getBoundingClientRect().height")
-    assert view > 0.6 * panel, (view, panel)   # the freed space goes to the page
+    assert view > 0.75 * panel, (view, panel)   # the freed space goes to the page
     assert ui.is_visible("#tab-source .pv-zin") and ui.is_visible("#tab-source .pv-evnext")
+    inside = ui.evaluate("""() => { const b = document.querySelector('#tab-source .pv-bar').getBoundingClientRect();
+      const v = document.querySelector('#tab-source .page-view').getBoundingClientRect();
+      return b.top > v.top && b.bottom <= v.bottom + 1 && b.left >= v.left && b.right <= v.right; }""")
+    assert inside, "the controls are a strip over the bottom of the page"
+    bg = ui.evaluate("() => getComputedStyle(document.querySelector('#tab-source .pv-bar')).backgroundColor")
+    assert bg.startswith("rgba(") and float(bg.rstrip(")").split(",")[-1]) < 1, f"translucent: {bg}"
 
 
 def test_non_pdf_source_keeps_its_info_and_an_inspect_option(ui):
@@ -523,21 +531,31 @@ def test_advanced_settings_are_shown_and_saved(ui):
     ui.wait_for_selector("#dlg-settings[open]")
     assert ui.is_visible("#set-api-key") and ui.locator(".svc input[type=password]").count() == 0, \
         "one shared API key, none per service"
-    assert ui.input_value("#set-context") == "16000" and ui.input_value("#set-judge-batch") == "8"
-    assert ui.is_checked("#set-repair-cites") and ui.input_value("#set-follow-refs") == "3"
-    ui.wait_for_function("() => document.querySelector('#ctx-info').textContent.length > 0")
-    assert ui.input_value("#set-tool-rounds") == "4" and ui.is_checked("#set-notify")
-    ui.fill("#set-judge-batch", "4")
-    ui.fill("#set-follow-refs", "2")
-    ui.fill("#set-tool-rounds", "2")
+    cards = ui.evaluate("() => [...document.querySelectorAll('#dlg-settings .svc')].map((c) => c.dataset.svc)")
+    assert cards == ["llm"], "only the chat model in Settings"
+    assert ui.locator("#dlg-settings #set-context, #dlg-settings #set-tls-ca, #dlg-settings #set-thinking").count() == 0
+    assert ui.is_checked("#set-notify")
     ui.uncheck("#set-notify")
     ui.click("#btn-save-settings")
     ui.wait_for_function("() => document.querySelector('#settings-status').textContent.length > 0")
+    ui.wait_for_function("() => !document.querySelector('#dlg-settings').open")
+    _admin(ui, "adm-settings")
+    ui.wait_for_function("() => document.querySelectorAll('#adm-svc-grid .svc').length === 3")
+    cards = ui.evaluate("() => [...document.querySelectorAll('#adm-svc-grid .svc')].map((c) => c.dataset.svc)")
+    assert cards == ["vision", "embedding", "reranker"]
+    assert ui.input_value("#set-context") == "16000" and ui.input_value("#set-judge-batch") == "8"
+    assert ui.is_checked("#set-repair-cites") and ui.input_value("#set-follow-refs") == "3"
+    ui.wait_for_function("() => document.querySelector('#ctx-info').textContent.length > 0")
+    assert ui.input_value("#set-tool-rounds") == "4" and ui.is_visible("#set-tls-ca") and ui.is_visible("#set-thinking")
+    ui.fill("#set-judge-batch", "4")
+    ui.fill("#set-follow-refs", "2")
+    ui.fill("#set-tool-rounds", "2")
+    ui.click("#btn-save-admin-settings")
+    ui.wait_for_function("() => document.querySelector('#adm-settings-status').textContent.length > 0")
     s = ui.evaluate("async () => (await (await fetch('/api/settings')).json())")
     assert s["answer"]["judge_batch"] == 4 and s["retrieval"]["follow_references"] == 2
     assert "api_key" not in s["llm"] and s["auth"]["api_key"] == ""
     assert s["llm"]["max_tool_rounds"] == 2 and s["ui"]["notify"] is False
-
 
 def test_evaluation_results_show_each_answer(ui, tmp_path):
     f = tmp_path / "two.yaml"
@@ -688,3 +706,71 @@ def test_usage_log_tab(ui, tmp_path):
     row = ui.inner_text("#usage-table tbody tr")
     assert row.split("\t")[1].strip() == "1", row
     assert list(folder.glob("*.csv")), "one CSV per user in the chosen folder"
+
+
+def test_chat_history_keeps_and_reopens_conversations(ui, cfg):
+    _ask(ui, "DDR5 tRFC değeri nedir?")
+    ui.wait_for_function("async () => (await (await fetch('/api/chats')).json()).chats.length === 1")
+    ui.click(".side-tab[data-side=side-chats]")
+    ui.wait_for_selector("#chat-list .chat-item")
+    assert ui.is_hidden("#collections") and "DDR5 tRFC değeri nedir?" in ui.inner_text("#chat-list .chat-item")
+    assert "1 soru" in ui.inner_text("#chat-list .chat-meta")
+    assert ui.locator("#chat-list .chat-item.active").count() == 1, "the open conversation is marked"
+    ui.click("#btn-chat-new")
+    assert ui.locator(".msg.assistant").count() == 0
+    _ask(ui, "I2C bus speed?")
+    ui.wait_for_function("() => document.querySelectorAll('#chat-list .chat-item').length === 2")
+    ui.locator("#chat-list .chat-item", has_text="DDR5 tRFC").click()
+    ui.wait_for_function("() => document.querySelectorAll('.msg.assistant').length === 1")
+    msg = ui.locator(".msg.assistant").first
+    assert "295" in msg.locator(".body").inner_text() and msg.locator(".msg-actions").is_visible()
+    assert "DDR5 tRFC değeri nedir?" in ui.inner_text(".msg.user")
+    _cite(ui)                               # citations and PDF highlights work in a reopened conversation
+    ui.wait_for_selector("#tab-source .hl.current")
+    ui.once("dialog", lambda d: d.accept())
+    ui.locator("#chat-list .chat-item", has_text="I2C").locator(".chat-del").click()
+    ui.wait_for_function("() => document.querySelectorAll('#chat-list .chat-item').length === 1")
+    assert len(list((cfg.user_data_dir / "chats").glob("*.json"))) == 2, "one conversation file + the index"
+    ui.click(".side-tab[data-side=side-src]")
+    assert ui.is_visible("#collections")
+
+
+def test_shared_and_personal_lists_are_resizable(ui):
+    def heights():
+        return ui.evaluate("""() => ['#src-shared', '#src-personal'].map((s) =>
+          document.querySelector(s).getBoundingClientRect().height)""")
+    a, b = heights()
+    assert abs(a - b) < 30, (a, b)   # split in the middle by default
+    bar = ui.locator("#src-splitter").bounding_box()
+    x, y = bar["x"] + bar["width"] / 2, bar["y"] + bar["height"] / 2
+    ui.mouse.move(x, y)
+    ui.mouse.down()
+    ui.mouse.move(x, y + 120, steps=5)
+    ui.mouse.up()
+    a2, b2 = heights()
+    assert a2 > a + 80 and b2 < b - 80, (a2, b2)
+    ui.reload()
+    ui.wait_for_selector("#collections .bucket")
+    a3, _ = heights()
+    assert abs(a3 - a2) < 15, "kept across restarts"
+    ui.focus("#src-splitter")
+    ui.keyboard.press("Enter")
+    a4, b4 = heights()
+    assert abs(a4 - b4) < 30, "Enter puts it back in the middle"
+    ui.keyboard.press("ArrowUp")
+    assert heights()[0] < a4 - 10
+
+
+def test_a_personal_document_is_removed_from_the_list(ui, tmp_path, cfg):
+    f = tmp_path / "picked" / "silinecek.md"
+    f.parent.mkdir()
+    f.write_text("# Silinecek\n\nThe QWX5 rail is 0.8 V.\n", encoding="utf-8")
+    ui.set_input_files("#personal-file-input", str(f))
+    ui.wait_for_selector("#personal-collections .bucket", timeout=30000)
+    ui.click("#personal-collections .bucket-name")
+    assert ui.locator("#collections .doc-del").count() == 0, "shared documents have no remove button"
+    ui.once("dialog", lambda d: d.accept())
+    ui.click("#personal-collections .doc-del")
+    ui.wait_for_function("() => !document.querySelector('#personal-collections .bucket')")
+    assert "kaldırıldı" in ui.inner_text("#personal-status")
+    assert not (cfg.personal_dir / "silinecek.md").exists() and f.exists(), "the picked original stays"

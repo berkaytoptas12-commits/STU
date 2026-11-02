@@ -126,3 +126,72 @@ def test_view_routes_ids_to_their_library(engine, cfg, tmp_path, clients, regist
 
 def test_interleave_keeps_both_rankings():
     assert _interleave([1, 2, 3], ["a"], 3) == [1, "a", 2]
+
+
+def test_a_personal_document_can_be_removed_and_its_copy_recovered(client, cfg, tmp_path, monkeypatch):
+    from techrag import trash
+
+    monkeypatch.setattr(trash, "_fixed_drive", lambda p: False)   # no Recycle Bin: the copy goes to _indeks/silinenler
+    r = _add_note(client, tmp_path)
+    picked = tmp_path / "picked" / "lab_notes.md"
+    own = next(d for d in client.get("/api/documents").json() if d["id"] >= PERSONAL_OFFSET)
+    res = client.delete(f"/api/documents/{own['id']}")
+    assert res.status_code in (404, 405), "not through the general documents API"
+    res = client.delete(f"/api/personal/documents/{own['id']}").json()
+    assert res["ok"] and res["trash"] == "folder"
+    moved = Path(res["path"])
+    assert moved.parent == cfg.personal_dir / "_indeks" / "silinenler" and moved.read_text(encoding="utf-8") == NOTE
+    assert not Path(r["copied"][0]).exists() and picked.exists(), "the picked original is not touched"
+    assert all(d["id"] < PERSONAL_OFFSET for d in client.get("/api/documents").json())
+    assert client.get("/api/personal").json()["documents"] == 0
+    assert not client.post("/api/search", json={"query": "ZQX7 probe ground spring"}).json()["sources"] or \
+        all(s["doc_id"] < PERSONAL_OFFSET for s in client.post("/api/search", json={"query": "ZQX7"}).json()["sources"])
+    st = _wait(client, client.post("/api/personal/rescan").json()["job"])
+    assert st["status"] == "done" and client.get("/api/personal").json()["documents"] == 0, \
+        "a rescan does not bring it back (the silinenler folder is not scanned)"
+
+
+def test_only_personal_documents_can_be_removed(client, cfg, tmp_path):
+    _add_note(client, tmp_path)
+    shared = client.get("/api/documents").json()[0]
+    assert client.delete(f"/api/personal/documents/{shared['id']}").status_code == 404
+    assert client.delete(f"/api/personal/documents/{PERSONAL_OFFSET + 999}").status_code == 404
+    assert len([d for d in client.get("/api/documents").json() if d["id"] < PERSONAL_OFFSET]) == 3
+
+
+def test_a_file_outside_the_personal_folder_is_never_moved(client, engine, cfg, tmp_path):
+    _add_note(client, tmp_path)
+    own = next(d for d in client.get("/api/documents").json() if d["id"] >= PERSONAL_OFFSET)
+    outside = tmp_path / "elsewhere" / "kept.md"
+    outside.parent.mkdir()
+    outside.write_text("x", encoding="utf-8")
+    engine.personal.add_root(str(outside.parent))
+    with engine.personal.connect() as con:   # an index that points elsewhere (e.g. edited by hand)
+        rid = con.execute("SELECT id FROM roots WHERE path=?", (str(outside.parent),)).fetchone()[0]
+        con.execute("UPDATE documents SET root_id=?, rel_path='kept.md' WHERE id=?", (rid, own["id"] - PERSONAL_OFFSET))
+    res = client.delete(f"/api/personal/documents/{own['id']}").json()
+    assert res["trash"] == "kept" and outside.exists()
+
+
+def test_removal_waits_for_indexing(client, tmp_path, monkeypatch):
+    _add_note(client, tmp_path)
+    own = next(d for d in client.get("/api/documents").json() if d["id"] >= PERSONAL_OFFSET)
+    monkeypatch.setattr(client.app.state.jobs, "running", lambda: True)
+    assert client.delete(f"/api/personal/documents/{own['id']}").status_code == 409
+
+
+@pytest.mark.skipif(__import__("os").name != "nt", reason="Windows Recycle Bin")
+def test_recycle_bin_on_windows(tmp_path):
+    import threading
+
+    from techrag.trash import FOLDER, RECYCLE_BIN, move_to_trash
+
+    f = tmp_path / "geri_donusum.txt"
+    f.write_text("x", encoding="utf-8")
+    out = {}
+    th = threading.Thread(target=lambda: out.update(r=move_to_trash(f, tmp_path / "silinenler")), daemon=True)
+    th.start()
+    th.join(30)
+    assert "r" in out, "never waits for a dialog"
+    kind, where = out["r"]
+    assert not f.exists() and (kind == RECYCLE_BIN or (kind == FOLDER and where.exists()))

@@ -113,7 +113,9 @@ const I18N = {
     stSearchingMore: "Doğrudan bulunamadı — standardın ilgili gereksinimi aranıyor…",
     rcDetail: "gerekçe: {0}", rcTechnical: "teknik ayrıntı: {0}",
     citeFixed: "atıf düzeltildi: {0} eklendi ({1} bu kaynakta geçiyor)", vCiteFixed: "{0} ifadede atıf düzeltildi",
-    evaluation: "Değerlendirme", advanced: "Gelişmiş",
+    evaluation: "Değerlendirme", advanced: "Gelişmiş", general: "Genel", admSettings: "Ayarlar",
+    adminSettingsHint: "Cevaplama, gelişmiş ayarlar, bağlantı güvenliği, görsel model, embedding ve reranker: Admin › Ayarlar.",
+    adminSettingsIntro: "Admin ayarları: görsel model, embedding ve reranker sunucuları, cevaplama, gelişmiş ayarlar ve bağlantı güvenliği. Ortak API anahtarı ve sohbet modeli Ayarlar penceresindedir.",
     advContext: "Model bağlam uzunluğu (token)", ctxInfo: "sunucunun bildirdiği: {0} · kullanılan: {1}",
     ctxUnknown: "sunucu bağlam uzunluğunu bildirmiyor; bu değer kullanılır",
     advJudgeBatch: "Denetleyici: bir istekte en fazla ifade", advRepair: "Yanlış atıfı düzelt (değer, verilen başka bir kaynakta geçiyorsa)",
@@ -160,7 +162,7 @@ const I18N = {
     prev: "‹ Önceki", next: "Sonraki ›", zoom: "Yakınlaştır", zoomIn: "Yakınlaştır", zoomOut: "Uzaklaştır", openOriginal: "Orijinal dosyayı aç",
     inspectText: "Kaynak metnini incele", noPageImage: "Bu kaynak PDF değil, bu yüzden sayfa görüntüsü yok.",
     pageUnavailable: "Sayfa görüntülenemiyor: kaynak dosya bulunamadı, taşınmış veya okunamıyor.",
-    highlight: "Vurgu", prevEv: "‹ Önceki kanıt", nextEv: "Sonraki kanıt ›", printed: "basılı", verifStatus: "Doğrulama", locStatus: "Konum",
+    highlight: "Vurgu", openShort: "Orijinali aç", prevEv: "‹ Önceki kanıt", nextEv: "Sonraki kanıt ›", printed: "basılı", verifStatus: "Doğrulama", locStatus: "Konum",
     loc_located: "kanıt sayfada işaretlendi", loc_partial: "kanıtın bir kısmı işaretlendi",
     loc_not_located: "Kaynak sayfası bulundu, kesin konum eşleştirilemedi.", loc_ambiguous: "Kaynak sayfası bulundu, kesin konum eşleştirilemedi (metin sayfada birden fazla yerde geçiyor).",
     loc_no_text_layer: "Bu sayfada metin katmanı yok (taranmış olabilir); konum gösterilemiyor.",
@@ -227,6 +229,13 @@ const I18N = {
     personalEmpty: "Henüz kişisel dosya yok. Seçtiğiniz dosyalar bu klasöre kopyalanır ve yalnızca sizin kişisel indeksinizde aranır.",
     personalIndexing: "Kişisel dosyalar indeksleniyor", personalDirPrompt: "Kişisel dosyaların kaydedileceği klasör:",
     personalSaved: "Kişisel klasör değişti.",
+    chats: "Sohbetler", chatsClear: "Tümünü sil", chatsNone: "Henüz kayıtlı sohbet yok.", chatsTurns: "{0} soru",
+    chatsHint: "Sohbetleriniz yalnızca bu bilgisayarda, kendi ayarlar klasörünüzde saklanır; ortak kütüphaneye ve kullanım günlüğüne yazılmaz.",
+    chatsDelete: "Sohbeti sil", chatsDeleteConfirm: "“{0}” sohbeti silinsin mi?", chatsClearConfirm: "Bütün sohbetler silinsin mi? Geri alınamaz.",
+    personalDelete: "Kişisel kütüphaneden kaldır", srcSplitter: "Ortak ve kişisel listelerin arasını ayarla (sürükleyin; ↑/↓; çift tık: ortala)",
+    personalDeleteConfirm: "“{0}” kişisel kütüphaneden kaldırılsın mı?\n\nDosyanın kişisel klasördeki kopyası Geri Dönüşüm Kutusu'na taşınır; bilgisayarınızda seçtiğiniz asıl dosyaya dokunulmaz.",
+    personalDeletedBin: "“{0}” kaldırıldı; kopyası Geri Dönüşüm Kutusu'nda.", personalDeletedFolder: "“{0}” kaldırıldı; kopyası şu klasöre taşındı: {1}",
+    personalDeletedIndex: "“{0}” indeksten kaldırıldı.",
     traceHint: "Bu oturumdaki sorular. Her sorunun altında modelin düşünmesi ve aradığı belgeler açılır-kapanır bölümlerde durur; sohbette gösterilmez.",
     traceNone: "Bu oturumda henüz soru sorulmadı.", traceThinking: "Düşünme", traceNoThinking: "Bu soruda düşünme metni yok (düşünme kapalıydı ya da sunucu göndermedi).",
     traceSearches: "Aranan belgeler", traceTools: "Aramalar", traceSources: "Modele verilen kaynaklar", traceCited: "atıf yapıldı",
@@ -343,7 +352,9 @@ const I18N = {
     stSearchingMore: "Not found directly — searching for the standard's governing requirement…",
     rcDetail: "reason: {0}", rcTechnical: "technical detail: {0}",
     citeFixed: "citation repaired: {0} added ({1} appears in that source)", vCiteFixed: "citation repaired in {0} statement(s)",
-    evaluation: "Evaluation", advanced: "Advanced",
+    evaluation: "Evaluation", advanced: "Advanced", general: "General", admSettings: "Settings",
+    adminSettingsHint: "Answering, advanced settings, connection security, vision model, embedding and reranker: Admin › Settings.",
+    adminSettingsIntro: "Admin settings: the vision, embedding and reranker servers, answering, advanced settings and connection security. The shared API key and the chat model are in the Settings window.",
     advContext: "Model context length (tokens)", ctxInfo: "server reports: {0} · used: {1}",
     ctxUnknown: "the server does not report its context length; this value is used",
     advJudgeBatch: "Checker: statements per request (max)", advRepair: "Repair wrong citations (value found in another given source)",
@@ -390,7 +401,7 @@ const I18N = {
     prev: "‹ Prev", next: "Next ›", zoom: "Zoom", zoomIn: "Zoom in", zoomOut: "Zoom out", openOriginal: "Open original file",
     inspectText: "Inspect source text", noPageImage: "This source is not a PDF, so there is no page image.",
     pageUnavailable: "The page cannot be shown: the source file is missing, moved or unreadable.",
-    highlight: "Highlight", prevEv: "‹ Previous evidence", nextEv: "Next evidence ›", printed: "printed", verifStatus: "Verification", locStatus: "Location",
+    highlight: "Highlight", openShort: "Open original", prevEv: "‹ Previous evidence", nextEv: "Next evidence ›", printed: "printed", verifStatus: "Verification", locStatus: "Location",
     loc_located: "evidence marked on the page", loc_partial: "part of the evidence marked",
     loc_not_located: "Source page found; the exact location could not be matched.", loc_ambiguous: "Source page found; the exact location could not be matched (the text occurs in several places).",
     loc_no_text_layer: "This page has no text layer (possibly scanned); no location can be shown.",
@@ -457,6 +468,13 @@ const I18N = {
     personalEmpty: "No personal files yet. The files you choose are copied into this folder and searched only in your personal index.",
     personalIndexing: "Indexing personal files", personalDirPrompt: "Folder for your personal files:",
     personalSaved: "Personal folder changed.",
+    chats: "Chats", chatsClear: "Delete all", chatsNone: "No saved chats yet.", chatsTurns: "{0} questions",
+    chatsHint: "Your chats are kept only on this computer, in your own settings folder; never in the shared library or the usage log.",
+    chatsDelete: "Delete chat", chatsDeleteConfirm: "Delete the chat “{0}”?", chatsClearConfirm: "Delete all chats? This cannot be undone.",
+    personalDelete: "Remove from the personal library", srcSplitter: "Resize the shared and personal lists (drag; ↑/↓; double click: middle)",
+    personalDeleteConfirm: "Remove “{0}” from your personal library?\n\nIts copy in the personal folder goes to the Recycle Bin; the file you originally chose on your computer is not touched.",
+    personalDeletedBin: "“{0}” removed; its copy is in the Recycle Bin.", personalDeletedFolder: "“{0}” removed; its copy was moved to: {1}",
+    personalDeletedIndex: "“{0}” removed from the index.",
     traceHint: "Questions of this session. Under each, the model's thinking and the documents it searched are in collapsible sections; the chat does not show them.",
     traceNone: "No question asked in this session yet.", traceThinking: "Thinking", traceNoThinking: "No thinking text for this question (thinking was off or the server sent none).",
     traceSearches: "Searched documents", traceTools: "Searches", traceSources: "Sources given to the model", traceCited: "cited",
@@ -499,11 +517,11 @@ function applyI18n() {
 // ------------------------------------------------------------------ state + api
 const state = { info: null, docs: [], selected: new Set(), selectedBuckets: new Set(), history: [], busy: false,
   token: TOKEN, filter: "", ui: loadUi(), chatId: 0, abort: null, viewSeq: 0, pendingClarify: null,
-  traces: [], adminPage: "adm-library" };
+  traces: [], adminPage: "adm-library", conv: null };
 
 // Panel layout preferences (per user, kept across restarts; never affect what is searched).
 function loadUi() {
-  const d = { leftCollapsed: false, rightHidden: false, rightW: 440, openBuckets: [] };
+  const d = { leftCollapsed: false, rightHidden: false, rightW: 440, openBuckets: [], srcSplit: 0.5 };
   try { return Object.assign(d, JSON.parse(localStorage.getItem("techrag.ui") || "{}")); } catch { return d; }
 }
 function saveUi() { safeSet("techrag.ui", JSON.stringify(state.ui)); }
@@ -708,7 +726,8 @@ function renderCollections() {
   const q = fold(state.filter.trim());
   fillBuckets($("#collections"), all.filter((b) => !b.personal), q, t("viewerEmpty").replace(/\s*\[n\].*$/, ""));
   fillBuckets($("#personal-collections"), all.filter((b) => b.personal), q, t("personalEmpty"));
-  $("#doc-count").textContent = state.docs.length ? `${state.docs.length} ${t("docsShort")}` : "";
+  $("#doc-count").textContent = state.docs.length ? String(state.docs.length) : "";
+  $("#doc-count").title = state.docs.length ? `${state.docs.length} ${t("docsShort")}` : "";
   renderScopeLine();
   renderMissing();
 }
@@ -740,12 +759,15 @@ function fillBuckets(wrap, buckets, q, emptyText) {
       const warn = doc.warnings && doc.warnings.length ? ` <span class="tag errata" title="${esc(doc.warnings.join("\n"))}">⚠</span>` : "";
       const checked = bsel || state.selected.has(doc.id);
       row.innerHTML = `<input type="checkbox" ${checked ? "checked" : ""} ${bsel ? "disabled" : ""}>
-        <a href="#" class="doc-name"></a><span class="doc-tags">${docTags(doc)}${warn}</span>`;
+        <a href="#" class="doc-name"></a><span class="doc-tags">${docTags(doc)}${warn}</span>${b.personal
+          ? `<button type="button" class="ghost icon small doc-del" title="${esc(t("personalDelete"))}" aria-label="${esc(t("personalDelete"))}">🗑</button>` : ""}`;
       const a = $("a", row);
       a.textContent = doc.title;
       a.title = `${doc.title}\n${t("relPath")}: ${docLocation(doc)}`;
       $("input", row).addEventListener("change", (e) => { e.target.checked ? state.selected.add(doc.id) : state.selected.delete(doc.id); renderCollections(); });
       a.addEventListener("click", (e) => { e.preventDefault(); showDocument(doc.id); });
+      const del = $(".doc-del", row);
+      if (del) del.addEventListener("click", () => deletePersonal(doc));
       list.append(row);
     }
     $(".chev", sec).addEventListener("click", () => toggleBucket(b.id));
@@ -899,16 +921,17 @@ function pageViewer(container, docId, page, nPages, opts = {}) {
   if (st.cur >= 0) st.p = regions[st.cur].page;
   const box = document.createElement("div");
   box.className = "pv-box";
-  const evCtl = regions.length ? `<span class="pv-ev"><label class="small"><input type="checkbox" class="pv-hl" checked> ${t("highlight")}</label>
-      <button type="button" class="ghost small pv-evprev">${t("prevEv")}</button><span class="pv-evlabel small"></span>
-      <button type="button" class="ghost small pv-evnext">${t("nextEv")}</button></span>` : "";
-  box.innerHTML = `<div class="page-nav"><button type="button" class="ghost small pv-prev" title="${t("prev")}">‹</button>
-    <span class="pv-label small"></span><button type="button" class="ghost small pv-next" title="${t("next")}">›</button>
-    <button type="button" class="ghost small pv-zout" title="${t("zoomOut")}">−</button><span class="pv-zl small"></span>
-    <button type="button" class="ghost small pv-zin" title="${t("zoomIn")}">+</button>
-    ${state.info && state.info.desktop ? `<button type="button" class="ghost small pv-open">${t("openOriginal")}</button>` : ""}</div>
-    ${evCtl}<div class="pv-role small muted"></div><div class="pv-fail" hidden></div>
-    <div class="page-view"><div class="page-wrap"><img alt=""><div class="hl-layer"></div></div></div>`;
+  // The page takes the whole panel; its controls sit in a translucent strip over the bottom of the page.
+  const evCtl = regions.length ? `<span class="pv-sep"></span><span class="pv-ev"><label title="${esc(t("highlight"))}"><input type="checkbox" class="pv-hl" checked> ${t("highlight")}</label>
+      <button type="button" class="pv-btn pv-evprev" title="${esc(t("prevEv"))}" aria-label="${esc(t("prevEv"))}">◂</button><span class="pv-evlabel"></span>
+      <button type="button" class="pv-btn pv-evnext" title="${esc(t("nextEv"))}" aria-label="${esc(t("nextEv"))}">▸</button></span>` : "";
+  box.innerHTML = `<div class="pv-fail" hidden></div>
+    <div class="page-view"><div class="page-wrap"><img alt=""><div class="hl-layer"></div></div></div>
+    <div class="pv-bar" role="toolbar"><button type="button" class="pv-btn pv-prev" title="${esc(t("prev"))}" aria-label="${esc(t("prev"))}">‹</button>
+      <span class="pv-label"></span><button type="button" class="pv-btn pv-next" title="${esc(t("next"))}" aria-label="${esc(t("next"))}">›</button>
+      <span class="pv-sep"></span><button type="button" class="pv-btn pv-zout" title="${esc(t("zoomOut"))}" aria-label="${esc(t("zoomOut"))}">−</button><span class="pv-zl"></span>
+      <button type="button" class="pv-btn pv-zin" title="${esc(t("zoomIn"))}" aria-label="${esc(t("zoomIn"))}">+</button>
+      ${evCtl}${state.info && state.info.desktop ? `<span class="pv-sep"></span><button type="button" class="pv-btn pv-open" title="${esc(t("openOriginal"))}">${t("openShort")}</button>` : ""}</div>`;
   const img = $("img", box);
   const wrap = $(".page-wrap", box);
   const layer = $(".hl-layer", box);
@@ -929,10 +952,11 @@ function pageViewer(container, docId, page, nPages, opts = {}) {
       }
     });
     const cur = regions[st.cur];
-    const role = $(".pv-role", box);
-    role.textContent = cur && cur.page === st.p ? `${t("role_" + (cur.role || "text"))}${cur.quote ? " — " + cur.quote.slice(0, 160) : ""}` : "";
-    const el = $(".evlabel, .pv-evlabel", box);
-    if (el) el.textContent = `${st.cur + 1}/${regions.length}`;
+    const el = $(".pv-evlabel", box);
+    if (el) {
+      el.textContent = `${st.cur + 1}/${regions.length}`;
+      el.title = cur ? `${t("role_" + (cur.role || "text"))}${cur.quote ? " — " + cur.quote.slice(0, 160) : ""}` : "";
+    }
   };
   const show = () => {
     const z = ZOOMS[st.zoom];
@@ -948,6 +972,7 @@ function pageViewer(container, docId, page, nPages, opts = {}) {
   img.addEventListener("load", () => {
     $(".pv-fail", box).hidden = true;
     $(".page-view", box).hidden = false;
+    $(".pv-bar", box).hidden = false;
     const c = $(".hl.current", box);
     if (c && st.show) c.scrollIntoView({ block: "center", inline: "center" });
   });
@@ -956,6 +981,7 @@ function pageViewer(container, docId, page, nPages, opts = {}) {
     fail.innerHTML = `<div class="small muted">${esc(t("pageUnavailable"))}</div>${opts.fallback ? opts.fallback() : ""}`;
     fail.hidden = false;
     $(".page-view", box).hidden = true;
+    $(".pv-bar", box).hidden = true;
   });
   const go = (i) => { st.cur = (i + regions.length) % regions.length; if (regions[st.cur].page !== st.p) { st.p = regions[st.cur].page; show(); } else { draw(); const c = $(".hl.current", box); if (c) c.scrollIntoView({ block: "center", inline: "center" }); } };
   $(".pv-prev", box).addEventListener("click", () => { if (st.p > 1) { st.p--; show(); } });
@@ -1014,28 +1040,14 @@ function showSource(s, msg, claimId, override) {
   const pane = $("#tab-source");
   const ev = override ? [] : evidenceOf(msg, s, claimId);
   const recs = override ? [override] : ev.map((x) => x.rec);
-  const claims = ev.map((x) => x.claim);
   const regions = [];
   for (const r of recs) for (const g of r.regions || []) if (!regions.some((x) => x.page === g.page && JSON.stringify(x.rects) === JSON.stringify(g.rects))) regions.push(g);
   const quotes = recs.flatMap((r) => r.quotes || []);
   const label = s.page_label && s.page_label !== String(s.page_start) ? ` (${t("printed")}: ${s.page_label})` : "";
   const pages = s.page_start === s.page_end ? `${t("page")} ${s.page_start}${label}` : `${t("page")} ${s.page_start}–${s.page_end}`;
-  const meta = [(s.entities || []).join(", "), s.doc_type && s.doc_type !== "base" ? s.doc_type.toUpperCase() : "", s.section, s.doc_id ? pages : "",
-    kindLabel(s), s.verified === false ? t("unverified") : ""].filter(Boolean).map(esc).join(" · ");
-  // Verification (is the statement right?) and location (where is the evidence?) are shown separately.
-  let status = "";
-  if (claims.length) {
-    const st = [...new Set(claims.map((c) => c.status))];
-    status += `<div class="small"><b>${t("verifStatus")}:</b> ${st.map((x) => `<span class="badge st-${x}">${esc(t("st_" + x))}</span>`).join(" ")}</div>`;
-  }
-  const locKeys = [...new Set(recs.map((r) => (r.partial ? "partial" : r.status)))];
-  let locText = "";
-  if (s.kind === "calc") locText = t("loc_calc");
-  else if (s.kind === "user") locText = t("loc_user");
-  else if (!recs.length) locText = t("loc_none");
-  else locText = locKeys.map((k) => t("loc_" + k)).join(" ");
-  status += `<div class="small"><b>${t("locStatus")}:</b> ${esc(locText)}</div>`;
-  if (regions.length) status += `<div class="small muted">${esc(t("locNote"))}</div>`;
+  const metaParts = [(s.entities || []).join(", "), s.doc_type && s.doc_type !== "base" ? s.doc_type.toUpperCase() : "", s.section,
+    s.doc_id ? pages : "", kindLabel(s), s.verified === false ? t("unverified") : ""].filter(Boolean);
+  const meta = metaParts.map(esc).join(" · ");
   let inputs = "";
   if (s.kind === "calc") {
     const recInputs = (recs[0] && recs[0].inputs) || (s.extra && s.extra.inputs) || [];
@@ -1056,9 +1068,11 @@ function showSource(s, msg, claimId, override) {
     body = `<div class="small muted no-page">${esc(t("noPageImage"))}</div>${state.info && state.info.desktop
       ? `<button type="button" class="ghost small src-open">${t("openOriginal")}</button>` : ""}${inspect(false)}`;
   } else body = `<div class="source-text markdown">${renderMarkdown(s.text, false)}</div>`;  // calculation / user input
-  pane.innerHTML = `<div class="source-card${isPdf ? " pdf" : ""}"><h3>[${s.n}] ${esc(title)}${s.revision ? ` <span class="tag">rev ${esc(s.revision)}</span>` : ""}</h3>
-    <div class="source-meta">${meta}</div>${s.relation ? `<div class="small relation">${esc(s.relation)}</div>` : ""}
-    <div class="loc-status">${status}</div>${inputs}${body}</div>`;
+  // Only the citation number and the document title above the page; section, pages, revision and how the source
+  // relates to the question are in the title's tooltip.
+  const tip = [metaParts.join(" · "), s.revision ? `rev ${s.revision}` : "", s.relation || ""].filter(Boolean).join("\n");
+  pane.innerHTML = `<div class="source-card${isPdf ? " pdf" : ""}"><h3 class="source-title" title="${esc(tip)}">[${s.n}] ${esc(title)}</h3>
+    ${isPdf ? "" : `<div class="source-meta">${meta}</div>`}${inputs}${body}</div>`;
   const srcOpen = $(".src-open", pane);
   if (srcOpen) srcOpen.addEventListener("click", () => postJSON(`/api/documents/${s.doc_id}/open`, {}).catch((e) => alert(e.message)));
   if (s.kind === "calc") {
@@ -1309,8 +1323,139 @@ function newChat(note) {
   if (state.stopAsk) state.stopAsk();  // the model stops working on it too
   if (state.abort) state.abort.abort();
   state.history = [];
+  state.conv = emptyConv();
   setPending(null);
-  $("#messages").innerHTML = `<div class="empty" id="empty-state"><p>${esc(note)}</p></div>`;
+  $("#messages").innerHTML = note ? `<div class="empty" id="empty-state"><p>${esc(note)}</p></div>` : "";
+  if (!$("#side-chats").hidden) renderChats();
+}
+
+// The final answer of a message (live, or from a saved conversation): answer, citations, verification, clarifying
+// options, notice and the actions under it. Returns the answer text.
+function renderFinal(el, ev, opts = {}) {
+  const body = $(".body", el);
+  el._final = true;
+  $(".status", el).textContent = "";
+  const text = ev.answer || "";
+  body.innerHTML = renderMarkdown(text);
+  $$("button.cite", body).forEach((b, i) => { const c = (ev.cite_claims || [])[i]; if (c != null) b.dataset.claim = c; });
+  el._sources = ev.sources || el._sources || [];
+  el._verification = ev.verification;
+  renderChips(el);
+  renderVerification(el, ev.verification, opts.confidence);
+  if (ev.clarify) {
+    renderClarify(el, body, ev.clarify);
+    if (opts.live && ev.clarify.pending) setPending(ev.clarify.pending);
+  }
+  if (ev.notice) {
+    const n = document.createElement("div");
+    n.className = "notice";
+    n.textContent = ev.notice;
+    body.prepend(n);
+  }
+  const acts = $(".msg-actions", el);
+  acts.hidden = false;
+  if (ev.timings && ev.timings.total) {
+    const tb = $(".timing", acts);
+    const detail = $(".timing-detail", el);
+    tb.hidden = false;
+    tb.textContent = t("timingShow", fmtDuration(ev.timings.total));
+    tb.title = t("timingTitle");
+    tb.addEventListener("click", () => {
+      if (detail.hidden) detail.innerHTML = timingDetailHtml(ev);
+      detail.hidden = !detail.hidden;
+    });
+  }
+  $(".btn-copy", acts).addEventListener("click", (e) => {
+    const refs = el._sources.filter((s) => s.cited).map((s) => `[${s.n}] ${s.doc_title} — ${s.section} — p.${s.page_start}`).join("\n");
+    navigator.clipboard && navigator.clipboard.writeText(`${text}\n\n${refs}`);
+    e.target.textContent = t("copied");
+  });
+  const fbCtx = { question: ev.merged_question || opts.asked || "", answer: text,
+    verification_status: (ev.verification || {}).status || "", sources: (el._sources || []).filter((s) => s.cited) };
+  $(".btn-fb-up", acts).addEventListener("click", () => sendFeedback(el, fbCtx, "up"));
+  $(".btn-fb-down", acts).addEventListener("click", () => openFeedback(el, fbCtx));
+  return text;
+}
+
+// ------------------------------------------------------------------ conversations (Sohbetler)
+// Kept on this computer, per user (server: user settings folder/chats); never in the library or the usage log.
+const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, "0")).join("");
+const emptyConv = () => ({ id: randomId(), title: "", created: new Date().toISOString(), turns: [] });
+async function saveConv(conv) {
+  if (!conv.turns.length) return;
+  if (!conv.title) conv.title = conv.turns[0].q.slice(0, 120);
+  try { await postJSON(`/api/chats/${conv.id}`, conv, "PUT"); }
+  catch (e) { console.warn("conversation not saved:", e.message); return; }
+  if (!$("#side-chats").hidden) renderChats();
+}
+function msgElement(question) {
+  const u = document.createElement("div");
+  u.className = "msg user";
+  u.textContent = question;
+  const el = $("#tpl-answer").content.firstElementChild.cloneNode(true);
+  $$("[data-i18n]", el).forEach((x) => { x.textContent = t(x.dataset.i18n); });
+  $$("[data-i18n-title]", el).forEach((x) => { x.title = t(x.dataset.i18nTitle); x.setAttribute("aria-label", x.title); });
+  el._sources = [];
+  el._final = false;
+  $("#messages").append(u, el);
+  return el;
+}
+async function openConv(id) {
+  let conv;
+  try { conv = await getJSON(`/api/chats/${encodeURIComponent(id)}`); }
+  catch (e) { alert(`${t("errorPrefix")}: ${e.message}`); return; }
+  newChat(null);
+  state.conv = conv;
+  $("#messages").innerHTML = "";
+  for (const turn of conv.turns || []) {
+    const el = msgElement(turn.q);
+    if (turn.final) {
+      const text = renderFinal(el, turn.final, { confidence: turn.confidence, asked: turn.asked || turn.q, live: false });
+      state.history.push({ role: "user", content: turn.asked || turn.q }, { role: "assistant", content: text });
+    } else {
+      const n = document.createElement("div");
+      n.className = turn.cancelled ? "notice stopped" : "verify warning";
+      n.textContent = turn.cancelled ? t("stoppedNote") : `${t("errorPrefix")}: ${turn.error || ""}`;
+      $(".body", el).append(n);
+    }
+  }
+  state.history = state.history.slice(-12);
+  scrollDown();
+  renderChats();
+}
+async function renderChats() {
+  const box = $("#chat-list");
+  let list = [];
+  try { list = (await getJSON("/api/chats")).chats || []; }
+  catch (e) { box.innerHTML = `<p class="small bad">${esc(e.message)}</p>`; return; }
+  if (!list.length) { box.innerHTML = `<p class="muted small">${esc(t("chatsNone"))}</p>`; return; }
+  box.innerHTML = "";
+  for (const c of list) {
+    const row = document.createElement("div");
+    row.className = "chat-item" + (state.conv && state.conv.id === c.id ? " active" : "");
+    row.dataset.id = c.id;
+    row.innerHTML = `<div class="chat-text"><span class="chat-title"></span><span class="chat-meta">${esc(fmtTime(c.updated))} · ${esc(t("chatsTurns", c.turns))}</span></div>
+      <button type="button" class="ghost icon small chat-del" title="${esc(t("chatsDelete"))}" aria-label="${esc(t("chatsDelete"))}">🗑</button>`;
+    $(".chat-title", row).textContent = c.title || "—";
+    $(".chat-title", row).title = c.title || "";
+    row.addEventListener("click", (e) => { if (!e.target.closest(".chat-del")) openConv(c.id); });
+    $(".chat-del", row).addEventListener("click", async () => {
+      if (!confirm(t("chatsDeleteConfirm", c.title || ""))) return;
+      try { await api(`/api/chats/${encodeURIComponent(c.id)}`, { method: "DELETE" }); } catch (e) { alert(e.message); return; }
+      if (state.conv && state.conv.id === c.id) newChat(t("newChatStarted"));
+      renderChats();
+    });
+    box.append(row);
+  }
+}
+function showSide(page) {
+  $$(".side-tab").forEach((b) => {
+    const on = b.dataset.side === page;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-selected", String(on));
+  });
+  $$(".side-page").forEach((x) => { x.hidden = x.id !== page; });
+  if (page === "side-chats") renderChats();
 }
 
 // `reply`: the clarifying question this message answers (an option button of that question); by default the one
@@ -1332,18 +1477,18 @@ async function ask(question, reply) {
   stopBtn.textContent = t("stop");
   const empty = $("#empty-state");
   if (empty) empty.remove();
-  const u = document.createElement("div");
-  u.className = "msg user";
-  u.textContent = question;
-  $("#messages").append(u);
-  const el = $("#tpl-answer").content.firstElementChild.cloneNode(true);
-  $$("[data-i18n]", el).forEach((x) => { x.textContent = t(x.dataset.i18n); });
-  $$("[data-i18n-title]", el).forEach((x) => { x.title = t(x.dataset.i18nTitle); x.setAttribute("aria-label", x.title); });
-  $("#messages").append(el);
-  el._sources = [];
-  el._final = false;
+  const el = msgElement(question);
   // Thinking and searches are not shown in the chat: they are kept for Admin › Thinking and searches.
   const trace = { question, at: new Date(), plan: "", reasoning: "", tools: [], sources: [], status: "" };
+  // Every question is saved in the conversation it was asked in (Sohbetler), once it has an outcome.
+  const conv = state.conv;
+  let recorded = false;
+  const record = (outcome) => {
+    if (recorded) return;
+    recorded = true;
+    conv.turns.push(Object.assign({ q: question, asked, at: new Date().toISOString(), confidence }, outcome));
+    saveConv(conv);
+  };
   state.traces.unshift(trace);
   state.traces.length = Math.min(state.traces.length, 50);
   const body = $(".body", el);
@@ -1389,6 +1534,7 @@ async function ask(question, reply) {
       case "cancelled": {
         el._final = true;
         trace.status = "cancelled";
+        record({ cancelled: true });
         status.textContent = "";
         const n = document.createElement("div");
         n.className = "notice stopped";
@@ -1420,57 +1566,18 @@ async function ask(question, reply) {
       case "draft_reset": text = ""; render(); break;
       case "clarify": el._clarify = ev; break;
       case "final": {
-        el._final = true;
-        status.textContent = "";
-        text = ev.answer;
-        body.innerHTML = renderMarkdown(text);
-        $$("button.cite", body).forEach((b, i) => { const c = (ev.cite_claims || [])[i]; if (c != null) b.dataset.claim = c; });
-        el._sources = ev.sources || el._sources;
+        const clarified = Object.assign({}, ev, { clarify: ev.clarify || el._clarify || null });
+        text = renderFinal(el, clarified, { confidence, asked, live: chat === state.chatId });
         trace.sources = el._sources;
         trace.status = (ev.verification || {}).status || "final";
-        el._verification = ev.verification;
-        renderChips(el);
-        renderVerification(el, ev.verification, confidence);
-        const clar = ev.clarify || el._clarify;
-        if (clar) {
-          renderClarify(el, body, clar);
-          if (clar.pending && chat === state.chatId) setPending(clar.pending);
-        }
-        if (ev.notice) {
-          const n = document.createElement("div");
-          n.className = "notice";
-          n.textContent = ev.notice;
-          body.prepend(n);
-        }
-        const acts = $(".msg-actions", el);
-        acts.hidden = false;
-        if (ev.timings && ev.timings.total) {
-          const tb = $(".timing", acts);
-          const detail = $(".timing-detail", el);
-          tb.hidden = false;
-          tb.textContent = t("timingShow", fmtDuration(ev.timings.total));
-          tb.title = t("timingTitle");
-          tb.addEventListener("click", () => {
-            if (detail.hidden) detail.innerHTML = timingDetailHtml(ev);
-            detail.hidden = !detail.hidden;
-          });
-        }
-        $(".btn-copy", acts).addEventListener("click", (e) => {
-          const refs = el._sources.filter((s) => s.cited).map((s) => `[${s.n}] ${s.doc_title} — ${s.section} — p.${s.page_start}`).join("\n");
-          navigator.clipboard && navigator.clipboard.writeText(`${text}\n\n${refs}`);
-          e.target.textContent = t("copied");
-        });
-        const fbCtx = { question: ev.merged_question || asked, answer: text,
-          verification_status: (ev.verification || {}).status || "", sources: (el._sources || []).filter((s) => s.cited) };
-        $(".btn-fb-up", acts).addEventListener("click", () => sendFeedback(el, fbCtx, "up"));
-        $(".btn-fb-down", acts).addEventListener("click", () => openFeedback(el, fbCtx));
         if (chat === state.chatId) {
           state.history.push({ role: "user", content: asked }, { role: "assistant", content: text });
           state.history = state.history.slice(-12);
         }
+        record({ final: clarified });
         break;
       }
-      case "error": el._final = true; trace.status = "error"; status.textContent = ""; body.innerHTML = `<div class="verify warning">${t("errorPrefix")}: ${esc(ev.message)}</div>`; break;
+      case "error": el._final = true; trace.status = "error"; status.textContent = ""; body.innerHTML = `<div class="verify warning">${t("errorPrefix")}: ${esc(ev.message)}</div>`; record({ error: ev.message }); break;
       default: break;
     }
   };
@@ -1498,6 +1605,7 @@ async function ask(question, reply) {
     el._final = true;  // a draft frame still queued must not replace the error
     status.textContent = "";
     body.innerHTML = `<div class="verify warning">${t("errorPrefix")}: ${esc(e.message)}</div>`;
+    record(chat !== state.chatId ? { cancelled: true } : { error: e.message });
   } finally {
     if (!trace.status) trace.status = "error";
     clearInterval(timer);
@@ -1770,6 +1878,8 @@ async function retryFailed() {
 
 // ------------------------------------------------------------------ settings dialog
 let SETTINGS = null;
+// The shared key as typed in Settings, or the stored one (MASK: the server uses it) when that window was not opened.
+const probeKey = () => { const k = $("#set-api-key"); return k.dataset.loaded ? k.value : MASK; };
 function svcCard(svc) {
   const div = document.createElement("div");
   div.className = "svc";
@@ -1811,7 +1921,7 @@ function svcCard(svc) {
       else showError(res, r, t("noModels"));
     } catch (e) { res.className = "result bad"; res.textContent = e.message; }
   };
-  const probe = (extra) => Object.assign({ service: svc, base_url: $(".url", div).value, api_key: $("#set-api-key").value,
+  const probe = (extra) => Object.assign({ service: svc, base_url: $(".url", div).value, api_key: probeKey(),
     verify_ssl: !$(".insecure", div).checked }, extra || {});
   const showError = (res, r, prefix) => {
     res.className = "result bad";
@@ -1848,7 +1958,7 @@ function svcCard(svc) {
         SETTINGS.tls = r.settings.tls;
         $("#set-tls-ca").value = SETTINGS.tls.ca_bundle;
         panel.remove();
-        $("#settings-status").textContent = t("trusted", r.path);
+        $("#adm-settings-status").textContent = $("#settings-status").textContent = t("trusted", r.path);
         await load();
       } catch (e) { panel.innerHTML = `<span class="hint-text">${esc(e.message)}</span>`; }
     });
@@ -2108,13 +2218,48 @@ async function exportFeedback() {
   } catch (e) { $("#eval-status").textContent = `${t("errorPrefix")}: ${e.message}`; }
 }
 
+// Settings (every user): the shared API key, the chat model and the notification. Everything else is in
+// Admin › Ayarlar.
 async function openSettings() {
   SETTINGS = await getJSON("/api/settings");
+  const k = $("#set-api-key");
+  k.value = (SETTINGS.auth && SETTINGS.auth.api_key) || "";   // before the card: it lists models with it
+  k.dataset.loaded = "1";
+  k.onchange = () => $$("#svc-grid .load").forEach((b) => { if (!b.disabled) b.click(); });
   const grid = $("#svc-grid");
   grid.innerHTML = "";
-  $("#set-api-key").value = (SETTINGS.auth && SETTINGS.auth.api_key) || "";   // before the cards: they list models with it
-  $("#set-api-key").onchange = () => $$("#svc-grid .load").forEach((b) => { if (!b.disabled) b.click(); });
-  for (const svc of SERVICES) grid.append(svcCard(svc));
+  grid.append(svcCard("llm"));
+  $("#set-notify").checked = !SETTINGS.ui || SETTINGS.ui.notify !== false;
+  $("#settings-status").textContent = "";
+  $$("#dlg-settings [data-i18n]").forEach((x) => { x.textContent = t(x.dataset.i18n); });
+  $("#dlg-settings").showModal();
+}
+function cardPatch(card) {
+  const same = $(".same", card);
+  if (same && same.checked) return { base_url: "", model: "" };
+  const out = { base_url: $(".url", card).value.trim(), model: $(".model", card).value, verify_ssl: !$(".insecure", card).checked };
+  const en = $(".enabled", card);
+  if (en) out.enabled = en.checked;
+  return out;
+}
+async function saveSettings(e) {
+  e.preventDefault();
+  const patch = { auth: { api_key: $("#set-api-key").value }, llm: cardPatch($("#svc-grid .svc")), ui: { notify: $("#set-notify").checked } };
+  try {
+    const r = await postJSON("/api/settings", patch, "PUT");
+    $("#settings-status").textContent = r.error ? `${t("errorPrefix")}: ${r.error}` : t("savedSettings");
+    await loadInfo();
+    await loadDocs();
+    if (!r.error) setTimeout(() => $("#dlg-settings").close(), 500);
+  } catch (err) { $("#settings-status").textContent = `${t("errorPrefix")}: ${err.message}`; }
+}
+
+// Admin › Ayarlar: answering, advanced, connection security and the vision, embedding and reranker services.
+async function loadAdminSettings() {
+  SETTINGS = await getJSON("/api/settings");
+  const grid = $("#adm-svc-grid");
+  grid.innerHTML = "";
+  for (const svc of SERVICES.filter((x) => x !== "llm")) grid.append(svcCard(svc));
   $("#set-thinking").value = SETTINGS.llm.thinking;
   $("#set-thinking-control").value = SETTINGS.llm.thinking_control;
   $("#set-tools").value = SETTINGS.llm.tools;
@@ -2122,7 +2267,6 @@ async function openSettings() {
   $("#set-regenerate").checked = SETTINGS.answer.regenerate;
   $("#set-failed").value = SETTINGS.answer.failed_claims;
   $("#set-vision-enabled").checked = SETTINGS.vision.enabled;
-  $("#set-notify").checked = !SETTINGS.ui || SETTINGS.ui.notify !== false;
   $("#set-tool-rounds").value = SETTINGS.llm.max_tool_rounds ?? 4;
   $("#set-context").value = SETTINGS.llm.context_tokens;
   $("#set-judge-batch").value = SETTINGS.answer.judge_batch;
@@ -2138,27 +2282,14 @@ async function openSettings() {
   $("#set-tls-system").checked = SETTINGS.tls.system_store;
   $("#set-tls-proxy").checked = SETTINGS.tls.use_system_proxy;
   $("#set-tls-ca").value = SETTINGS.tls.ca_bundle || "";
-  $("#settings-status").textContent = "";
-  $$("#dlg-settings [data-i18n]").forEach((x) => { x.textContent = t(x.dataset.i18n); });
-  $("#dlg-settings").showModal();
+  $("#adm-settings-status").textContent = "";
 }
-async function saveSettings(e) {
-  e.preventDefault();
-  const patch = { auth: { api_key: $("#set-api-key").value },
-    answer: { judge: $("#set-judge").checked, regenerate: $("#set-regenerate").checked, failed_claims: $("#set-failed").value } };
-  for (const card of $$(".svc")) {
-    const svc = card.dataset.svc;
-    const same = $(".same", card);
-    if (same && same.checked) { patch[svc] = { base_url: "", model: "" }; continue; }
-    patch[svc] = { base_url: $(".url", card).value.trim(), model: $(".model", card).value,
-      verify_ssl: !$(".insecure", card).checked };
-    const en = $(".enabled", card);
-    if (en) patch[svc].enabled = en.checked;
-  }
-  Object.assign(patch.llm, { thinking: $("#set-thinking").value, thinking_control: $("#set-thinking-control").value, tools: $("#set-tools").value });
+async function saveAdminSettings() {
+  const patch = { answer: { judge: $("#set-judge").checked, regenerate: $("#set-regenerate").checked, failed_claims: $("#set-failed").value } };
+  for (const card of $$("#adm-svc-grid .svc")) patch[card.dataset.svc] = cardPatch(card);
+  patch.llm = { thinking: $("#set-thinking").value, thinking_control: $("#set-thinking-control").value, tools: $("#set-tools").value };
   patch.vision = Object.assign(patch.vision || {}, { enabled: $("#set-vision-enabled").checked });
   const num = (id, int) => { const v = int ? parseInt($(id).value, 10) : parseFloat($(id).value); return Number.isFinite(v) ? v : undefined; };
-  patch.ui = { notify: $("#set-notify").checked };
   const adv = { llm: { context_tokens: num("#set-context", true), max_tool_rounds: num("#set-tool-rounds", true) }, answer: { judge_batch: num("#set-judge-batch", true),
     repair_citations: $("#set-repair-cites").checked, search_before_not_found: $("#set-search-more").checked }, retrieval: { follow_references: num("#set-follow-refs", true) },
     vision: { min_page_score: num("#set-page-score"), max_pages_per_doc: num("#set-max-pages", true) } };
@@ -2168,11 +2299,10 @@ async function saveSettings(e) {
   patch.tls = tlsPatch();
   try {
     const r = await postJSON("/api/settings", patch, "PUT");
-    $("#settings-status").textContent = r.error ? `${t("errorPrefix")}: ${r.error}` : t("savedSettings");
+    $("#adm-settings-status").textContent = r.error ? `${t("errorPrefix")}: ${r.error}` : t("savedSettings");
     await loadInfo();
     await loadDocs();
-    if (!r.error) setTimeout(() => $("#dlg-settings").close(), 500);
-  } catch (err) { $("#settings-status").textContent = `${t("errorPrefix")}: ${err.message}`; }
+  } catch (err) { $("#adm-settings-status").textContent = `${t("errorPrefix")}: ${err.message}`; }
 }
 
 function tlsPatch() {
@@ -2183,8 +2313,8 @@ async function applyTls() {
   try {
     const r = await postJSON("/api/settings", { tls: tlsPatch() }, "PUT");
     SETTINGS.tls = r.settings.tls;
-    $("#settings-status").textContent = r.error ? `${t("errorPrefix")}: ${r.error}` : t("tlsApplied");
-  } catch (e) { $("#settings-status").textContent = `${t("errorPrefix")}: ${e.message}`; }
+    $("#adm-settings-status").textContent = r.error ? `${t("errorPrefix")}: ${r.error}` : t("tlsApplied");
+  } catch (e) { $("#adm-settings-status").textContent = `${t("errorPrefix")}: ${e.message}`; }
 }
 async function pickCaFiles() {
   let paths = [];
@@ -2230,6 +2360,7 @@ function showAdminPage(page) {
   });
   $$(".adm-page").forEach((x) => { x.hidden = x.id !== page; });
   if (page === "adm-library") { fillLibrary(); renderAdminLibrary(); }
+  else if (page === "adm-settings") loadAdminSettings().catch((e) => { $("#adm-settings-status").textContent = `${t("errorPrefix")}: ${e.message}`; });
   else if (page === "adm-trace") renderTraces();
   else if (page === "adm-eval") loadEvalPage();
   else if (page === "adm-usage") loadUsage();
@@ -2310,6 +2441,61 @@ async function uploadPersonal(files) {
     catch (e) { alert(`${t("errorPrefix")}: ${e.message}`); }
   }
 }
+async function deletePersonal(doc) {
+  if (!confirm(t("personalDeleteConfirm", doc.title))) return;
+  const st = $("#personal-status");
+  try {
+    const r = await api(`/api/personal/documents/${doc.id}`, { method: "DELETE" }).then((x) => x.json());
+    st.textContent = r.trash === "recycle_bin" ? t("personalDeletedBin", doc.title)
+      : r.trash === "folder" ? t("personalDeletedFolder", doc.title, r.path) : t("personalDeletedIndex", doc.title);
+    st.hidden = false;
+    state.selected.delete(doc.id);
+    await loadInfo();
+    await loadDocs();
+  } catch (e) { alert(`${t("errorPrefix")}: ${e.message}`); }
+}
+
+// The bar between the shared and the personal list: dragged with the mouse, ↑/↓ with the keyboard, double click or
+// Enter puts it back in the middle. Kept across restarts.
+const clampSplit = (r) => Math.min(0.85, Math.max(0.15, Number.isFinite(r) ? r : 0.5));
+function applySrcSplit() {
+  const r = clampSplit(state.ui.srcSplit);
+  $("#src-shared").style.flex = `${r} 1 0`;
+  $("#src-personal").style.flex = `${1 - r} 1 0`;
+  $("#src-splitter").setAttribute("aria-valuenow", String(Math.round(r * 100)));
+}
+function bindSrcSplitter() {
+  const sp = $("#src-splitter");
+  const set = (r) => { state.ui.srcSplit = clampSplit(r); applySrcSplit(); };
+  sp.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    sp.setPointerCapture(e.pointerId);
+    document.body.classList.add("resizing-src");
+    const move = (ev) => { const box = $("#src-split").getBoundingClientRect(); set((ev.clientY - box.top) / box.height); };
+    const up = () => {
+      sp.removeEventListener("pointermove", move);
+      sp.removeEventListener("pointerup", up);
+      sp.removeEventListener("pointercancel", up);
+      document.body.classList.remove("resizing-src");
+      saveUi();
+    };
+    sp.addEventListener("pointermove", move);
+    sp.addEventListener("pointerup", up);
+    sp.addEventListener("pointercancel", up);
+  });
+  sp.addEventListener("keydown", (e) => {
+    const r = clampSplit(state.ui.srcSplit);
+    const step = e.shiftKey ? 0.15 : 0.05;
+    const next = { ArrowUp: r - step, ArrowDown: r + step, Home: 0.15, End: 0.85, Enter: 0.5 }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    set(next);
+    saveUi();
+  });
+  sp.addEventListener("dblclick", () => { set(0.5); saveUi(); });
+  applySrcSplit();
+}
+
 async function rescanPersonal() {
   try { const r = await postJSON("/api/personal/rescan", {}); await pollJob(r.job, t("personalIndexing")); }
   catch (e) { alert(`${t("errorPrefix")}: ${e.message}`); }
@@ -2346,6 +2532,14 @@ function bind() {
     if (s) showSource(s, msg, c.dataset.claim ? +c.dataset.claim : null);
   });
   $("#btn-new-chat").addEventListener("click", () => newChat(t("newChatStarted")));
+  $("#btn-chat-new").addEventListener("click", () => newChat(t("newChatStarted")));
+  $("#btn-chat-clear").addEventListener("click", async () => {
+    if (!confirm(t("chatsClearConfirm"))) return;
+    try { await api("/api/chats", { method: "DELETE" }); } catch (e) { alert(e.message); return; }
+    newChat(t("newChatStarted"));
+    renderChats();
+  });
+  $$(".side-tab").forEach((b) => b.addEventListener("click", () => showSide(b.dataset.side)));
   $("#btn-pending-cancel").addEventListener("click", () => setPending(null));
   $$("dialog [data-close]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close("cancel")));
   $$(".lang").forEach((b) => b.addEventListener("click", () => {
@@ -2358,6 +2552,7 @@ function bind() {
   }));
   $("#btn-settings").addEventListener("click", () => openSettings().catch((e) => alert(e.message)));
   $("#btn-save-settings").addEventListener("click", saveSettings);
+  $("#btn-save-admin-settings").addEventListener("click", saveAdminSettings);
   ["#set-tls-system", "#set-tls-proxy", "#set-tls-ca"].forEach((id) => $(id).addEventListener("change", applyTls));
   $("#btn-pick-ca").addEventListener("click", pickCaFiles);
   $("#btn-admin").addEventListener("click", () => openAdmin());
@@ -2369,6 +2564,7 @@ function bind() {
   $("#btn-personal-add").addEventListener("click", addPersonalFiles);
   $("#btn-personal-rescan").addEventListener("click", rescanPersonal);
   $("#personal-change").addEventListener("click", (e) => { e.preventDefault(); changePersonalDir(); });
+  bindSrcSplitter();
   $("#personal-file-input").addEventListener("change", (e) => {
     const files = [...e.target.files];
     e.target.value = "";
@@ -2431,6 +2627,7 @@ function bind() {
 
 (async function init() {
   LANG = safeGet("techrag.lang") || LANG;
+  state.conv = emptyConv();
   bind();
   applyLayout();
   applyI18n();

@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 
 from techrag import __version__, askctx, tls
 from techrag.api import APIClient, check_service, configure_tls, current_tls, normalize_base_url
-from techrag.config import Config, ServiceConfig, resource_path, same_path
+from techrag.config import PERSONAL_INDEX_DIR, Config, ServiceConfig, resource_path, same_path
 from techrag.engine import RAGEngine
 from techrag.ingest.loaders import SUPPORTED_SUFFIXES
 from techrag.ingest.pipeline import IngestStopped, WriteGate
@@ -824,6 +824,50 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 fh.write(chunk)
         return {"job": start_job("upload", dest)["id"], "path": str(dest)}
 
+    # ------------------------------------------------------------------ chat history
+    def chat_store():
+        from techrag.chats import ChatStore
+
+        return ChatStore(state["cfg"].user_data_dir / "chats")
+
+    def chat_id(cid: str) -> str:
+        from techrag.chats import valid_id
+
+        if not valid_id(cid):
+            raise HTTPException(400, "invalid chat id")
+        return cid
+
+    @app.get("/api/chats", dependencies=guard)
+    def chats_list():
+        """This user's saved conversations (newest first): id, title, dates, number of questions."""
+        return {"chats": chat_store().list()}
+
+    @app.get("/api/chats/{cid}", dependencies=guard)
+    def chats_get(cid: str):
+        chat = chat_store().get(chat_id(cid))
+        if chat is None:
+            raise HTTPException(404, "conversation not found")
+        return chat
+
+    @app.put("/api/chats/{cid}", dependencies=guard)
+    def chats_put(cid: str, chat: dict):
+        try:
+            return chat_store().save(chat_id(cid), chat)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        except OSError as exc:
+            raise HTTPException(500, f"the conversation could not be saved: {exc.__class__.__name__}")
+
+    @app.delete("/api/chats/{cid}", dependencies=guard)
+    def chats_delete(cid: str):
+        if not chat_store().delete(chat_id(cid)):
+            raise HTTPException(404, "conversation not found")
+        return {"ok": True}
+
+    @app.delete("/api/chats", dependencies=guard)
+    def chats_clear():
+        return {"ok": True, "removed": chat_store().clear()}
+
     # ------------------------------------------------------------------ usage log
     @app.get("/api/usage", dependencies=guard)
     def usage_get():
@@ -903,6 +947,41 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             while chunk := await file.read(1 << 20):
                 fh.write(chunk)
         return {"job": start_job("personal", personal=True)["id"], "path": str(dest)}
+
+    @app.delete("/api/personal/documents/{doc_id}", dependencies=guard)
+    def personal_delete(doc_id: int):
+        """Remove a personal document: out of the personal index, and its file in the personal folder to the Recycle
+        Bin (or to <personal folder>/_indeks/silinenler where there is none). The file the user originally picked is
+        a different file and is not touched; a file outside the personal folder is never touched."""
+        from techrag.library import PERSONAL_OFFSET, is_personal
+        from techrag.trash import move_to_trash
+
+        e = eng()
+        own = e.personal.document(doc_id - PERSONAL_OFFSET) if is_personal(doc_id) and e.personal else None
+        if own is None:
+            raise HTTPException(404, "not a personal document")
+        if jobs.running():
+            raise HTTPException(409, "indexing is running; remove the document when it has finished")
+        c: Config = state["cfg"]
+        path = e.personal.source_path(own, c.personal_config().sources_dir)
+        folder = c.personal_dir.resolve()
+        trash, where = "missing", ""
+        try:
+            resolved = path.resolve()
+            inside = folder in resolved.parents and (folder / PERSONAL_INDEX_DIR) not in resolved.parents
+        except OSError:
+            inside = False
+        if path.is_file():
+            if inside:
+                try:
+                    trash, moved = move_to_trash(path, c.personal_config().library_dir / "silinenler")
+                    where = str(moved)
+                except OSError as exc:
+                    raise HTTPException(500, f"the file could not be moved: {exc.__class__.__name__}")
+            else:
+                trash, where = "kept", str(path)
+        e.personal.delete_document(own.id)
+        return {"ok": True, "trash": trash, "path": where, "title": own.title}
 
     @app.post("/api/personal/rescan", dependencies=guard)
     def personal_rescan():

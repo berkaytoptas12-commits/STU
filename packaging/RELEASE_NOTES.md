@@ -1,5 +1,29 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.10.0 — sohbet geçmişi, Admin ayarları, sade kaynak paneli, kişisel belge kaldırma
+- **Sohbet geçmişi:** sol panelde **Kaynaklar | Sohbetler** sekmeleri. Sohbetler yeniden eskiye listelenir; birine
+  tıklayınca cevaplar, atıflar, doğrulama kutusu ve PDF vurgularıyla açılır ve devam edilebilir. Her soru
+  sonuçlandığında kaydedilir. Sohbetler yalnızca bu bilgisayarda, kullanıcının kendi ayarlar klasöründe
+  (`%APPDATA%\SayisalTasarimUzmani\chats`) tutulur; ortak kütüphaneye ve kullanım günlüğüne yazılmaz. Tek tek veya
+  hepsi birden silinebilir.
+- **Admin › Ayarlar:** görsel model, embedding ve reranker sunucuları, cevaplama, gelişmiş ayarlar ve bağlantı
+  güvenliği Admin'deki yeni **Ayarlar** sekmesine taşındı (kendi "Kaydet" düğmesiyle). Ayarlar penceresinde yalnızca
+  ortak API anahtarı, sohbet modeli ve bildirim kaldı.
+- **Kaynak paneli:** üstte yalnızca **[n] ve doküman başlığı** kalır (bölüm, sayfa, revizyon başlığın ipucunda);
+  "Doğrulama" ve "Konum" satırları kaldırıldı, sayfa görüntüsü panelin tamamını kullanır. Sayfa değiştirme,
+  yakınlaştırma, vurgu aç/kapa, kanıtlar arası gezinme ve "Orijinali aç" sayfanın altında yarı saydam bir şeritte.
+- **Ortak / Kişisel bölme:** iki liste arasındaki çizgi sürüklenerek (veya ↑/↓) ayarlanır; varsayılan ortası, ayar
+  korunur.
+- **Kişisel belge kaldırma:** kişisel belgenin yanındaki 🗑 onu kişisel indeksten kaldırır; kişisel klasördeki kopyası
+  Geri Dönüşüm Kutusu'na gider (ağ sürücüsünde veya Geri Dönüşüm Kutusu yoksa `_indeks\silinenler` klasörüne).
+  Bilgisayarınızda seçtiğiniz asıl dosyaya ve kişisel klasörün dışındaki dosyalara dokunulmaz; hiçbir dosya
+  sorulmadan kalıcı silinmez.
+- Yeniden indeksleme gerekmez; ayarlar, anahtarlar ve kütüphaneler aynen kullanılır.
+- Doğrulanan: birim/arayüz testleri (sohbetin kaydedilip yeniden açılınca atıf ve PDF vurgusunun çalışması,
+  sohbet silme, geçersiz sohbet kimliklerinin reddi, ayarların iki pencereye bölünmesi, kontrol şeridinin sayfanın
+  üzerinde ve yarı saydam olması, bölmenin sürükleme/klavye/kalıcılığı, kişisel kaldırmada asıl dosyaya ve klasör
+  dışına dokunulmaması). Windows'ta Geri Dönüşüm Kutusu çağrısı CI'da sınanır; gerçek model sunucusunda denenmedi.
+
 ### 0.9.0 — tek API anahtarı, Admin, kişisel dosyalar ve kullanım günlüğü
 - **Tek API anahtarı:** sohbet (vLLM), görsel model, embedding ve reranker sunucularının hepsi Ayarlar'ın üstündeki
   tek ortak anahtarı kullanır; servis başına anahtar alanları kaldırıldı. Eski sürümde servis başına girilmiş

@@ -543,6 +543,7 @@ class Store:
         else:
             with self.connect() as c:
                 _delete(c)
+        self._geom_cache.clear()   # its id may be given to the next document
 
     def replace_document(self, *, path: str, title: str, domain: str, sha256: str, n_pages: int,
                          toc: list, metadata: dict, warnings: list, chunks: Sequence[dict],

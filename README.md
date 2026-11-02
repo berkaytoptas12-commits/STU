@@ -129,8 +129,10 @@ Sunucu araç çağrısını desteklemiyorsa uygulama bunu fark eder ve araçsız
 
 ### 2.3 İlk açılış: Ayarlar
 
-**Ayarlar** penceresinin üstünde **tek bir ortak API anahtarı** girilir: sohbet (vLLM), görsel model,
-embedding ve reranker sunucularının hepsine bu anahtar gönderilir; servis başına ayrı anahtar yoktur. Her servis için
+**Ayarlar** penceresinde yalnızca her kullanıcının ihtiyaç duyduğu üç şey vardır: **tek bir ortak API anahtarı**
+(sohbet/vLLM, görsel model, embedding ve reranker sunucularının hepsine bu anahtar gönderilir; servis başına ayrı
+anahtar yoktur), **sohbet modeli** ve **bildirim**. Görsel model, embedding ve reranker sunucuları, cevaplama,
+gelişmiş ayarlar ve bağlantı güvenliği **Admin › Ayarlar** sekmesindedir (aşağıdaki maddeler orada). Her servis için
 yalnızca **API adresi** (`http://sunucu:8000/v1`) ve **Model** girilir. Eski bir sürümde servis başına girilmiş
 anahtarlar ilk kayıtta ortak anahtara taşınır (sohbet modelininki esas alınır; şifreli hâliyle taşınır). Model listesi sunucunun `/v1/models` ucundan **otomatik çekilir** ve açılır listede gösterilir;
 **Test et** düğmesi bağlantıyı ve modeli dener (embedding boyutu, rerank skoru, LLM cevabı).
@@ -311,12 +313,22 @@ ortak kütüphane salt-okunur açılmış olsa da çalışır.
   ona sınırlayabilirsiniz. Kaynak, PDF görüntüsü ve kanıt vurgusu kişisel belgelerde de aynı şekilde çalışır.
 * Kişisel indeks aynı embedding modelini kullanır. Başka bir klasöre geçmek başka bir kişisel kütüphaneye geçmektir
   (eski klasör ve indeksi olduğu gibi kalır).
+* **Kaldırma:** kişisel bir belgenin satırındaki **🗑** düğmesi onu kişisel indeksten kaldırır; kişisel klasördeki
+  kopyası **Geri Dönüşüm Kutusu'na** taşınır (geri alınabilir). Bilgisayarınızda seçtiğiniz asıl dosyaya dokunulmaz.
+  Klasör bir ağ sürücüsündeyse veya Geri Dönüşüm Kutusu kullanılamıyorsa kopya
+  `<kişisel klasör>\_indeks\silinenler` klasörüne taşınır; hiçbir dosya sorulmadan kalıcı olarak silinmez. Kişisel
+  klasörün dışındaki bir dosyaya hiç dokunulmaz. İndeksleme sürerken kaldırma beklenir.
+* **Ortak / Kişisel bölme:** iki listenin arasındaki çizgi sürüklenerek (veya klavyeyle ↑/↓) ayarlanır; çift tık ya
+  da Enter ortalar. Ayar bir sonraki açılışta korunur.
 
 ### 3.6 Admin
 
 Üst çubuktaki **Admin** düğmesi herkese açık bir pencere açar (yetki kontrolü yok; normal bir sorunun gerektirmediği
 her şey burada toplanır):
 
+* **Ayarlar:** görsel model (VLM), embedding ve reranker sunucuları; cevaplama (düşünme, araç kullanımı, denetçi,
+  düzeltme, doğrulanamayan ifadeler, görsel model açık/kapalı); gelişmiş ayarlar; bağlantı güvenliği. Kendi
+  "Kaydet" düğmesi vardır.
 * **Ortak kütüphane:** ortak dosyaların nereden geldiği (kütüphane klasörü, eklenen belge klasörleri ve belge
   sayıları, bucket'lar), belge klasörü ekleme, yeniden tarama, kalite raporu, kütüphane açma/yayımlama.
 * **Düşünme ve aramalar:** bu oturumdaki sorular; her birinin altında açılır-kapanır **Düşünme** (modelin düşünme
@@ -371,7 +383,13 @@ her şey burada toplanır):
   sorusu) hazır olunca Windows bildirimi çıkar; tıklayınca sohbet açılır. Küçültülmüş pencerenin görev çubuğu
   düğmesi de yanıp söner. Pencere öndeyken bildirim çıkmaz. Ayarlar'dan kapatılabilir.
 
-* **Sol panel (Kaynaklar):** iki bölümdür: **Ortak** (ortak kütüphanenin bucket'ları) ve **Kişisel** (kendi
+* **Sol panel:** üstte **Kaynaklar | Sohbetler** sekmeleri. **Sohbetler** sekmesi kayıtlı sohbetleri yeniden eskiye
+  listeler (başlık = ilk soru, tarih, soru sayısı); birine tıklayınca cevaplar, atıflar, doğrulama kutusu ve PDF
+  vurgularıyla birlikte açılır, oradan devam edilebilir. Her soru, sonuçlandığında (cevap, netleştirme, hata veya
+  durdurma) o sohbete kaydedilir. Sohbetler yalnızca bu bilgisayarda, kullanıcının kendi ayarlar klasöründe
+  (`%APPDATA%\SayisalTasarimUzmani\chats`) tutulur; ortak kütüphaneye ve kullanım günlüğüne yazılmaz. 🗑 ile tek tek,
+  "Tümünü sil" ile hepsi silinir.
+* **Kaynaklar sekmesi:** iki bölümdür: **Ortak** (ortak kütüphanenin bucket'ları) ve **Kişisel** (kendi
   dosyalarınız; bkz. 3.5). Belgeler bucket başlıkları altında gruplanır; bucket'lar başlangıçta kapalıdır,
   başlığa tıklayınca açılır, yanında belge sayısı görünür. Üstteki arama kutusu belge ve bucket adına göre
   süzer. Uzun adlar üç noktayla kısalır; üzerine gelince tam ad ve göreli konum görünür. Liste kendi içinde
@@ -431,14 +449,15 @@ her şey burada toplanır):
 2. O ifadeyi destekleyen **cümle**, ya da tablo değerlerinde **değer hücresi + parametre adı + sütun başlığı
    (+ birim, grup başlığı, dipnot)** sayfa üzerinde renkli kutularla işaretlenir. Aynı sayı sayfada birkaç yerde
    geçiyorsa yalnızca satır/sütun ilişkisiyle eşleşen hücre işaretlenir; eşleşme belirsizse hiçbiri.
-3. **‹ Önceki kanıt / Sonraki kanıt ›** ile bölgeler (başka sayfalardakiler dahil) arasında gezinin;
-   **Vurgu** kutusu vurguyu gizler/gösterir; **− / +** yakınlaştırır (vurgu hizası korunur).
-4. Panelde iki ayrı durum görünür: **Doğrulama** (ifade kaynakla destekleniyor mu) ve **Konum** (kanıt sayfada
-   bulundu mu). Konum bulunması ifadenin doğru olduğu anlamına gelmez.
-5. Kesin yer bulunamazsa "Kaynak sayfası bulundu, kesin konum eşleştirilemedi" yazar; metin katmanı yoksa veya
-   kütüphane eski sürümle indekslenmişse bu da açıkça söylenir. PDF kaynaklarında panelde yalnızca sayfa
-   görüntüsü ve kısa kaynak bilgisi (belge, revizyon, bölüm, sayfa) bulunur; çıkarılan metin sayfanın altında
-   ayrıca listelenmez, boşalan yer sayfaya verilir (metin indekste kalır, arama ve doğrulama onu kullanır).
+3. Panelin üstünde yalnızca **[n] ve doküman başlığı** durur (bölüm, sayfa, revizyon başlığın üzerine gelince
+   görünür); altındaki alanın tamamı sayfa görüntüsüdür. Kontroller sayfanın altında, üzerine binen **yarı saydam bir
+   şeritte**dir: **‹ Sayfa ›** sayfa değiştirir, **− / +** yakınlaştırır (vurgu hizası korunur), **Vurgu** kutusu
+   vurguyu gizler/gösterir, **◂ n/m ▸** kanıt bölgeleri (başka sayfalardakiler dahil) arasında gezinir (üzerine
+   gelince o bölgenin ne olduğu görünür), masaüstünde **Orijinali aç**. İfadenin doğrulama durumu cevabın altındaki
+   doğrulama kutusunda ("İfade ayrıntıları") görünür.
+4. Konum bulunması ifadenin doğru olduğu anlamına gelmez; eşleşme belirsizse hiçbir yer işaretlenmez.
+5. Metin katmanı yoksa veya kütüphane eski sürümle indekslenmişse vurgu çıkmaz. Çıkarılan metin sayfanın altında
+   ayrıca listelenmez (metin indekste kalır, arama ve doğrulama onu kullanır).
    Sayfa görüntülenemiyorsa (dosya taşınmış/silinmiş) bu yazılır ve alıntılanan metin incelenebilir. PDF olmayan
    kaynaklarda belge bilgisi, "Orijinal dosyayı aç" ve "Kaynak metnini incele" (kanıt işaretli) gösterilir. **Hesap** kaynaklarında sonuç PDF'te aranmaz; girdileri ve her girdinin kaynağı listelenir
    (tıklanınca o girdinin konumu gösterilir). **Kullanıcı girdisi** kaynağı bir doküman değildir.
@@ -659,6 +678,8 @@ techrag/
                    yayımlama (klasör belgelerini pakete kopyalar)
   library.py       ortak + kişisel kütüphaneyi tek indeks gibi okuyan görünüm (kimlik kaydırma, birleşik arama)
   usage.py         kullanım günlüğü: kullanıcı başına CSV (soru, sonuç, süre, token; cevap metni yok)
+  chats.py         sohbet geçmişi (kullanıcının ayarlar klasöründe, sohbet başına bir JSON + liste)
+  trash.py         kişisel belge kaldırma: Geri Dönüşüm Kutusu ya da _indeks\silinenler (kalıcı silme yok)
   evaluation.py    olgu tabanlı değerlendirme şeması, metrikler (pay/payda), raporlar
   feedback.py      cevap geri bildirimi (kullanıcı klasöründe) ve aday değerlendirme maddeleri
   api.py, llm.py, embeddings.py, reranker.py   OpenAI uyumlu istemciler (vLLM)

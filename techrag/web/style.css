@@ -98,7 +98,36 @@ body.narrow .viewer { position: fixed; z-index: 21; right: 8px; top: 52px; botto
 .missing-box a { color: inherit; }
 .missing-list { margin: 4px 0 0 16px; padding: 0; max-height: 120px; overflow: auto; }
 .bucket-list { flex: 1; min-height: 60px; overflow: auto; border-top: 1px solid var(--border); }
-#personal-collections { flex: 0 1 auto; max-height: 34%; min-height: 40px; }
+/* Left panel: Kaynaklar | Sohbetler */
+.side-tabs { display: flex; gap: 2px; margin-right: auto; }
+.side-tab { background: transparent; color: var(--muted); border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+  padding: 3px 6px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+.side-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.side-tab .count { font-weight: 400; color: var(--muted); font-size: 11px; background: var(--code); border-radius: 8px; padding: 0 5px; }
+.side-tab .count:empty { display: none; }
+.side-page { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.chat-actions { display: flex; gap: 6px; align-items: center; }
+.chat-list { flex: 1; min-height: 0; overflow: auto; border-top: 1px solid var(--border); }
+.chat-item { display: flex; align-items: center; gap: 6px; padding: 6px 4px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.chat-item:hover { background: var(--accent-soft); }
+.chat-item.active { background: var(--accent-soft); }
+.chat-item .chat-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.chat-item .chat-title { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-item .chat-meta { font-size: 11.5px; color: var(--muted); }
+.chat-item .chat-del { flex: none; opacity: .5; padding: 0 4px; font-size: 12px; }
+.chat-item:hover .chat-del, .chat-item .chat-del:focus-visible { opacity: 1; }
+/* Shared and personal sources share the panel's height; the bar between them is dragged (or moved with ↑/↓). */
+.src-split { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.src-pane { flex: 1 1 0; min-height: 70px; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
+.src-pane .bucket-list { flex: 1; min-height: 0; }
+.src-splitter { flex: none; height: 9px; margin: 2px 0; cursor: row-resize; position: relative; touch-action: none; }
+.src-splitter::after { content: ""; position: absolute; left: 30%; right: 30%; top: 3px; height: 3px; border-radius: 2px; background: var(--border); }
+.src-splitter:hover::after, .src-splitter:focus-visible::after, body.resizing-src .src-splitter::after { background: var(--accent); }
+.src-splitter:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent-soft); border-radius: 4px; }
+body.resizing-src { cursor: row-resize; user-select: none; }
+.doc .doc-del { margin-left: auto; flex: none; padding: 0 4px; font-size: 12px; opacity: .55; }
+.doc:hover .doc-del, .doc .doc-del:focus-visible { opacity: 1; }
+.personal-status { color: var(--ok); overflow-wrap: anywhere; }
 .bucket { border-bottom: 1px solid var(--border); }
 .bucket-head { display: flex; align-items: center; gap: 4px; padding: 5px 0; font-size: 13px; font-weight: 600; }
 .bucket-head .chev { background: transparent; border: 0; color: var(--muted); padding: 0 2px; width: 18px; font-size: 12px; }
@@ -197,7 +226,7 @@ button.cite { background: var(--accent-soft); color: var(--accent); border: 0; p
 
 .viewer-head { margin-bottom: 10px; }
 .badge { font-size: 11px; color: var(--muted); }
-.source-card h3 { margin: 0 0 4px; font-size: 14.5px; }
+.source-card h3 { margin: 0 0 6px; font-size: 14.5px; }
 .source-meta { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
 .source-text { font-size: 13px; line-height: 1.5; background: var(--code); padding: 10px; border-radius: 8px; overflow-wrap: anywhere; margin-top: 8px; }
 .source-text table { background: var(--panel); }
@@ -219,10 +248,23 @@ button.cite { background: var(--accent-soft); color: var(--accent); border: 0; p
 .hl.role-unit { background: rgba(120, 200, 120, .2); outline-color: rgba(29, 122, 70, .6); }
 .hl.role-footnote { background: rgba(190, 120, 255, .18); outline-color: rgba(130, 70, 200, .6); }
 .hl.current { outline: 2px solid #d4380d; background-color: rgba(255, 170, 0, .38); }
-.page-nav, .pv-ev { display: flex; gap: 6px; align-items: center; margin: 6px 0; font-size: 12.5px; flex-wrap: wrap; }
-.pv-ev label { display: flex; align-items: center; gap: 4px; }
-.pv-role { min-height: 0; margin: 0 0 4px; overflow-wrap: anywhere; }
-.loc-status { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 6px; }
+/* Page controls: a translucent strip over the bottom of the page (the page keeps the whole height). */
+.pv-box { position: relative; }
+.source-card.pdf .page-view { padding-bottom: 52px; }
+.pv-bar { position: absolute; left: 10px; right: 10px; bottom: 10px; width: fit-content; margin: 0 auto;
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 2px 4px; padding: 4px 10px;
+  border-radius: 10px; background: rgba(28, 36, 48, .58); color: #fff; font-size: 12.5px;
+  backdrop-filter: blur(6px); box-shadow: 0 2px 10px rgba(0, 0, 0, .18); opacity: .8; transition: opacity .15s; }
+.pv-box:hover .pv-bar, .pv-bar:focus-within { opacity: 1; }
+.pv-bar .pv-btn { background: transparent; border: 0; color: #fff; padding: 2px 7px; border-radius: 6px; font-size: 14px; line-height: 1.2; }
+.pv-bar .pv-btn:hover:not(:disabled) { background: rgba(255, 255, 255, .18); }
+.pv-bar .pv-btn:disabled { opacity: .4; cursor: default; }
+.pv-bar .pv-open { font-size: 12.5px; }
+.pv-bar .pv-sep { width: 1px; height: 16px; background: rgba(255, 255, 255, .35); margin: 0 4px; }
+.pv-ev { display: inline-flex; align-items: center; gap: 2px; }
+.pv-ev label { display: inline-flex; align-items: center; gap: 4px; margin-right: 2px; cursor: pointer; }
+.pv-label, .pv-zl, .pv-evlabel { white-space: nowrap; }
+.source-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default; }
 .relation { color: var(--warn); margin-bottom: 4px; }
 .calc-inputs ul { margin: 4px 0 6px 18px; padding: 0; font-size: 12.5px; }
 .source-text mark { background: rgba(255, 200, 0, .45); color: inherit; border-radius: 2px; }
