@@ -371,12 +371,13 @@ kaynaklara bağlı, cevabı göstermeden önce doğrulayan asistan. Modeller kur
 
 ### İlk adımlar
 1. `SayisalTasarimUzmani.exe` açılınca ekranın sağ altında mikroçip simgesi belirir; tıklayınca sohbet penceresi
-   açılır. **Ayarlar**: her servis için API adresi (`http://sunucu:8000/v1`), API anahtarı, modeli açılır
-   listeden seçin, **Test et**.
-2. **Belge klasörü ekle**: belgelerinizin ana klasörünü seçin; alt klasörler bucket olur, belgeler yerinde okunur.
-   İndeksleme sonucu 📋 kalite raporunda görünür.
-3. Soru sorun; cevap yanlış veya eksikse 👎 ile doğru değeri ve sayfasını ekleyin. **Değerlendirme**
-   penceresinden örnek seti veya kendi soru dosyanızı çalıştırabilirsiniz. Komut satırı da aynı exe ile çalışır:
+   açılır. **Ayarlar**: üstteki ortak API anahtarını girin; her servis için API adresi (`http://sunucu:8000/v1`) ve
+   modeli açılır listeden seçin, **Test et**.
+2. **Admin › Ortak kütüphane › Belge klasörü ekle**: belgelerinizin ana klasörünü seçin; alt klasörler bucket olur,
+   belgeler yerinde okunur. İndeksleme sonucu kalite raporunda görünür. Kendi dosyalarınız için sol paneldeki
+   **Kişisel › Dosya seç…**.
+3. Soru sorun; cevap yanlış veya eksikse 👎 ile doğru değeri ve sayfasını ekleyin. **Admin › Değerlendirme**
+   sekmesinden örnek seti veya kendi soru dosyanızı çalıştırabilirsiniz. Komut satırı da aynı exe ile çalışır:
    `SayisalTasarimUzmani.exe doctor`, `... rescan`, `... quality`, `... docs`, `... eval`.
 
 Kütüphane varsayılan olarak `%USERPROFILE%\SayisalTasarimUzmani\library` altındadır; ayarlar
