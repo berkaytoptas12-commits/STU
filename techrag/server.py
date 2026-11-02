@@ -492,13 +492,14 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             log_ = state["usage"] = UsageLog(c.usage_log_dir, c.user_data_dir / "usage_local")
         return log_
 
-    def record_usage(question: str, ctx: askctx.AskContext, last: dict) -> None:
-        """One line in the user's usage log: how the question ended and the tokens it took (no answer text)."""
+    def record_usage(question: str, ctx: askctx.AskContext, last: dict, stopped: bool) -> None:
+        """One line in the user's usage log: how the question ended and the tokens it took (no answer text).
+        stopped: the user stopped it (the stream closing after a finished answer also sets ctx.stopped)."""
         log_ = usage_log()
         if log_ is None:
             return
         v = (last or {}).get("verification") or {}
-        if ctx.stopped:
+        if stopped:
             outcome = "durduruldu"
         elif not last or last.get("type") == "error":
             outcome = "hata"
@@ -522,7 +523,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                                 req.clarification)
                 return res
             finally:
-                record_usage(req.question, ctx, dict(res, type="final") if res else {})
+                record_usage(req.question, ctx, dict(res, type="final") if res else {}, ctx.stopped)
 
         ctx = askctx.AskContext()
         ask_id = uuid.uuid4().hex
@@ -533,6 +534,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             """The answer runs in a thread of its own: the response only relays its events. Stop (or the page going
             away) stops it - also the model request in progress."""
             last: dict = {}
+            stopped = False
             with askctx.active(ctx):
                 try:
                     for ev in e.ask_stream(req.question, history, req.domains, req.doc_ids, req.top_k, req.buckets,
@@ -541,20 +543,24 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                             last = ev
                         q.put(ev)
                 except askctx.Cancelled:
+                    stopped = True
                     q.put({"type": "cancelled"})
                     return
                 except Exception as exc:
                     last = {"type": "error", "message": f"{exc.__class__.__name__}: {exc}"}
                     q.put(last)
                 finally:
+                    # Read before the stream ends: closing the stream after the last event also sets ctx.stopped,
+                    # which does not mean the user stopped the answer.
+                    stopped = stopped or ctx.stopped
                     q.put(None)
                     asks.pop(ask_id, None)
                     try:
-                        record_usage(req.question, ctx, last)
+                        record_usage(req.question, ctx, last, stopped)
                     except Exception:  # the log never breaks an answer
                         pass
             hook = getattr(app.state, "on_answer", None)
-            if hook is not None and last and not ctx.stopped:
+            if hook is not None and last and not stopped:
                 v = last.get("verification") or {}
                 kind = "error" if last.get("type") == "error" else ("clarify" if v.get("status") == "clarify"
                                                                       else "final")

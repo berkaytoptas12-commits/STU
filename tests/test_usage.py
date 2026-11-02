@@ -84,3 +84,29 @@ def test_logging_can_be_switched_off(client, cfg, tmp_path):
     client.put("/api/settings", json={"usage": {"enabled": False, "log_dir": str(tmp_path / "off")}})
     client.post("/api/ask", json={"question": "DDR5 tRFC değeri nedir?", "stream": False})
     assert not (tmp_path / "off").exists()
+
+
+def test_a_slow_log_does_not_turn_a_finished_answer_into_a_stopped_one(client, cfg, tmp_path, monkeypatch):
+    """Closing the stream after the last event sets ctx.stopped: while the line is being written (a slow network
+    folder) that must not count as the user stopping the answer - for the log nor for the desktop notification."""
+    from techrag import usage
+
+    real = usage.UsageLog.record
+
+    def slow(self, *a, **kw):
+        time.sleep(0.5)
+        return real(self, *a, **kw)
+
+    monkeypatch.setattr(usage.UsageLog, "record", slow)
+    seen = []
+    client.app.state.on_answer = seen.append
+    client.app.state.state["cfg"].usage.log_dir = str(tmp_path / "slow")
+    with client.stream("POST", "/api/ask", json={"question": "DDR5 tRFC değeri nedir?"}) as resp:
+        assert [json.loads(x[5:]) for x in resp.iter_lines() if x.startswith("data:")][-1]["type"] == "final"
+    for _ in range(100):
+        if seen:
+            break
+        time.sleep(0.05)
+    assert seen and seen[0]["kind"] == "final", "the desktop is told the answer is ready"
+    rows = _rows(next((tmp_path / "slow").glob("*.csv")))
+    assert rows[0]["sonuc"] == "cevaplandi"
