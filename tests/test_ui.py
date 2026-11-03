@@ -839,6 +839,11 @@ def test_strip_says_why_a_citation_has_no_highlight(ui, fake):
     assert ui.locator("#tab-source .pv-note").count() == 0, "no note when the evidence is highlighted"
 
 
+def test_the_start_screen_has_no_example_questions(ui):
+    assert ui.is_visible("#empty-state") and "Standartlara sorun" in ui.inner_text("#empty-state")
+    assert ui.locator("#empty-state button, #examples, .example").count() == 0
+
+
 def test_shared_and_personal_lists_collapse(ui):
     def pane_heights():
         return ui.evaluate("""() => ['#src-shared', '#src-personal'].map((s) =>

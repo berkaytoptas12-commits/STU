@@ -268,8 +268,6 @@ const I18N = {
     openFolder: "Klasörü aç", usageMe: "Bu bilgisayar: {0} @ {1} → {2}", usageSaved: "Kaydedildi.",
     usageUser: "Kullanıcı", usageQuestions: "Soru", usageTokens: "Toplam token", usageCompletion: "Üretilen token",
     usageLast: "Son soru", usageNone: "Henüz kayıt yok.", usageError: "Günlük klasörüne yazılamadı ({0}); kayıtlar yerel klasöre yazılıyor.",
-    ex: ["DDR4 ile DDR5 arasında VDD ve burst length farkları nelerdir?", "PCIe 5.0 LTSSM Polling alt durumları ve geçiş koşulları nelerdir?",
-         "ARINC 429 kelimesinde SSM bitleri hangi bitlerdir ve BNR verisi için anlamları nedir?", "I2C Fast-mode Plus için maksimum yükselme süresi ve bus kapasitansı nedir?"],
   },
   en: {
     newChat: "New chat", library: "Library", settings: "Settings", sources: "Sources",
@@ -530,8 +528,6 @@ const I18N = {
     openFolder: "Open folder", usageMe: "This computer: {0} @ {1} → {2}", usageSaved: "Saved.",
     usageUser: "User", usageQuestions: "Questions", usageTokens: "Total tokens", usageCompletion: "Generated tokens",
     usageLast: "Last question", usageNone: "No entries yet.", usageError: "The log folder could not be written ({0}); entries go to a local folder.",
-    ex: ["What are the VDD and burst length differences between DDR4 and DDR5?", "What are the PCIe 5.0 LTSSM Polling substates and their exit conditions?",
-         "Which bits are the SSM in an ARINC 429 word and what do they mean for BNR data?", "What is the maximum rise time and bus capacitance for I2C Fast-mode Plus?"],
   },
 };
 let LANG = "tr";
@@ -548,17 +544,6 @@ function applyI18n() {
   $("#doc-filter").placeholder = t("filterPh");
   $("#adm-doc-filter").placeholder = t("admDocFilter");
   $$(".lang").forEach((b) => b.classList.toggle("active", b.dataset.lang === LANG));
-  const ex = $("#examples");
-  if (ex) {
-    ex.innerHTML = "";
-    for (const q of t("ex")) {
-      const b = document.createElement("button");
-      b.className = "example";
-      b.textContent = q;
-      b.addEventListener("click", () => ask(q));
-      ex.append(b);
-    }
-  }
 }
 
 // ------------------------------------------------------------------ state + api

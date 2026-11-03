@@ -22,6 +22,11 @@
   kütüphanede ve indeksleme sürerken kaldırma yapılamaz.
 - **Daraltılabilir kaynaklar:** sol paneldeki **Ortak** ve **Kişisel** başlıklarına tıklayınca liste daralır, diğeri
   boşalan yeri alır; durum korunur.
+- **Başlangıç ekranı:** sohbetin ilk ekranındaki örnek sorular kaldırıldı; yalnızca başlık ve kısa açıklama kalır.
+- **Uygulama simgesi mikroçip:** exe'nin simgesi artık başlatıcıdaki mikroçip (Dosya Gezgini, görev çubuğu, pencere
+  başlığı ve Windows bildirimleri); önceden PyInstaller'ın varsayılan simgesi görünüyordu. Simge derleme sırasında
+  aynı çizimden 16-256 piksel boyutlarında üretilir. Masaüstü kısayolu daha önce oluşturulduysa Windows'un simge
+  önbelleği yeni simgeyi biraz gecikmeli gösterebilir.
 - **Yükseltme:** kütüphane açılışta yerinde güncellenir — kaldırılan belgeler için bir tablo ve belge klasörlerine bir
   tür sütunu eklenir; belgeler, embedding'ler ve ayarlar değişmez. Eski sürümün yazdığı bir kütüphane salt-okunur da
   açılır. Yeniden indeksleme gerekmez.

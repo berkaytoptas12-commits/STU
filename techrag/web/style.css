@@ -184,7 +184,6 @@ body.resizing-src { cursor: row-resize; user-select: none; }
 .messages { flex: 1; overflow: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
 .empty { margin: auto; max-width: 600px; text-align: center; color: var(--muted); }
 .empty h1 { color: var(--text); font-size: 21px; margin-bottom: 6px; }
-.examples { display: grid; gap: 8px; margin-top: 16px; }
 .example { background: var(--accent-soft); color: var(--text); border-color: transparent; text-align: left; }
 .msg.user { align-self: flex-end; background: var(--user); padding: 8px 12px; border-radius: 12px; max-width: 80%; white-space: pre-wrap; }
 .msg.assistant { border-left: 3px solid var(--accent-soft); padding-left: 12px; }

@@ -63,9 +63,19 @@ with open(VERSION_FILE, "w", encoding="utf-8-sig") as fh:  # BOM: PyInstaller ho
 )
 """)
 
+# The microchip of the launcher as the exe's icon (Explorer, taskbar, title bar, notifications), drawn by
+# techrag.icon at build time - no image file in the repository.
+import sys
+
+sys.path.insert(0, ROOT)
+from techrag.icon import write_ico  # noqa: E402
+
+ICON_FILE = str(write_ico(os.path.join(ROOT, "build", f"{NAME}.ico")))
+
 if ONEFILE:
     exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name=f"{NAME}-portable", console=CONSOLE,
-              upx=False, runtime_tmpdir=None, version=VERSION_FILE)
+              upx=False, runtime_tmpdir=None, version=VERSION_FILE, icon=ICON_FILE)
 else:
-    exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name=NAME, console=CONSOLE, upx=False, version=VERSION_FILE)
+    exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name=NAME, console=CONSOLE, upx=False, version=VERSION_FILE,
+              icon=ICON_FILE)
     coll = COLLECT(exe, a.binaries, a.datas, name=NAME, upx=False)

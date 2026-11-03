@@ -688,6 +688,7 @@ girerek açıyorsa model sunucuları için **"Sistem proxy ayarlarını kullan"*
 techrag/
   desktop.py       exe giriş noktası: tek örnek, süreç içi FastAPI, gizli açılan pywebview sohbet penceresi,
                    gizle/göster, güvenli çıkış; argümanla CLI
+  icon.py          uygulamanın dosya simgesi: launcher'ın mikroçip çizimi, derlemede .ico olarak yazılır
   launcher.py      mikroçip simgesi (Win32 katmanlı pencere, DPI/çoklu monitör, sağ tık menüsü, aç/gizle için
                    "pencere önde mi" denetimi), tek örnek kilidi
   server.py        API: ayarlar, kütüphane (yayımla, geçiş), dokümanlar, sayfa görüntüsü/bilgisi, SSE soru akışı

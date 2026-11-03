@@ -209,12 +209,13 @@ class PressTracker:
 
 
 # ------------------------------------------------------------------------------------------- drawing
-def render_icon(size: int, hover: bool = False) -> bytes:
+def render_icon(size: int, hover: bool = False, *, shadow: bool = True, click_target: bool = True) -> bytes:
     """Premultiplied BGRA pixels (top-down) of the launcher: a microchip - a rounded square package with four pins
     on each side, a lighter die and a pin-1 dot - with a soft shadow, so it reads on light and dark desktops alike.
     Drawn in code at the monitor's pixel size (nothing is downloaded or scaled), anti-aliased by 4x4 supersampling.
     The corners are fully transparent (click-through); between the pins the alpha is 1/255 - invisible, but the
-    whole chip stays one click target."""
+    whole chip stays one click target. The app's file icon (techrag.icon) is the same drawing, without the click
+    target (and without the shadow at small sizes)."""
     import numpy as np
 
     ss = 4
@@ -251,7 +252,11 @@ def render_icon(size: int, hover: bool = False) -> bytes:
     reach = edge + pin_len - S * 0.02                      # half-size of the chip with its pins
     hit = cover(rrect(c, c, 2 * reach, 2 * reach, S * 0.10) <= 0)
     sd = rrect(c, c + S * 0.03, body_w, body_w, body_r)   # a soft shadow under the package only
-    shadow = (np.clip(1 - sd / (S * 0.08), 0, 1) ** 2).reshape(size, ss, size, ss).mean(axis=(1, 3)) * 0.35
+    shade = (np.clip(1 - sd / (S * 0.08), 0, 1) ** 2).reshape(size, ss, size, ss).mean(axis=(1, 3)) * 0.35
+    if not shadow:
+        shade = np.zeros_like(shade)
+    if not click_target:
+        hit = np.zeros_like(hit)
 
     rows = (np.arange(size, dtype=np.float32) + 0.5)[:, None]
     t = np.clip((rows - (c - edge)) / body_w, 0, 1)[..., None] * np.ones((1, size, 1), np.float32)
@@ -266,7 +271,7 @@ def render_icon(size: int, hover: bool = False) -> bytes:
 
     rgb = np.zeros((size, size, 3), np.float32)   # premultiplied
     alpha = np.zeros((size, size), np.float32)
-    for color, a in ((black, np.maximum(shadow, hit / 255.0)), (pin_rgb * np.ones_like(rgb), pin),
+    for color, a in ((black, np.maximum(shade, hit / 255.0)), (pin_rgb * np.ones_like(rgb), pin),
                      (body_rgb, body), (die_rgb, die * body), (np.full_like(rgb, 255), dot * body)):
         rgb = color * a[..., None] + rgb * (1 - a[..., None])
         alpha = a + alpha * (1 - a)
