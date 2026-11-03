@@ -22,13 +22,13 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from techrag import __version__, askctx, tls
+from techrag import __version__, askctx, org, tls
 from techrag.api import APIClient, check_service, configure_tls, current_tls, normalize_base_url
-from techrag.config import PERSONAL_INDEX_DIR, Config, ServiceConfig, resource_path, same_path
+from techrag.config import PERSONAL_INDEX_DIR, Config, ServiceConfig, _apply_env, apply_dict, resource_path, same_path
 from techrag.engine import RAGEngine
 from techrag.ingest.loaders import SUPPORTED_SUFFIXES
 from techrag.ingest.pipeline import IngestStopped, WriteGate
-from techrag.settings import MASK, public_settings, settings_path, update_settings
+from techrag.settings import MASK, load_user_settings, public_settings, settings_path, update_settings
 from techrag.usage import UsageLog, current_machine, current_user, token_totals
 
 WEB_DIR = resource_path("web")
@@ -96,6 +96,15 @@ class IngestRequest(BaseModel):
 
 class FolderRequest(BaseModel):
     path: str = Field(min_length=1, max_length=4000)
+
+
+class OrgSaveRequest(BaseModel):
+    path: str = Field(min_length=1, max_length=4000)
+    others_read_only: bool = True
+
+
+class OrgUseRequest(BaseModel):
+    path: str = Field(default="", max_length=4000)
 
 
 class FeedbackRequest(BaseModel):
@@ -253,7 +262,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 "models": {s: getattr(c, s).model for s in SERVICES},
                 "stats": stats, "domains": domains, "error": state["error"],
                 "allow_upload": c.server.allow_upload and not c.read_only,
-                "personal": personal_info()}
+                "personal": personal_info(), "org": org.public_status(c)}
 
     # -------------------------------------------------------------- settings
     @app.get("/api/settings", dependencies=guard)
@@ -275,6 +284,54 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             else:
                 state["engine"].cfg = new_cfg
         return {"settings": public_settings(new_cfg), "error": state["error"]}
+
+    # ------------------------------------------------------------ organization settings
+    def _apply_org(values: dict) -> None:
+        """Rebuild the running configuration with new organization settings: defaults < organization < the user's
+        own settings < environment (as at start-up)."""
+        new_cfg = state["cfg"].copy()
+        apply_dict(new_cfg, values, strict=False)
+        apply_dict(new_cfg, load_user_settings(), strict=False)
+        _apply_env(new_cfg)
+        new_cfg.share_api_key(adopt_legacy=False)
+        new_cfg.server = state["cfg"].server
+        state["cfg"] = new_cfg
+        configure_tls(new_cfg.tls)
+        build_engine(new_cfg)
+
+    @app.post("/api/org/save", dependencies=guard)
+    def org_save(req: OrgSaveRequest):
+        """Admin: write the current settings as the organization's (no API key, no personal folders) into the given
+        folder, and the pointer file next to the exe that is handed out with it."""
+        with engine_lock:
+            try:
+                out = org.save(req.path, state["cfg"], req.others_read_only)
+            except FileNotFoundError:
+                raise HTTPException(400, "folder not found")
+            except OSError as exc:
+                raise HTTPException(400, f"the file could not be written: {exc.__class__.__name__}")
+            update_settings(state["cfg"], {"org": {"path": str(Path(out["file"]).parent), "asked": True}})
+            state["cfg"].org.path, state["cfg"].org.asked = str(Path(out["file"]).parent), True
+        return out
+
+    @app.post("/api/org/use", dependencies=guard)
+    def org_use(req: OrgUseRequest):
+        """First start: the folder holding the organization settings (asked once), or "" when there are none."""
+        with engine_lock:
+            if not req.path.strip():
+                state["cfg"] = update_settings(state["cfg"], {"org": {"asked": True}})
+                return {"ok": True, "org": org.public_status(state["cfg"])}
+            target = org.org_file(req.path)
+            if not target.is_file():
+                raise HTTPException(400, "no organization settings file in this folder")
+            user = load_user_settings()
+            user["org"] = {"path": str(target.parent), "asked": True}
+            values = org.load(user)
+            if not org.STATUS["loaded"]:
+                raise HTTPException(400, "the organization settings file cannot be read")
+            update_settings(state["cfg"], {"org": {"path": str(target.parent), "asked": True}})
+            _apply_org(values)
+        return {"ok": True, "org": org.public_status(state["cfg"]), "error": state["error"]}
 
     @app.get("/api/settings/context", dependencies=guard)
     def context_info():

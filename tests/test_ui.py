@@ -925,3 +925,94 @@ def test_a_judge_cut_off_by_thinking_is_explained(ui, fake):
     _ask(ui, "DDR5 tRFC değeri nedir?")
     box = ui.inner_text(".msg.assistant .verify")
     assert "düşünmeye harcadı" in box and "JudgeCutOff" not in box, box
+
+
+def test_contents_sidebar_left_of_the_pdf(ui):
+    ui.click("#collections .bucket-name >> nth=0")
+    ui.click("#collections .doc .doc-name >> nth=0")
+    ui.wait_for_selector("#tab-source .toc-side .toc a")
+    _wait_img(ui)
+    side = ui.evaluate("""() => { const s = document.querySelector('#tab-source .toc-side').getBoundingClientRect();
+      const p = document.querySelector('#tab-source .page-view').getBoundingClientRect(); return [s.left, s.right, p.left, s.width]; }""")
+    assert side[1] <= side[2], "the contents sit to the left of the page"
+    assert ui.locator("#tab-source h3", has_text="İçindekiler").count() == 0, "no list under the page any more"
+    # an entry turns to its page
+    target = ui.get_attribute("#tab-source .toc-side .toc a >> nth=-1", "data-page")
+    ui.click("#tab-source .toc-side .toc a >> nth=-1")
+    ui.wait_for_function("(p) => document.querySelector('#tab-source .pv-label').textContent.startsWith('Sayfa ' + p)", arg=target)
+    # the width is dragged on the bar and kept
+    bar = ui.locator("#tab-source .toc-split").bounding_box()
+    ui.mouse.move(bar["x"] + bar["width"] / 2, bar["y"] + bar["height"] / 2)
+    ui.mouse.down()
+    ui.mouse.move(bar["x"] + 80, bar["y"] + bar["height"] / 2, steps=5)
+    ui.mouse.up()
+    w = ui.evaluate("() => document.querySelector('#tab-source .toc-side').getBoundingClientRect().width")
+    shell = ui.evaluate("() => document.querySelector('#tab-source .pv-shell').getBoundingClientRect().width")
+    assert w > side[3] + 20 and w <= 0.6 * shell + 1, ("wider, but the page keeps most of the panel", w, side, shell)
+    # closed from the strip, and still closed after a restart
+    ui.click("#tab-source .pv-toc")
+    assert ui.is_hidden("#tab-source .toc-side") and ui.is_hidden("#tab-source .toc-split")
+    ui.reload()
+    ui.wait_for_selector("#collections .bucket")
+    if not ui.locator("#collections .doc .doc-name").first.is_visible():   # the open buckets are kept too
+        ui.click("#collections .bucket-name >> nth=0")
+    ui.click("#collections .doc .doc-name >> nth=0")
+    ui.wait_for_selector("#tab-source .pv-toc:not([hidden])")
+    assert ui.is_hidden("#tab-source .toc-side")
+    ui.click("#tab-source .pv-toc")
+    assert abs(ui.evaluate("() => document.querySelector('#tab-source .toc-side').getBoundingClientRect().width") - w) < 3
+
+
+def test_contents_in_the_source_view_start_closed(ui):
+    _ask(ui, "DDR5 tRFC değeri nedir?")
+    _cite(ui)
+    ui.wait_for_selector("#tab-source .pv-toc:not([hidden])")
+    assert ui.is_hidden("#tab-source .toc-side"), "a citation opens on its highlighted page"
+    ui.wait_for_selector("#tab-source .hl.current")
+    ui.click("#tab-source .pv-toc")
+    assert ui.is_visible("#tab-source .toc-side .toc a")
+
+
+def test_first_start_asks_for_the_organization_settings(ui, cfg, tmp_path):
+    import yaml
+
+    from techrag import org
+
+    share = tmp_path / "paylasim"
+    share.mkdir()
+    data = org.export(cfg)
+    (share / org.ORG_FILE).write_text(yaml.safe_dump(data), encoding="utf-8")
+    model = cfg.llm.model
+    cfg.llm.model = ""          # a fresh install: nothing set up, nothing found
+    ui.reload()
+    ui.wait_for_selector("#dlg-org[open]")
+    ui.fill("#org-ask-path", str(tmp_path))
+    ui.click("#btn-org-use")
+    ui.wait_for_function("() => document.querySelector('#org-ask-status').textContent.includes('bulunamadı')")
+    ui.fill("#org-ask-path", str(share))
+    ui.click("#btn-org-use")
+    ui.wait_for_selector("#dlg-org:not([open])", state="attached")
+    ui.wait_for_selector("#dlg-settings[open]")   # the organization settings came in: only the key is asked for
+    assert "API anahtarınızı" in ui.inner_text("#settings-org-hint")
+    assert ui.evaluate("() => document.activeElement.id") == "set-api-key"
+    assert client_model(ui) == model
+
+
+def client_model(ui):
+    return ui.evaluate("async () => (await (await fetch('/api/settings')).json()).llm.model")
+
+
+def test_admin_saves_the_organization_settings(ui, tmp_path):
+    from techrag import org
+
+    share = tmp_path / "ortak"
+    share.mkdir()
+    _admin(ui, "adm-settings")
+    ui.wait_for_function("() => document.querySelector('#org-status').textContent.includes('Kurum ayarı kullanılmıyor')")
+    ui.fill("#org-path", str(share))
+    ui.click("#btn-org-save")
+    ui.wait_for_function("() => document.querySelector('#org-save-status').textContent.includes('Kaydedildi')")
+    status = ui.inner_text("#org-save-status")
+    assert org.POINTER_FILE in status and "dağıtırken" in status
+    assert (share / org.ORG_FILE).exists() and (tmp_path / "exe" / org.POINTER_FILE).exists()
+    ui.wait_for_function("(p) => document.querySelector('#org-status').textContent.includes(p)", arg=str(share))

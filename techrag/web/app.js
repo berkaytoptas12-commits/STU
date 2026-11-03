@@ -250,7 +250,20 @@ const I18N = {
     personalUnlinked: "“{0}” klasörü çıkarıldı ({1} belge indeksten kaldırıldı; dosyalara dokunulmadı).",
     personalFolderEmpty: "henüz belge yok", personalFolderAdded: "“{0}” klasörü eklendi; içindeki belgeler indeksleniyor.",
     personalDeleteLinkedConfirm: "“{0}” kişisel kütüphaneden kaldırılsın mı?\n\nDosya bağlı klasörde olduğu gibi kalır; yalnızca indeksten çıkar ve sonraki taramalarda atlanır.",
-    srcCollapse: "Daralt / genişlet",
+    srcCollapse: "Daralt / genişlet", tocShow: "İçindekiler (aç / kapat)", tocResize: "İçindekiler genişliğini ayarla (sürükleyin; ←/→; çift tık: varsayılan)",
+    orgTitle: "Kurum ayarları", orgFolder: "Kaydedileceği klasör (ağ klasörü; ör. ortak kütüphane klasörü)",
+    orgHint: "Kayıtlı ayarlarınız (model sunucuları ve modeller, cevaplama ve gelişmiş ayarlar, bağlantı güvenliği, ortak kütüphane klasörü, kullanım günlüğü klasörü) bu klasöre kurum-ayarlari.yaml olarak yazılır. API anahtarı ve kişisel klasörler yazılmaz. Exe'nin yanına da bu klasörü gösteren SayisalTasarimUzmani.kurum.txt bırakılır: exe'yi bu dosyayla birlikte verdiğiniz kullanıcılar ayarları buradan alır, yalnızca API anahtarlarını girer. Kurum ayarları varsayılandır, kullanıcı değiştirebilir. Önce yukarıdaki ayarları kaydedin.",
+    orgReadOnly: "Diğer kullanıcılar ortak kütüphaneyi salt-okunur açsın", orgSave: "Kurum ayarlarını kaydet",
+    orgNone: "Kurum ayarı kullanılmıyor.", orgFrom: "Kurum ayarları: {0}", orgFromCached: "Kurum ayarları: {0} (klasöre ulaşılamadı; son okunan kopya kullanılıyor)",
+    orgFromError: "Kurum ayarları okunamadı: {0}", orgSrc_pointer: "exe'nin yanındaki dosyadan", orgSrc_user: "ilk açılışta verilen klasörden",
+    orgSrc_env: "ortam değişkeninden", orgSrc_saved: "bu bilgisayardan kaydedildi",
+    orgSaved: "Kaydedildi: {0}", orgPointer: "Exe'nin yanına {0} yazıldı. Exe'yi dağıtırken bu dosyayı da verin (zip sürümünde klasörün içinde kalır).",
+    orgPointerFailed: "Exe'nin yanına işaretçi dosyası yazılamadı ({0}). Exe'nin yanına SayisalTasarimUzmani.kurum.txt adında bir dosya koyup içine şu satırı yazın: {1}",
+    orgPointerDev: "Uygulama exe olarak çalışmadığı için işaretçi dosyası yazılmadı. Exe'nin yanına SayisalTasarimUzmani.kurum.txt koyup içine şu satırı yazın: {0}",
+    orgLibraryLocal: "Uyarı: ortak kütüphane yolu yerel görünüyor ({0}); diğer bilgisayarlar bu yola erişemeyebilir. Ağ yolunu kullanın (\\\\sunucu\\paylasim\\...).",
+    orgAskTitle: "Kurum ayarları", orgAskText: "Uygulama henüz ayarlanmamış. Kurumunuz ayarları ortak bir klasörde tutuyorsa o klasörü girin (yöneticinizden öğrenebilirsiniz; ör. \\\\sunucu\\paylasim\\library). Sunucular, modeller ve ortak kütüphane oradan gelir; siz yalnızca API anahtarınızı girersiniz.",
+    orgAskUse: "Kullan", orgAskNone: "Kurum ayarı kullanmıyorum", orgAskBad: "Bu klasörde kurum-ayarlari.yaml bulunamadı.",
+    orgKeyHint: "Kurum ayarları yüklendi ({0}). Yalnızca API anahtarınızı girip kaydedin.",
     admDocs: "Belgeler", admDocFilter: "Belge veya bucket ara",
     admDocsHint: "Ortak kütüphanedeki bir belgeyi 🗑 ile kaldırabilirsiniz. Belge yalnızca indeksten çıkar: dosyası silinmez, yerinde kalır ve sonraki taramalarda atlanır. Kütüphaneyi kullanan herkes için kaldırılır; “Kaldırılan belgeler”den geri alınabilir.",
     admDocsMore: "… ve {0} belge daha (aramayı daraltın)", admDocsNone: "Belge yok.", admDocsReadOnly: "Kütüphane salt-okunur açık: belge kaldırılamaz.",
@@ -510,7 +523,20 @@ const I18N = {
     personalUnlinked: "Folder “{0}” taken out ({1} documents removed from the index; no file touched).",
     personalFolderEmpty: "no documents yet", personalFolderAdded: "Folder “{0}” added; its documents are being indexed.",
     personalDeleteLinkedConfirm: "Remove “{0}” from your personal library?\n\nThe file stays in the linked folder; it only leaves the index and later scans leave it out.",
-    srcCollapse: "Collapse / expand",
+    srcCollapse: "Collapse / expand", tocShow: "Contents (show / hide)", tocResize: "Resize the contents (drag; ←/→; double click: default)",
+    orgTitle: "Organization settings", orgFolder: "Folder to save them to (a network folder; e.g. the shared library's)",
+    orgHint: "Your saved settings (model servers and models, answering and advanced settings, connection security, the shared library folder, the usage log folder) are written into this folder as kurum-ayarlari.yaml. Never the API key or personal folders. Next to the exe, SayisalTasarimUzmani.kurum.txt pointing to this folder is left: users you give the exe with this file get the settings from here and only enter their API key. Organization settings are defaults; users can change them. Save the settings above first.",
+    orgReadOnly: "Other users open the shared library read-only", orgSave: "Save organization settings",
+    orgNone: "No organization settings in use.", orgFrom: "Organization settings: {0}", orgFromCached: "Organization settings: {0} (folder not reachable; the copy read last time is used)",
+    orgFromError: "Organization settings could not be read: {0}", orgSrc_pointer: "from the file next to the exe", orgSrc_user: "from the folder given at first start",
+    orgSrc_env: "from the environment variable", orgSrc_saved: "saved from this computer",
+    orgSaved: "Saved: {0}", orgPointer: "{0} was written next to the exe. Hand it out with the exe (in the zip version it stays in the folder).",
+    orgPointerFailed: "The pointer file could not be written next to the exe ({0}). Put a file named SayisalTasarimUzmani.kurum.txt next to the exe with this line in it: {1}",
+    orgPointerDev: "The app does not run as an exe, so no pointer file was written. Put SayisalTasarimUzmani.kurum.txt next to the exe with this line in it: {0}",
+    orgLibraryLocal: "Note: the shared library path looks local ({0}); other computers may not reach it. Use the network path (\\\\server\\share\\...).",
+    orgAskTitle: "Organization settings", orgAskText: "The app is not set up yet. If your organization keeps its settings in a shared folder, enter that folder (ask your administrator; e.g. \\\\server\\share\\library). The servers, models and shared library come from there; you only enter your API key.",
+    orgAskUse: "Use", orgAskNone: "I do not use organization settings", orgAskBad: "No kurum-ayarlari.yaml in this folder.",
+    orgKeyHint: "Organization settings loaded ({0}). Just enter your API key and save.",
     admDocs: "Documents", admDocFilter: "Search documents or buckets",
     admDocsHint: "A document of the shared library is removed with 🗑. It only leaves the index: its file is not deleted, stays where it is and later scans leave it out. It is removed for everyone using the library; it can be restored under “Removed documents”.",
     admDocsMore: "… and {0} more (narrow the search)", admDocsNone: "No documents.", admDocsReadOnly: "The library is opened read-only: documents cannot be removed.",
@@ -554,7 +580,7 @@ const state = { info: null, docs: [], selected: new Set(), selectedBuckets: new 
 // Panel layout preferences (per user, kept across restarts; never affect what is searched).
 function loadUi() {
   const d = { leftCollapsed: false, rightHidden: false, rightW: 440, openBuckets: [], srcSplit: 0.5,
-    srcCollapsed: { shared: false, personal: false } };
+    srcCollapsed: { shared: false, personal: false }, tocW: 220, tocOpen: { doc: true, src: false } };
   try { return Object.assign(d, JSON.parse(localStorage.getItem("techrag.ui") || "{}")); } catch { return d; }
 }
 function saveUi() { safeSet("techrag.ui", JSON.stringify(state.ui)); }
@@ -726,6 +752,7 @@ function renderInfo() {
   const missing = SERVICES.filter((s) => s !== "vision" && !i.models[s]);
   if (i.error) { banner.hidden = false; banner.textContent = `${t("errorPrefix")}: ${i.error}`; }
   else if (i.legacy_documents && !i.read_only) { banner.hidden = false; banner.textContent = `${t("legacyNotice", i.legacy_documents)} → ${t("admin")} › ${t("admShared")} › ${t("migrate")}`; }
+  else if (i.org && i.org.path && (i.org.cached || !i.org.loaded)) { banner.hidden = false; banner.textContent = orgLine(i.org); }
   else if (missing.length) { banner.hidden = false; banner.textContent = `${t("settings")}: ${missing.map((s) => t("svc_" + s)).join(", ")} — ${t("model")}?`; }
   else banner.hidden = true;
   $("#collection-list").innerHTML = (i.buckets || []).filter((b) => b.name && !b.personal).map((b) => `<option value="${esc(b.name)}"></option>`).join("");
@@ -973,13 +1000,16 @@ function pageViewer(container, docId, page, nPages, opts = {}) {
   if (st.cur >= 0) st.p = regions[st.cur].page;
   const box = document.createElement("div");
   box.className = "pv-box";
+  const tocKey = opts.toc || "";
+  const shell = document.createElement("div");
+  shell.className = "pv-shell";
   // The page takes the whole panel; its controls sit in a translucent strip over the bottom of the page.
   const evCtl = regions.length ? `<span class="pv-sep"></span><span class="pv-ev"><label title="${esc(t("highlight"))}"><input type="checkbox" class="pv-hl" checked> ${t("highlight")}</label>
       <button type="button" class="pv-btn pv-evprev" title="${esc(t("prevEv"))}" aria-label="${esc(t("prevEv"))}">◂</button><span class="pv-evlabel"></span>
       <button type="button" class="pv-btn pv-evnext" title="${esc(t("nextEv"))}" aria-label="${esc(t("nextEv"))}">▸</button></span>` : "";
   box.innerHTML = `<div class="pv-fail" hidden></div>
     <div class="page-view"><div class="page-wrap"><img alt=""><div class="hl-layer"></div></div></div>
-    <div class="pv-bar" role="toolbar"><button type="button" class="pv-btn pv-prev" title="${esc(t("prev"))}" aria-label="${esc(t("prev"))}">‹</button>
+    <div class="pv-bar" role="toolbar">${tocKey ? `<button type="button" class="pv-btn pv-toc" title="${esc(t("tocShow"))}" aria-label="${esc(t("tocShow"))}" aria-pressed="false" hidden>☰</button>` : ""}<button type="button" class="pv-btn pv-prev" title="${esc(t("prev"))}" aria-label="${esc(t("prev"))}">‹</button>
       <span class="pv-label"></span><button type="button" class="pv-btn pv-next" title="${esc(t("next"))}" aria-label="${esc(t("next"))}">›</button>
       <span class="pv-sep"></span><button type="button" class="pv-btn pv-zout" title="${esc(t("zoomOut"))}" aria-label="${esc(t("zoomOut"))}">−</button><span class="pv-zl"></span>
       <button type="button" class="pv-btn pv-zin" title="${esc(t("zoomIn"))}" aria-label="${esc(t("zoomIn"))}">+</button>
@@ -1047,10 +1077,78 @@ function pageViewer(container, docId, page, nPages, opts = {}) {
   }
   const open = $(".pv-open", box);
   if (open) open.addEventListener("click", () => postJSON(`/api/documents/${docId}/open`, {}).catch((e) => alert(e.message)));
-  container.append(box);
-  docInfo(docId).then((d) => { st.labels = d.page_labels || {}; show(); });
+  shell.append(box);
+  container.append(shell);
+  docInfo(docId).then((d) => {
+    st.labels = d.page_labels || {};
+    show();
+    if (tocKey && (d.toc || []).length) addToc(shell, box, d.toc, tocKey, (p) => { st.p = p; show(); $(".page-view", box).scrollTop = 0; });
+  });
   show();
   return box;
+}
+
+// The document's contents to the left of the page: opened and closed from the strip (☰), its width dragged on the
+// bar between them (or ←/→); both kept across restarts. A click on an entry turns to that page.
+const TOC_MIN = 140;
+const clampToc = (w, shell) => Math.round(Math.min(Math.max(TOC_MIN, Number.isFinite(w) ? w : 220),
+  Math.max(TOC_MIN, (shell.getBoundingClientRect().width || 600) * 0.6)));
+function addToc(shell, box, toc, key, go) {
+  const side = document.createElement("aside");
+  side.className = "toc-side";
+  side.innerHTML = `<div class="toc-head">${esc(t("toc"))}</div><ul class="toc">${toc.slice(0, 2000).map(([lvl, title, page]) =>
+    `<li style="padding-left:${Math.max(0, lvl - 1) * 12}px"><a href="#" data-page="${+page}" title="${esc(title)}"></a><span class="pg">${+page}</span></li>`).join("")}</ul>`;
+  $$("a", side).forEach((a, i) => { a.textContent = toc[i][1]; a.addEventListener("click", (e) => { e.preventDefault(); go(+a.dataset.page); }); });
+  const bar = document.createElement("div");
+  bar.className = "toc-split";
+  bar.setAttribute("role", "separator");
+  bar.setAttribute("aria-orientation", "vertical");
+  bar.tabIndex = 0;
+  bar.title = t("tocResize");
+  shell.prepend(side, bar);
+  const btn = $(".pv-toc", box);
+  const apply = () => {
+    const opened = !!(state.ui.tocOpen || {})[key];
+    side.hidden = bar.hidden = !opened;
+    side.style.width = `${clampToc(state.ui.tocW, shell)}px`;
+    btn.setAttribute("aria-pressed", String(opened));
+    btn.classList.toggle("on", opened);
+  };
+  btn.hidden = false;
+  btn.addEventListener("click", () => {
+    state.ui.tocOpen = Object.assign({ doc: true, src: false }, state.ui.tocOpen, { [key]: !(state.ui.tocOpen || {})[key] });
+    saveUi();
+    apply();
+  });
+  const set = (w) => { state.ui.tocW = clampToc(w, shell); side.style.width = `${state.ui.tocW}px`; };
+  bar.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    bar.setPointerCapture(e.pointerId);
+    document.body.classList.add("resizing-toc");
+    const left = shell.getBoundingClientRect().left;
+    const move = (ev) => set(ev.clientX - left);
+    const up = () => {
+      bar.removeEventListener("pointermove", move);
+      bar.removeEventListener("pointerup", up);
+      bar.removeEventListener("pointercancel", up);
+      document.body.classList.remove("resizing-toc");
+      saveUi();
+    };
+    bar.addEventListener("pointermove", move);
+    bar.addEventListener("pointerup", up);
+    bar.addEventListener("pointercancel", up);
+  });
+  bar.addEventListener("keydown", (e) => {
+    const step = e.shiftKey ? 60 : 20;
+    const next = { ArrowLeft: state.ui.tocW - step, ArrowRight: state.ui.tocW + step, Home: TOC_MIN, Enter: 220 }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    set(next);
+    saveUi();
+  });
+  bar.addEventListener("dblclick", () => { set(220); saveUi(); });
+  if (!state.ui.tocOpen) state.ui.tocOpen = { doc: true, src: false };
+  apply();
 }
 
 // A source added because another source refers to it ("see Table 4-12").
@@ -1143,7 +1241,7 @@ function showSource(s, msg, claimId, override) {
   }
   if (isPdf) {
     pageViewer($(".pv", pane), s.doc_id, s.page_start || 1, doc ? doc.n_pages : 0,
-      { regions, note: regions.length ? null : locNote(recs), fallback: () => inspect(true) });
+      { regions, note: regions.length ? null : locNote(recs), fallback: () => inspect(true), toc: "src" });
   }
   $$(".cite-chip.active").forEach((c) => c.classList.remove("active"));
 }
@@ -1155,23 +1253,21 @@ async function showDocument(id, page) {
   if (seq !== state.viewSeq) return;  // the user opened something else meanwhile
   docCache[id] = Promise.resolve(d);
   const pane = $("#tab-source");
-  const toc = (d.toc || []).slice(0, 500).map(([lvl, title, page]) =>
-    `<li style="padding-left:${(lvl - 1) * 12}px"><a data-page="${page}">${esc(title)}</a><span class="pg">${page}</span></li>`).join("");
   const warn = (d.warnings || []).map((w) => `<li>${esc(w)}</li>`).join("");
-  pane.innerHTML = `<div class="source-card"><h3>${esc(d.title)} ${docTags(d)}</h3>
-    <div class="source-meta">${esc(d.domain)} · ${d.n_pages} ${t("pages")} · ${d.n_chunks} ${t("chunks")} · ${esc(d.doc_date || "")}</div>
-    ${warn ? `<div class="verify warning"><ul>${warn}</ul></div>` : ""}<div class="pv"></div>
-    <h3 style="margin-top:10px">${t("toc")}</h3>${toc ? `<ul class="toc">${toc}</ul>` : `<p class="muted">${t("noToc")}</p>`}</div>`;
+  const isPdf = /\.pdf$/i.test(d.rel_path || d.path || "");
+  pane.innerHTML = `<div class="source-card${isPdf ? " pdf" : ""}"><h3>${esc(d.title)} ${docTags(d)}</h3>
+    <div class="source-meta">${esc(d.domain)} · ${d.n_pages} ${t("pages")} · ${d.n_chunks} ${t("chunks")} · ${esc(d.doc_date || "")}${
+      (d.toc || []).length ? "" : ` · ${esc(t("noToc"))}`}</div>
+    ${warn ? `<div class="verify warning"><ul>${warn}</ul></div>` : ""}<div class="pv"></div></div>`;
   const pv = $(".pv", pane);
-  if (!/\.pdf$/i.test(d.rel_path || d.path || "")) {  // no page image: document info + open, never an empty frame
+  if (!isPdf) {  // no page image: document info + open, never an empty frame
     pv.innerHTML = `<div class="small muted no-page">${esc(t("noPageImage"))}</div>${state.info && state.info.desktop
       ? `<button type="button" class="ghost small src-open">${t("openOriginal")}</button>` : ""}`;
     const o = $(".src-open", pv);
     if (o) o.addEventListener("click", () => postJSON(`/api/documents/${d.id}/open`, {}).catch((e) => alert(e.message)));
     return;
   }
-  pageViewer(pv, d.id, page || 1, d.n_pages);
-  $$(".toc a", pane).forEach((a) => a.addEventListener("click", () => { pv.innerHTML = ""; pageViewer(pv, d.id, +a.dataset.page, d.n_pages); }));
+  pageViewer(pv, d.id, page || 1, d.n_pages, { toc: "doc" });
 }
 
 // ------------------------------------------------------------------ chat
@@ -2293,6 +2389,7 @@ async function exportFeedback() {
 // Settings (every user): the shared API key, the chat model and the notification. Everything else is in
 // Admin › Ayarlar.
 async function openSettings() {
+  $("#settings-org-hint").hidden = true;
   SETTINGS = await getJSON("/api/settings");
   const k = $("#set-api-key");
   k.value = (SETTINGS.auth && SETTINGS.auth.api_key) || "";   // before the card: it lists models with it
@@ -2355,6 +2452,67 @@ async function loadAdminSettings() {
   $("#set-tls-proxy").checked = SETTINGS.tls.use_system_proxy;
   $("#set-tls-ca").value = SETTINGS.tls.ca_bundle || "";
   $("#adm-settings-status").textContent = "";
+  renderOrgStatus();
+}
+
+// ------------------------------------------------------------------ organization settings
+// Saved by an admin into a shared folder; every user's app reads them at start as defaults (techrag/org.py).
+function orgLine(o) {
+  if (!o || !o.path) return t("orgNone");
+  const where = `${o.path} — ${t("orgSrc_" + o.source) || o.source}`;
+  if (o.cached) return t("orgFromCached", where);
+  if (!o.loaded) return t("orgFromError", where);
+  return t("orgFrom", where);
+}
+function renderOrgStatus() {
+  const o = (state.info || {}).org || {};
+  $("#org-status").textContent = orgLine(o);
+  if (!$("#org-path").value) {
+    const lib = (state.info || {}).library || "";
+    $("#org-path").value = o.path ? o.path.replace(/[\\/][^\\/]+\.ya?ml$/i, "") : (lib.startsWith("\\\\") ? lib : "");
+  }
+  $("#org-save-status").textContent = "";
+}
+async function saveOrg() {
+  const st = $("#org-save-status");
+  const path = $("#org-path").value.trim();
+  if (!path) { $("#org-path").focus(); return; }
+  try {
+    const r = await postJSON("/api/org/save", { path, others_read_only: $("#org-readonly").checked });
+    const folder = r.file.replace(/[\\/][^\\/]+$/, "");
+    const lines = [t("orgSaved", r.file)];
+    if (r.pointer) lines.push(t("orgPointer", r.pointer));
+    else if (r.pointer_error === "no_exe") lines.push(t("orgPointerDev", folder));
+    else lines.push(t("orgPointerFailed", r.pointer_error, folder));
+    if ((r.warnings || []).includes("library_local")) lines.push(t("orgLibraryLocal", (state.info || {}).library || ""));
+    st.innerHTML = lines.map((x) => `<div>${esc(x)}</div>`).join("");
+    await loadInfo();
+    $("#org-status").textContent = orgLine(state.info.org);
+  } catch (e) { st.textContent = `${t("errorPrefix")}: ${e.message}`; }
+}
+// First start: nothing set up and no organization settings found - ask once where they are.
+let orgKeyAsked = false;
+async function checkOrgOnStart() {
+  const o = (state.info || {}).org || {};
+  if (o.ask) { $("#org-ask-status").textContent = ""; $("#dlg-org").showModal(); return; }
+  if (o.needs_key && !orgKeyAsked) {
+    orgKeyAsked = true;
+    await openSettings();
+    const h = $("#settings-org-hint");
+    h.textContent = t("orgKeyHint", o.path);
+    h.hidden = false;
+    $("#set-api-key").focus();
+  }
+}
+async function useOrg(path) {
+  const st = $("#org-ask-status");
+  try {
+    await postJSON("/api/org/use", { path });
+    $("#dlg-org").close();
+    await loadInfo();
+    await loadDocs();
+    if (path) await checkOrgOnStart();
+  } catch (e) { st.textContent = /no organization settings file/.test(e.message) ? t("orgAskBad") : `${t("errorPrefix")}: ${e.message}`; }
 }
 async function saveAdminSettings() {
   const patch = { answer: { judge: $("#set-judge").checked, regenerate: $("#set-regenerate").checked, failed_claims: $("#set-failed").value } };
@@ -2752,6 +2910,12 @@ function bind() {
   $("#btn-pick-usage").addEventListener("click", () => pickFolder($("#usage-dir")));
   $("#btn-personal-add").addEventListener("click", addPersonalFiles);
   $("#btn-personal-folder").addEventListener("click", addPersonalFolder);
+  $("#btn-org-save").addEventListener("click", saveOrg);
+  $("#btn-pick-org").addEventListener("click", () => pickFolder($("#org-path")));
+  $("#btn-pick-org-ask").addEventListener("click", () => pickFolder($("#org-ask-path")));
+  $("#btn-org-use").addEventListener("click", () => { const p = $("#org-ask-path").value.trim(); if (p) useOrg(p); else $("#org-ask-path").focus(); });
+  $("#btn-org-none").addEventListener("click", () => useOrg(""));
+  $("#org-ask-path").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("#btn-org-use").click(); } });
   $$(".src-toggle").forEach((b) => b.addEventListener("click", () => toggleSrcPane(b.dataset.pane)));
   $("#adm-doc-filter").addEventListener("input", renderAdminDocs);
   $("#btn-personal-rescan").addEventListener("click", rescanPersonal);
@@ -2827,6 +2991,7 @@ function bind() {
     await loadInfo();
     applyI18n();
     await loadDocs();
+    await checkOrgOnStart();
   } catch (e) {
     const b = $("#banner");
     b.hidden = false;

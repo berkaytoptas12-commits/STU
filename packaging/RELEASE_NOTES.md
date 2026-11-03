@@ -1,5 +1,28 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.12.0 — kurum ayarları ortak klasörde, içindekiler PDF'in solunda
+- **Kurum ayarları:** Admin › Ayarlar › **Kurum ayarları** › "Kurum ayarlarını kaydet" ile kayıtlı ayarlarınız (model
+  sunucuları ve modeller, cevaplama ve gelişmiş ayarlar, bağlantı güvenliği, ortak kütüphane klasörü, kullanım günlüğü
+  klasörü) seçtiğiniz ağ klasörüne `kurum-ayarlari.yaml` olarak yazılır; **API anahtarı ve kişisel klasörler
+  yazılmaz**. Exe'nin yanına bu klasörü gösteren `SayisalTasarimUzmani.kurum.txt` bırakılır; exe'yi bu dosyayla
+  verdiğiniz kullanıcılar ayarları oradan alır ve yalnızca API anahtarlarını girer (Ayarlar penceresi kendiliğinden
+  açılır). İsteğe bağlı olarak diğer kullanıcılar ortak kütüphaneyi salt-okunur açar (varsayılan işaretli).
+  - Kurum ayarları varsayılandır, kilit yoktur; kullanıcının kendi dosyasına yalnızca farklı olan değerler yazılır,
+    böylece kurum dosyasındaki sonraki değişiklikler herkese bir sonraki açılışta ulaşır.
+  - Bulunma sırası: `TECHRAG_ORG_SETTINGS` ortam değişkeni → exe'nin yanındaki dosya → ilk açılışta verilen klasör.
+    Hiçbiri yoksa ve uygulama ayarlanmamışsa ilk açılışta bir kez "Kurum ayarları nerede?" sorulur.
+  - Ağ klasörüne ulaşılamazsa son okunan kopya kullanılır ve bu belirtilir. Elle düzenlenmiş bir dosya anahtar veya
+    kişisel klasör koyamaz.
+- **İçindekiler PDF'in solunda:** kaynak panelinde içindekiler artık sayfanın altında değil, PDF'in solunda
+  açılır-kapanır bir şerit (☰). Genişliği aradaki çizgi sürüklenerek (veya ←/→) ayarlanır; açık/kapalı durumu ve
+  genişlik korunur. Başlığa tıklamak sayfayı aynı görüntüleyicide çevirir. Sol listeden açılan belgede açık, cevaptaki
+  atıftan açılan kaynakta kapalı başlar.
+- Doğrulanan: birim/API/arayüz testleri (kaydedilen dosyada anahtar ve kişisel yol olmaması, işaretçi dosyası, yeni
+  kullanıcıda varsayılan olarak gelmesi, kullanıcının kendi değişikliğinin korunması ve kurum değişikliğinin ulaşması,
+  ulaşılamayınca son kopya, elle eklenmiş anahtarın atılması, ilk açılış sorusu ve anahtar istemi; içindekiler
+  şeridinin konumu, sayfaya gitmesi, sürükleme, kalıcılığı). Gerçek bir Windows ağ paylaşımında ve GPO ile
+  denenmedi.
+
 ### 0.11.0 — denetçi kesilmeleri, kişisel klasör bucket'ı, ortak belge kaldırma, daraltılabilir kaynaklar
 - **Denetçi "cut off" hataları:** doğrulama gevşetilmedi; kesik bir yanıt yine onay sayılmaz.
   - Düşünme kontrolü `reasoning_effort` iken (ör. vLLM'de Gemma 4) düşünmemesi gereken çağrılar — denetçi, soru

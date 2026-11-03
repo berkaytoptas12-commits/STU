@@ -109,10 +109,25 @@
     </aside>
   </main>
 
+  <!-- First start: where the organization settings are -->
+  <dialog id="dlg-org">
+    <form method="dialog" class="dlg">
+      <h2 data-i18n="orgAskTitle"></h2>
+      <p data-i18n="orgAskText"></p>
+      <div class="row"><input id="org-ask-path" placeholder="\\sunucu\paylasim\library"><button type="button" class="ghost" id="btn-pick-org-ask">…</button></div>
+      <div class="dlg-actions">
+        <span class="small" id="org-ask-status" role="status"></span>
+        <button type="button" class="ghost" id="btn-org-none" data-i18n="orgAskNone"></button>
+        <button type="button" id="btn-org-use" data-i18n="orgAskUse"></button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Settings -->
   <dialog id="dlg-settings">
     <form method="dialog" class="dlg">
       <h2 data-i18n="settings"></h2>
+      <p class="notice" id="settings-org-hint" hidden></p>
       <fieldset id="auth-box">
         <legend data-i18n="apiKey"></legend>
         <label class="wide"><input type="password" id="set-api-key" autocomplete="off"></label>
@@ -282,6 +297,16 @@
           <span class="muted small" id="adm-settings-status"></span>
           <button type="button" id="btn-save-admin-settings" data-i18n="save"></button>
         </div>
+      <fieldset id="org-box">
+        <legend data-i18n="orgTitle"></legend>
+        <p class="hint wide" data-i18n="orgHint"></p>
+        <p class="small wide" id="org-status"></p>
+        <label class="wide"><span data-i18n="orgFolder"></span>
+          <div class="row"><input id="org-path" placeholder="\\sunucu\paylasim\library"><button type="button" class="ghost" id="btn-pick-org">…</button></div></label>
+        <label class="wide"><input type="checkbox" id="org-readonly" checked> <span data-i18n="orgReadOnly"></span></label>
+        <div class="row wide"><button type="button" id="btn-org-save" data-i18n="orgSave"></button></div>
+        <div class="small wide" id="org-save-status" role="status"></div>
+      </fieldset>
       </section>
       <section class="adm-page" id="adm-trace" role="tabpanel" hidden>
         <p class="hint" data-i18n="traceHint"></p>

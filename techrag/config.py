@@ -266,6 +266,14 @@ class UIConfig:
 
 
 @dataclass
+class OrgConfig:
+    """Where this user's organization settings are (techrag.org): the folder given when the app asked at first start.
+    A pointer file next to the exe or TECHRAG_ORG_SETTINGS take precedence."""
+    path: str = ""
+    asked: bool = False             # asked once at first start (answered or declined): not asked again
+
+
+@dataclass
 class Config:
     offline: bool = True
     read_only: bool = False         # open a shared library without writing to it
@@ -282,6 +290,7 @@ class Config:
     tls: TLSConfig = field(default_factory=TLSConfig)
     ui: UIConfig = field(default_factory=UIConfig)
     usage: UsageConfig = field(default_factory=UsageConfig)
+    org: OrgConfig = field(default_factory=OrgConfig)
 
     # ------------------------------------------------------------------ derived paths
     @property
@@ -427,9 +436,13 @@ def load_config(path: Optional[str | Path] = None, user_settings: Optional[bool]
     if user_settings is None:
         user_settings = not os.environ.get("TECHRAG_NO_USER_SETTINGS")
     if user_settings:
+        from techrag import org
         from techrag.settings import load_user_settings
 
-        apply_dict(cfg, load_user_settings(), strict=False)
+        user = load_user_settings()
+        # the organization's settings are defaults: the user's own settings win over them
+        apply_dict(cfg, org.load(user), strict=False)
+        apply_dict(cfg, user, strict=False)
     _apply_env(cfg)
     cfg.share_api_key()
     if cfg.offline:

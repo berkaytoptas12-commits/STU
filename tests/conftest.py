@@ -82,6 +82,19 @@ A LOW to HIGH transition on the SDA line while SCL is HIGH defines a STOP condit
 """
 
 
+@pytest.fixture(autouse=True)
+def _no_org_settings(tmp_path, monkeypatch):
+    """Organization settings are process state (techrag.org.STATUS): every test starts without any, and a pointer
+    file next to the "exe" lives in the test's own folder."""
+    from techrag import org
+
+    monkeypatch.setenv("TECHRAG_ORG_POINTER", str(tmp_path / "exe" / "SayisalTasarimUzmani.kurum.txt"))
+    monkeypatch.delenv("TECHRAG_ORG_SETTINGS", raising=False)
+    org._reset()
+    yield
+    org._reset()
+
+
 @pytest.fixture()
 def fake() -> FakeOpenAI:
     return FakeOpenAI()

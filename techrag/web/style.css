@@ -304,6 +304,21 @@ button.cite { background: var(--accent-soft); color: var(--accent); border: 0; p
 .notice { background: var(--accent-soft); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; font-size: 13px; }
 .pending-clarify { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin: 0 16px;
   padding: 6px 10px; border-radius: 8px; background: var(--accent-soft); font-size: 13px; }
+.pv-shell { display: flex; flex-direction: row; min-height: 0; }
+.source-card.pdf .pv-shell { flex: 1; }
+.pv-shell > .pv-box { flex: 1; min-width: 0; }
+.toc-side { flex: none; overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px;
+  background: var(--panel); min-width: 0; }
+.toc-head { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em;
+  margin-bottom: 4px; }
+.toc-split { flex: none; width: 9px; cursor: col-resize; position: relative; touch-action: none; }
+.toc-split::after { content: ""; position: absolute; top: 30%; bottom: 30%; left: 3px; width: 3px; border-radius: 2px;
+  background: var(--border); }
+.toc-split:hover::after, .toc-split:focus-visible::after, body.resizing-toc .toc-split::after { background: var(--accent); }
+.toc-split:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent-soft); border-radius: 4px; }
+body.resizing-toc { cursor: col-resize; user-select: none; }
+.pv-bar .pv-toc.on { background: rgba(255, 255, 255, .22); }
+.toc-side .toc li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .toc { list-style: none; padding: 0; margin: 0; font-size: 12.5px; }
 .toc li { padding: 2px 0; }
 .toc a { color: var(--text); text-decoration: none; cursor: pointer; }

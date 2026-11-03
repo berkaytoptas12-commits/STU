@@ -163,6 +163,37 @@ durumu) ve `%USERPROFILE%\TechRAG\library` (varsayılan kütüphane) klasörleri
 eder; hiçbir şey taşınmaz veya silinmez. Yeni kurulumlar `SayisalTasarimUzmani` adlı klasörleri kullanır. Python
 paketi (`techrag`), komut satırı adı ve `TECHRAG_*` ortam değişkenleri uyumluluk için teknik ad olarak kaldı.
 
+### 2.4 Kurum ayarları (exe'yi başkalarına verirken)
+
+Ayarlar her Windows kullanıcısının kendi profilinde (`%APPDATA%\SayisalTasarimUzmani\settings.json`) tutulur; exe'yi
+başkasına verince ayarlar onunla gitmez. Bunun için ayarlar bir kez **ortak bir ağ klasörüne** kaydedilir:
+
+1. Kendi bilgisayarınızda her şeyi ayarlayıp kaydedin (Ayarlar ve Admin › Ayarlar), ortak kütüphaneyi ağ yolundan
+   açın (`\\sunucu\paylasim\library`).
+2. **Admin › Ayarlar › Kurum ayarları**: klasörü seçin (ör. ortak kütüphane klasörü) ve **Kurum ayarlarını
+   kaydet**. Klasöre `kurum-ayarlari.yaml` yazılır: model sunucuları ve modeller, düşünme/araç/cevaplama ve gelişmiş
+   ayarlar, bağlantı güvenliği, ortak kütüphane klasörü (ve **diğer kullanıcıların onu salt-okunur açması**,
+   varsayılan işaretli), kullanım günlüğü klasörü. **API anahtarı ve kişisel klasörler yazılmaz.** Dosya yarım
+   kalmayacak şekilde yazılır; o klasöre yazma izniniz olmalıdır.
+3. Aynı anda exe'nin yanına bu klasörü gösteren `SayisalTasarimUzmani.kurum.txt` bırakılır. Exe'yi dağıtırken bu
+   dosyayı da verin: zip sürümünde klasörün içinde kalır; portable exe'yi bu dosyayla aynı klasörde verin; exe ağ
+   klasöründen çalıştırılıyorsa bir şey yapmanız gerekmez. Exe'nin klasörüne yazılamıyorsa uygulama dosyanın adını
+   ve içine yazılacak satırı söyler.
+4. Diğer kullanıcının uygulaması açılışta ayarları bu klasörden okur; ilk açılışta yalnızca **API anahtarı** sorulur
+   (Ayarlar penceresi kendiliğinden açılır). Anahtar o kullanıcıya şifreli kaydedilir.
+
+* **Kurum ayarları varsayılandır, kilit yoktur:** kullanıcı bir ayarı değiştirirse onun değeri geçerlidir. Kullanıcının
+  kendi dosyasına yalnızca kurum ayarından farklı olan değerler yazılır; böylece kurum dosyasını sonradan
+  değiştirdiğinizde (yeniden **Kurum ayarlarını kaydet**) değişiklik, o ayarı kendisi değiştirmemiş herkese bir sonraki
+  açılışta uygulanır. Exe'yi yeniden dağıtmanız gerekmez.
+* **Bulunma sırası:** `TECHRAG_ORG_SETTINGS` ortam değişkeni (BT grup ilkesiyle verebilir; klasör veya dosya yolu) →
+  exe'nin yanındaki `SayisalTasarimUzmani.kurum.txt` → ilk açılışta verilen klasör. Hiçbiri yoksa ve uygulama hiç
+  ayarlanmamışsa ilk açılışta bir kez "Kurum ayarları nerede?" diye sorulur ("Kurum ayarı kullanmıyorum" da
+  seçilebilir).
+* **Ağ klasörüne ulaşılamazsa** (ör. dizüstü ağ dışında) son okunan kopya kullanılır ve üst şeritte belirtilir.
+* Elle düzenlenmiş bir kurum dosyası API anahtarı, sunucu erişim anahtarı veya kişisel klasör yolu **koyamaz**; bu
+  alanlar okunurken atılır.
+
 ---
 
 ## 3. Kütüphane
@@ -467,6 +498,10 @@ her şey burada toplanır):
 
 ### PDF'de kanıt vurgulama
 
+0. **İçindekiler:** PDF'in sol tarafında açılır-kapanır bir şerittir; alttaki şeritteki **☰** ile açılıp kapanır,
+   PDF ile arasındaki çizgi sürüklenerek (veya ←/→) genişliği ayarlanır (sayfa panelin en az %40'ını korur). Bir
+   başlığa tıklamak o sayfaya gider. Sol listeden açılan belgede açık, atıftan açılan kaynakta kapalı başlar; açık/kapalı
+   durumu ve genişlik bir sonraki açılışta korunur. PDF'in içindekiler bilgisi yoksa şerit görünmez.
 1. Cevaptaki **[n]** atfına tıklayın: sağdaki kaynak paneli doğru dokümanı ve sayfayı açar.
 2. O ifadeyi destekleyen **cümle**, ya da tablo değerlerinde **değer hücresi + parametre adı + sütun başlığı
    (+ birim, grup başlığı, dipnot)** sayfa üzerinde renkli kutularla işaretlenir. Aynı sayı sayfada birkaç yerde
@@ -688,6 +723,7 @@ girerek açıyorsa model sunucuları için **"Sistem proxy ayarlarını kullan"*
 techrag/
   desktop.py       exe giriş noktası: tek örnek, süreç içi FastAPI, gizli açılan pywebview sohbet penceresi,
                    gizle/göster, güvenli çıkış; argümanla CLI
+  org.py           kurum ayarları: ortak klasördeki kurum-ayarlari.yaml, exe'nin yanındaki işaretçi, yerel kopya
   icon.py          uygulamanın dosya simgesi: launcher'ın mikroçip çizimi, derlemede .ico olarak yazılır
   launcher.py      mikroçip simgesi (Win32 katmanlı pencere, DPI/çoklu monitör, sağ tık menüsü, aç/gizle için
                    "pencere önde mi" denetimi), tek örnek kilidi

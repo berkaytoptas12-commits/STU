@@ -21,7 +21,8 @@ from techrag.config import Config, _apply_env, apply_dict, user_config_dir
 log = logging.getLogger("techrag.settings")
 
 SECRET_KEYS = ("api_key",)
-SECTIONS = ("auth", "llm", "vision", "embedding", "reranker", "paths", "ui", "answer", "retrieval", "tls", "usage")
+SECTIONS = ("auth", "llm", "vision", "embedding", "reranker", "paths", "ui", "answer", "retrieval", "tls", "usage",
+            "org")
 SERVICE_SECTIONS = ("llm", "vision", "embedding", "reranker")   # the chat model's key first (see _migrate_keys)
 MASK = "••••••••"
 
@@ -165,12 +166,18 @@ def update_settings(cfg: Config, patch: dict) -> Config:
     """Merge a settings patch from the UI into the stored user settings and return a new Config.
     A masked or missing api_key keeps the stored one; a key given for a single service is ignored (one shared key,
     section "auth")."""
+    from techrag import org
+
     stored = load_user_settings()
     _migrate_keys(stored)
     applied: dict = {}
     for section, values in (patch or {}).items():
         if section == "read_only":
-            stored["read_only"] = applied["read_only"] = bool(values)
+            applied["read_only"] = bool(values)
+            if org.value("read_only", "") == applied["read_only"]:
+                stored.pop("read_only", None)   # the organization's value: keep following it
+            else:
+                stored["read_only"] = applied["read_only"]
             continue
         if section not in SECTIONS or not isinstance(values, dict):
             continue
@@ -178,9 +185,17 @@ def update_settings(cfg: Config, patch: dict) -> Config:
         for k, v in values.items():
             if k in SECRET_KEYS and (v == MASK or v is None or section != "auth"):
                 continue
-            dest[k] = now[k] = v
+            now[k] = v
+            # Only what differs from the organization settings is kept as the user's own: a setting left as the
+            # organization has it follows the organization file when that changes later.
+            if org.value(section, k) is not None and org.value(section, k) == v:
+                dest.pop(k, None)
+            else:
+                dest[k] = v
             if k in SECRET_KEYS:
                 _UNREADABLE.pop((section, k), None)  # explicitly replaced (or cleared) by the user
+        if not dest:
+            stored.pop(section, None)
     # Only what changed goes into the running config: environment variables and command-line options (e.g.
     # --library, TECHRAG_READ_ONLY) keep winning, as they did at start-up.
     probe = cfg.copy()
