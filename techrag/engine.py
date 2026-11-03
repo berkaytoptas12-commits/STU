@@ -37,7 +37,8 @@ from techrag.retrieval import DocCatalog, RetrievalResult, Retriever, Scope
 from techrag.store import Store
 from techrag.tools import TOOL_SCHEMAS, SourceRegistry, ToolExecutor, parameter_conflicts
 from techrag.verify import (CITATION, NOT_CHECKED, SUPPORTED, UNSUPPORTED, UNVERIFIED, Claim, ParsedAnswer,
-                            Verification, apply_verdict, deterministic_check, is_not_found, judge_failed,
+                            JUDGE_FAILURE_CODES, Verification, apply_verdict, deterministic_check, is_not_found,
+                            judge_failed,
                             parse_answer, parse_citations, parse_verdicts, render, repair_citations)
 
 log = logging.getLogger("techrag.engine")
@@ -51,12 +52,19 @@ MAX_FIGURES = 2
 JUDGE_SOURCE_CHARS = 6000
 JUDGE_MIN_SOURCE_CHARS = 700        # the shortest excerpt a source is cut to when a request must fit
 JUDGE_REPLY_BASE, JUDGE_REPLY_PER_CLAIM = 300, 160
+JUDGE_RETRY_REPLY = 2048            # a claim whose verdict was cut off is asked again with this much room
 _CONTEXT_ERROR = re.compile(r"context length|context window|maximum context|max_model_len|too long|too many tokens|"
                             r"exceeds|prompt is too|input length", re.I)
 
 
 class JudgeCutOff(RuntimeError):
-    """The judge's reply ended at the token limit: its JSON is incomplete."""
+    """The judge's reply ended at the token limit: its JSON is incomplete. ``thinking``: how many of those tokens
+    the model spent thinking (the server did not turn thinking off)."""
+
+    def __init__(self, tokens: int, thinking: int = 0):
+        self.tokens, self.thinking = tokens, thinking
+        why = f" ({thinking} of them thinking)" if thinking else ""
+        super().__init__(f"the judge's reply was cut off at {tokens} tokens{why}")
 _CLAUSE_REF = re.compile(r"(?:section|clause|§|sec\.)\s*(\d+(?:\.\d+)+)", re.I)
 
 
@@ -663,10 +671,15 @@ class RAGEngine:
                 srcs.append((n, f"{s.header()}\n{judge_excerpt(s.evidence(), c.text, limit)}"))
         return {"id": c.id, "type": c.kind, "claim": c.text, "sources": srcs}
 
+    @staticmethod
+    def _judge_reply(n: int, reply_min: int = 0) -> int:
+        return max(reply_min, JUDGE_REPLY_BASE + JUDGE_REPLY_PER_CLAIM * n)
+
     def _judge_batches(self, claims: list[Claim], registry: SourceRegistry, size: int,
-                       limit: int) -> list[tuple[list[Claim], list[dict]]]:
+                       limit: int, reply_min: int = 0) -> list[tuple[list[Claim], list[dict]]]:
         """Claims packed into requests that fit the model's context together with the reply: at most `size`
-        claims each; a claim whose sources alone are too long gets shorter (claim-focused) excerpts."""
+        claims each; a claim whose sources alone are too long gets shorter (claim-focused) excerpts.
+        ``reply_min``: room kept for the reply at least (a verdict that was cut off before)."""
         ctx = self.context_tokens()
         fixed = self._tokens(JUDGE_SYSTEM) + 50
         batches: list[tuple[list[Claim], list[dict]]] = []
@@ -676,12 +689,12 @@ class RAGEngine:
         for c in claims:
             item = self._judge_item(c, registry, limit)
             cost = self._tokens(judge_user_prompt([item]))
-            room = ctx - fixed - JUDGE_REPLY_BASE - JUDGE_REPLY_PER_CLAIM
+            room = ctx - fixed - self._judge_reply(1, reply_min)
             if cost > room:  # alone it does not fit: cut each source to its share of the room
                 share = max(JUDGE_MIN_SOURCE_CHARS, int(limit * room / cost))
                 item = self._judge_item(c, registry, share)
                 cost = self._tokens(judge_user_prompt([item]))
-            need = fixed + used + cost + JUDGE_REPLY_BASE + JUDGE_REPLY_PER_CLAIM * (len(cur) + 1)
+            need = fixed + used + cost + self._judge_reply(len(cur) + 1, reply_min)
             if cur and (len(cur) >= size or need > ctx):
                 batches.append((cur, cur_items))
                 cur, cur_items, used = [], [], 0
@@ -693,14 +706,17 @@ class RAGEngine:
         return batches
 
     def _judge_batch(self, batch: list[Claim], registry: SourceRegistry,
-                     items: Optional[list[dict]] = None) -> dict:
+                     items: Optional[list[dict]] = None, reply_min: int = 0) -> dict:
         items = items or [self._judge_item(c, registry, JUDGE_SOURCE_CHARS) for c in batch]
-        reply = JUDGE_REPLY_BASE + JUDGE_REPLY_PER_CLAIM * len(batch)
+        reply = self._judge_reply(len(batch), reply_min)
         res = self.llm.chat([{"role": "system", "content": JUDGE_SYSTEM},
                              {"role": "user", "content": judge_user_prompt(items)}],
                             json_mode=True, temperature=0.0, thinking=False, max_tokens=reply)
         if res.finish_reason == "length":
-            raise JudgeCutOff(f"the judge's reply was cut off at {reply} tokens")
+            details = (res.usage or {}).get("completion_tokens_details") or {}
+            thinking = int(details.get("reasoning_tokens") or 0) or (round(len(res.reasoning) / 3.5)
+                                                                      if res.reasoning else 0)
+            raise JudgeCutOff(reply, min(thinking, reply))
         return parse_verdicts(parse_json_object(res.content), [c.id for c in batch])
 
     def _judge(self, claims: list[Claim], registry: SourceRegistry, v: Verification) -> None:
@@ -709,9 +725,14 @@ class RAGEngine:
 
         Requests are sized to the model's context. A request that fails does not fail its claims for good: they
         are asked again one by one, and once more with shorter excerpts when the failure was the request's size
-        (context exceeded, reply cut off)."""
+        (context exceeded, reply cut off). A claim whose verdict was cut off gets more room for the reply on
+        every retry - the same room would only cut it off again.
+
+        v.judge_errors lists only what stayed unresolved; v.judge_retried counts the claims a retry settled."""
         size = max(1, self.cfg.answer.judge_batch)
         too_big: set[int] = set()
+        cut: set[int] = set()
+        failed: set[int] = set()
         plans = [(size, JUDGE_SOURCE_CHARS), (1, JUDGE_SOURCE_CHARS), (1, JUDGE_SOURCE_CHARS // 3)]
         for attempt, (batch_size, limit) in enumerate(plans):
             todo = claims if attempt == 0 else [c for c in claims if not c.judge["completed"]
@@ -719,11 +740,16 @@ class RAGEngine:
             if attempt == 2:
                 todo = [c for c in todo if c.id in too_big]
             if not todo:
-                return
-            batches = self._judge_batches(todo, registry, batch_size, limit)
+                break
+            batches = [(b, items, 0) for b, items in
+                       self._judge_batches([c for c in todo if c.id not in cut], registry, batch_size, limit)]
+            batches += [(b, items, JUDGE_RETRY_REPLY) for b, items in
+                        self._judge_batches([c for c in todo if c.id in cut], registry, batch_size, limit,
+                                            JUDGE_RETRY_REPLY)]
             askctx.check()
             with askctx.stage("judge"), ThreadPoolExecutor(max_workers=min(4, len(batches))) as pool:
-                futures = [(b, askctx.submit(pool, self._judge_batch, b, registry, items)) for b, items in batches]
+                futures = [(b, askctx.submit(pool, self._judge_batch, b, registry, items, reply_min))
+                           for b, items, reply_min in batches]
                 for batch, fut in futures:
                     try:
                         verdicts = fut.result()
@@ -731,17 +757,27 @@ class RAGEngine:
                         raise
                     except Exception as exc:
                         err = f"judge error: {exc.__class__.__name__}: {scrub(exc, 160)}"
-                        v.judge_errors.append(err)
                         if isinstance(exc, JudgeCutOff) or _CONTEXT_ERROR.search(str(exc)):
                             too_big.update(c.id for c in batch)
+                        info = {}
+                        if isinstance(exc, JudgeCutOff):
+                            cut.update(c.id for c in batch)
+                            info = {"code": "judge_cut_off", "tokens": exc.tokens, "thinking": exc.thinking}
                         for c in batch:
-                            judge_failed(c, err)
+                            failed.add(c.id)
+                            judge_failed(c, err, **info)
                         continue
                     for c in batch:
                         verdict, reason = verdicts[c.id]
                         if verdict not in ("supported", "partial", "unsupported"):
-                            v.judge_errors.append(f"claim {c.id}: {reason}")
+                            failed.add(c.id)
                         apply_verdict(c, verdict, reason)
+        open_ = [c for c in claims if c.judge.get("called") and not c.judge.get("completed")]
+        v.judge_errors = list(dict.fromkeys(
+            (c.judge.get("error") if str(c.judge.get("error", "")).startswith("judge error")
+             else f"claim {c.id}: {c.judge.get('error') or c.judge.get('verdict') or 'no verdict'}") for c in open_))
+        v.judge_problems = [k for c in open_ for k in c.codes if k["code"] in JUDGE_FAILURE_CODES]
+        v.judge_retried = sum(1 for c in claims if c.id in failed and c.judge.get("completed"))
 
     def _correct(self, base: list[dict], registry: SourceRegistry, initial_sources: int, draft: str,
                  parsed: ParsedAnswer, verification: Verification) -> str:

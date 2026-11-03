@@ -543,8 +543,12 @@ def parse_verdicts(obj, ids: Sequence[int]) -> dict[int, tuple[str, str]]:
     return out
 
 
+JUDGE_FAILURE_CODES = ("judge_error", "judge_cut_off", "judge_no_verdict")
+
+
 def apply_verdict(c: Claim, verdict: str, reason: str) -> None:
     c.judge.update(called=True, verdict=verdict, reason=reason)
+    c.codes = [k for k in c.codes if k["code"] not in JUDGE_FAILURE_CODES]   # an earlier failed try is settled
     if verdict == "supported":
         c.judge.update(completed=True, error="")
         c.status = SUPPORTED
@@ -559,13 +563,24 @@ def apply_verdict(c: Claim, verdict: str, reason: str) -> None:
         c.codes.append({"code": "judge_no_verdict", "detail": (reason or verdict)[:300]})
 
 
-def judge_failed(c: Claim, error: str) -> None:
+def _distinct(problems: list[dict]) -> list[dict]:
+    out, seen = [], set()
+    for k in problems:
+        key = (k.get("code"), k.get("tokens"), bool(k.get("thinking")))
+        if key not in seen:
+            seen.add(key)
+            out.append({x: k[x] for x in ("code", "tokens", "thinking") if x in k})
+    return out
+
+
+def judge_failed(c: Claim, error: str, code: str = "judge_error", **info) -> None:
     """The judge could not be asked (server/network error, context too long, reply cut off): a technical
-    failure, not a verdict on the claim."""
+    failure, not a verdict on the claim. ``code`` judge_cut_off carries ``tokens`` (the reply's limit) and
+    ``thinking`` (how many of them the model spent thinking)."""
     c.judge.update(called=True, completed=False, verdict="", error=error)
     c.status = UNVERIFIED
     c.codes = [k for k in c.codes if not k["code"].startswith("judge_")]
-    c.codes.append({"code": "judge_error", "detail": error[:300]})
+    c.codes.append(dict({"code": code, "detail": error[:300]}, **info))
 
 
 # ------------------------------------------------------------------------------ verification
@@ -581,7 +596,9 @@ class Verification:
     judge_enabled: bool = True
     judge_called: bool = False       # at least one judge request was sent
     judge_completed: bool = False    # every claim that needed the judge got a valid verdict
-    judge_errors: list[str] = field(default_factory=list)
+    judge_errors: list[str] = field(default_factory=list)       # what stayed unresolved
+    judge_problems: list[dict] = field(default_factory=list)    # the same, as codes (judge_cut_off ...)
+    judge_retried: int = 0           # claims a retry settled after a failed request
     parse_failed: bool = False       # an answer with no checkable statements
     citation_fixes: list[int] = field(default_factory=list)   # claims whose citation was repaired
     clarify: bool = False
@@ -605,7 +622,8 @@ class Verification:
             "citation_fixes": len(self.citation_fixes),
             "deterministic": {"enabled": self.enabled},
             "judge": {"enabled": self.judge_enabled, "called": self.judge_called,
-                      "completed": self.judge_completed, "errors": self.judge_errors[:5]},
+                      "completed": self.judge_completed, "errors": self.judge_errors[:5],
+                      "problems": _distinct(self.judge_problems)[:5], "retried": self.judge_retried},
             "details": [c.to_dict() for c in self.claims],
         }
 

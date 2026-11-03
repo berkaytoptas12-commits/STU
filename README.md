@@ -55,7 +55,7 @@ flowchart TB
 | Model "biliyorum" diye uyduruyor | Cevap sözleşmesi: giriş cümlesi dahil her teknik ifade [n] atıflı; mühendislik yorumu dayandığı kaynakları ve varsayımlarını gösterir. Atıfsız teknik ifade (başlıktan önce veya sonra, sayılı veya sayısız) denetimden kaçamaz. |
 | Sorudaki değerin "standart değeri" gibi sunulması | Kullanıcının verdiği değerler ayrı bir **kullanıcı girdisi** kaynağıdır; belgeye dayanan ifadeler yalnızca atıf yapılan belge metniyle doğrulanır. Kullanıcı değeri hesapta kullanılabilir ama standart değeri gibi sunulamaz. |
 | Hesap hatası / kaynaksız girdi | Hesaplar `calculate` aracıyla yapılır; ifadedeki her sayı bir kaynağa veya kullanıcı girdisine **izlenir**. Kaynaksız girdi içeren hesap, aritmetiği doğru olsa da doğrulanmış ifadeyi desteklemez. |
-| Yine de hatalı ifade | **Deterministik kontrol** (atıf var mı, sayı+birim atıf yapılan kaynakta mı — 0,35 µs = 350 ns) → **bağımsız denetçi** (taze bağlam: yalnızca iddia + atıf yapılan kaynak). Denetçinin yalnızca o iddia kimliği için açık ve geçerli bir "supported" kararı onay sayılır; zaman aşımı, API hatası, bozuk/eksik/tekrarlı karar, token sınırında kesilmiş yanıt **onay değildir**. Denetçi istekleri modelin bağlam uzunluğuna (ayar veya sunucunun bildirdiği `max_model_len`, hangisi küçükse) yanıt payıyla birlikte sığacak şekilde gruplanır; başarısız bir istek ifade ifade, bağlam aşımı veya kesik yanıtta daha kısa alıntılarla yeniden denenir. Teknik bir denetçi hatası "doğrulanamadı" olarak, denetçinin "desteklenmiyor" kararından ayrı gösterilir. Desteklenmeyen ifadeler bir kez düzelttirilir: model yalnızca o cümleleri yeniden yazar (veya kaldırır), diğer cümlelere dokunulmaz ve düzeltilen cümleler yeniden denetlenir; cevap yalnızca **doğrulanmış ifadelerden** yeniden kurulur. |
+| Yine de hatalı ifade | **Deterministik kontrol** (atıf var mı, sayı+birim atıf yapılan kaynakta mı — 0,35 µs = 350 ns) → **bağımsız denetçi** (taze bağlam: yalnızca iddia + atıf yapılan kaynak). Denetçinin yalnızca o iddia kimliği için açık ve geçerli bir "supported" kararı onay sayılır; zaman aşımı, API hatası, bozuk/eksik/tekrarlı karar, token sınırında kesilmiş yanıt **onay değildir**. Denetçi istekleri modelin bağlam uzunluğuna (ayar veya sunucunun bildirdiği `max_model_len`, hangisi küçükse) yanıt payıyla birlikte sığacak şekilde gruplanır; başarısız bir istek ifade ifade, bağlam aşımı veya kesik yanıtta daha kısa alıntılarla yeniden denenir. Token sınırında kesilen bir kararın tekrarında yanıt için daha geniş yer (2048 token) ayrılır; kesilen yanıtın ne kadarının düşünme olduğu da bildirilir (sunucu düşünmeyi kapatmadıysa). Doğrulama kutusunda yalnızca sonuçsuz kalan denetçi hataları listelenir; tekrar denemede tamamlananlar "n ifade için denetçi tekrar denendi ve tamamlandı" diye ayrıca belirtilir. Teknik bir denetçi hatası "doğrulanamadı" olarak, denetçinin "desteklenmiyor" kararından ayrı gösterilir. Desteklenmeyen ifadeler bir kez düzelttirilir: model yalnızca o cümleleri yeniden yazar (veya kaldırır), diğer cümlelere dokunulmaz ve düzeltilen cümleler yeniden denetlenir; cevap yalnızca **doğrulanmış ifadelerden** yeniden kurulur. |
 | Yanlış atıf (değer doğru, köşeli parantezdeki kaynak yanlış) | Bir ifadenin **tek** sorunu değerlerinin atıf yaptığı kaynakta olmaması ise ve cevapla birlikte verilen başka bir doğrulanmış kaynak bu değerlerin **hepsini** yazıyorsa, o kaynağın atfı mevcut atfın yanına eklenir (önce aynı belgeden kaynak). İfade baştan yeniden kontrol edilir ve **denetçinin onayı yine gerekir**; metnin geri kalanı değişmez. Düzeltme ifade ayrıntılarında "atıf düzeltildi" olarak gösterilir. Başka bir sorun varsa (atıfsız ifade, var olmayan kaynak, kaynakta hiç olmayan değer) düzeltme yapılmaz. |
 | Soru tasarım dilinde, standart gereksinimi kendi terimleriyle yazıyor ("length matching gerekir mi?" ↔ intra/inter-pair skew sınırı) | Bunu bir eşleme tablosu değil LLM kurar, iki noktada: (1) planlayıcı, sorulan kavramı standartta hangi gereksinimin (sınır, zamanlama, elektriksel parametre, zorunlu prosedür) belirlediğini düşünüp onlar için de standardın terimleriyle arama sorgusu ve "standart bunu nasıl yazardı" diye değersiz (sayılar X) bir cümle üretir; bu cümle yalnızca anlamsal aramada kullanılır, kanıt olmaz ve gösterilmez. Ek model çağrısı yoktur. (2) Cevap modeli "bulunamadı" derse bir kez, ilgili gereksinimi araçlarla standardın terimleriyle araması istenir (araç çağırma açıksa; yalnızca bu cevaplarda bir model turu daha). Cevap kuralı: gereksinim atıfla verilir, tasarım sonucu "Mühendislik yorumu" bölümünde açıklanır; kaynakta olmayan bir değere dayanan sayısal dönüşüm (ör. ps → mm için kartın mm başına gecikmesi) sayı olarak verilmez — kullanıcı o değeri soruda verirse hesap onun varsayımı olarak yapılır. Doğrulama aynı. |
 | Kanıt başka tabloda / bölümde ("bkz. Tablo 4-12") | Bulunan bir pasaj "Table 4-12", "Section 3.2", "clause 5.4.1", "§ 4.5" diye başka bir tabloya/bölüme başvuruyorsa, o tablo (başlık satırından bulunur; düz metindeki bir anma değil) veya bölüm **aynı belgeden** ayrı bir kaynak olarak eklenir — en fazla 3 başvuru, her biri ~1200 token; kaynak listesinde "↪ başvurulan Tablo 4-12" diye işaretlenir. Kapsam dışına çıkılmaz (başvuru belgesinin kendisindedir). |
@@ -140,7 +140,10 @@ anahtarlar ilk kayıtta ortak anahtara taşınır (sohbet modelininki esas alın
 * Görsel model: "Sohbet modeliyle aynı" (çok kipli Qwen: şekil sayfaları cevap modeline görüntü olarak gider)
   veya ayrı bir VLM (sohbet modeli yalnızca metin alıyorsa sayfa görüntüleri VLM tarafından metne dökülür).
 * Düşünme modu: `auto` (karşılaştırma / çok parçalı sorularda açık), `on`, `off`; kontrol yöntemi
-  `chat_template` (Qwen `enable_thinking`) veya `reasoning_effort`.
+  `chat_template` (Qwen `enable_thinking`) veya `reasoning_effort` (ör. vLLM'de Gemma 4). `reasoning_effort`
+  düşünmeyi yalnızca açabildiği için düşünmemesi gereken çağrılar (denetçi, soru çözümleme, düzeltme) ayrıca
+  `chat_template_kwargs: {"enable_thinking": false}` gönderir; sunucu bunu reddederse bir kez günlüğe yazılır ve
+  gönderilmez.
 * Doğrulanamayan iddialar: **Kaldır** (varsayılan) veya **İşaretle**.
 * **Bildirim:** pencere küçültülmüş, simgenin arkasına gizlenmiş veya başka pencerelerin arkasındayken cevap
   hazır olunca Windows bildirimi (varsayılan açık; Windows'un odak yardımı / sessiz saatleri geçerlidir).
@@ -318,8 +321,18 @@ ortak kütüphane salt-okunur açılmış olsa da çalışır.
   Klasör bir ağ sürücüsündeyse veya Geri Dönüşüm Kutusu kullanılamıyorsa kopya
   `<kişisel klasör>\_indeks\silinenler` klasörüne taşınır; hiçbir dosya sorulmadan kalıcı olarak silinmez. Kişisel
   klasörün dışındaki bir dosyaya hiç dokunulmaz. İndeksleme sürerken kaldırma beklenir.
+* **Klasör ekle…:** bilgisayarınızdaki bir klasörü seçersiniz; klasör **tek bir kişisel bucket** olur (adı klasörün
+  adı, 🔗 işaretli, üzerine gelince yolu görünür) ve içindeki bütün desteklenen belgeler (PDF, DOCX, MD, TXT, HTML;
+  alt klasörler dahil) **yerinde** indekslenir: hiçbir şey kopyalanmaz, klasöre bir şey yazılmaz. Klasöre sonradan
+  eklenen veya değişen dosyalar **⟳** ile işlenir. Aynı adlı iki farklı klasör iki ayrı bucket'tır. Kişisel klasörün
+  içindeki veya onu içeren bir klasör seçilemez (zaten taranıyor). Bucket satırındaki **✕** klasörü kişisel
+  kaynaklardan çıkarır: belgeleri kişisel indeksten kaldırılır, klasöre ve dosyalara dokunulmaz. Böyle bir
+  klasördeki tek bir belgenin **🗑** düğmesi onu yalnızca indeksten çıkarır; dosya yerinde kalır ve sonraki
+  taramalarda atlanır.
 * **Ortak / Kişisel bölme:** iki listenin arasındaki çizgi sürüklenerek (veya klavyeyle ↑/↓) ayarlanır; çift tık ya
   da Enter ortalar. Ayar bir sonraki açılışta korunur.
+* **Daraltma:** **Ortak** ve **Kişisel** başlıklarına tıklayınca o liste daralır (yalnızca başlığı kalır) ve diğer
+  liste boşalan yeri alır; tekrar tıklayınca açılır. Durum bir sonraki açılışta korunur.
 
 ### 3.6 Admin
 
@@ -331,6 +344,13 @@ her şey burada toplanır):
   "Kaydet" düğmesi vardır.
 * **Ortak kütüphane:** ortak dosyaların nereden geldiği (kütüphane klasörü, eklenen belge klasörleri ve belge
   sayıları, bucket'lar), belge klasörü ekleme, yeniden tarama, kalite raporu, kütüphane açma/yayımlama.
+  **Belgeler** bölümünde ortak kütüphanenin belgeleri aranıp **🗑** ile kaldırılabilir: belge yalnızca indeksten
+  çıkar, **dosyası silinmez** ve yerinde kalır (belge klasöründe de kütüphanenin kendi klasöründe de), sonraki
+  taramalar onu atlar. Kaldırma kütüphaneyi kullanan herkes için geçerlidir; salt-okunur açılmış kütüphanede ve
+  indeksleme sürerken yapılamaz. **Kaldırılan belgeler** bölümünden **Geri al** ile belge, klasörü yeniden taranarak
+  tekrar indekslenir (embedding'ler yeniden hesaplanır, VLM sonuçları önbellekten gelir). Aynı dosya "Belge ekle"
+  ile bilerek yeniden eklenirse kaldırılmışlıktan çıkar. Kaldırma kaydı indeksin içindedir (`excluded` tablosu;
+  eski kütüphaneler açılışta yerinde güncellenir, mevcut kayıtlara dokunulmaz).
 * **Düşünme ve aramalar:** bu oturumdaki sorular; her birinin altında açılır-kapanır **Düşünme** (modelin düşünme
   metni) ve **Aranan belgeler** (araç çağrıları ve modele verilen kaynaklar, atıf yapılanlar işaretli).
 * **Değerlendirme:** soru setlerini çalıştırma ve raporlar (bkz. 5).

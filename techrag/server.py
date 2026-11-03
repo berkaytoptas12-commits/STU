@@ -628,8 +628,11 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                                    llm=e.llm if c.llm.model else None, vision=e.vision, status=status,
                                    gate=jobs.gate)
                     ing.run_kind = kind
-                    if personal:
-                        report = ing.sync_root(own_root, rebuild)
+                    if personal and root_id is not None:
+                        report = ing.sync_root(root_id, rebuild)
+                    elif personal:   # the personal folder and every folder linked to it
+                        report = ing.sync_roots([own_root] + [r["id"] for r in store.roots() if r["id"] != own_root],
+                                                rebuild)
                     elif retry:
                         report = ing.retry_failed(retry_paths)
                     elif root_id is not None:
@@ -658,7 +661,9 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
 
         e = eng()
         lib = state["cfg"].library_dir
-        scan = scan_root(root_path, exclude=(lib,) if Path(root_path) != state["cfg"].sources_dir else ())
+        own = root_id is not None or Path(root_path) == state["cfg"].sources_dir
+        scan = scan_root(root_path, exclude=(lib,) if Path(root_path) != state["cfg"].sources_dir else (),
+                         skip_rels=e.shared.excluded_rels(root_id) if own else frozenset())
         fp = ingest_fingerprint(state["cfg"], e.vision.model if e.vision else None)
         docs = e.shared.root_documents(root_id) if root_id is not None or Path(root_path) == state["cfg"].sources_dir \
             else []
@@ -810,6 +815,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             copied.append(str(dest))
         if not copied:
             raise HTTPException(400, f"no supported files ({', '.join(sorted(SUPPORTED_SUFFIXES))})")
+        readd(copied)
         return {"job": start_job("add", dest_dir)["id"], "copied": copied}
 
     @app.post("/api/upload", dependencies=guard)
@@ -822,7 +828,55 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         with open(dest, "wb") as fh:
             while chunk := await file.read(1 << 20):
                 fh.write(chunk)
+        readd([str(dest)])
         return {"job": start_job("upload", dest)["id"], "path": str(dest)}
+
+    def readd(paths: list[str]) -> None:
+        """A file added again on purpose is no longer kept out of the index (it was removed before)."""
+        store = eng().shared
+        for p in paths:
+            try:
+                store.restore_excluded(Path(p).resolve().relative_to(state["cfg"].sources_dir.resolve()).as_posix())
+            except ValueError:
+                pass
+
+    # -------------------------------------------------- removing shared library documents (Admin)
+    @app.delete("/api/library/documents/{doc_id}", dependencies=guard)
+    def library_remove(doc_id: int):
+        """Take a document out of the shared library's index. Its file is not touched (in a document folder or in
+        the library's sources folder alike) and later rescans leave it out, until it is restored."""
+        from techrag.library import is_personal
+
+        if state["cfg"].read_only:
+            raise HTTPException(403, "the library is opened read-only")
+        e = eng()
+        if is_personal(doc_id) or e.shared.document(doc_id) is None:
+            raise HTTPException(404, "not a shared library document")
+        if jobs.running():
+            raise HTTPException(409, "indexing is running; remove the document when it has finished")
+        entry = e.shared.exclude_document(doc_id)
+        return {"ok": True, "title": entry["title"], "path": entry["rel_path"]}
+
+    @app.get("/api/library/removed", dependencies=guard)
+    def library_removed():
+        return eng().shared.excluded()
+
+    @app.post("/api/library/removed/restore", dependencies=guard)
+    def library_restore(req: FolderRequest):
+        """Bring a removed document back: it is indexed again by a scan of its folder (started here)."""
+        if state["cfg"].read_only:
+            raise HTTPException(403, "the library is opened read-only")
+        e = eng()
+        entry = e.shared.restore_excluded(req.path)
+        if entry is None:
+            raise HTTPException(404, "not a removed document")
+        if entry["root_id"] is not None and e.shared.root(entry["root_id"]) is not None:
+            job = start_job("restore", root_id=entry["root_id"])
+        elif Path(entry["path"]).is_absolute():
+            job = start_job("restore", Path(entry["path"]))
+        else:
+            job = start_job("restore")
+        return {"ok": True, "job": job["id"], "title": entry["title"]}
 
     # ------------------------------------------------------------------ chat history
     def chat_store():
@@ -902,7 +956,23 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         buckets = [b for b in e.store.buckets() if b.get("personal")] if (e is not None and own is not None) else []
         return {"dir": str(c.personal_dir), "exists": c.personal_dir.is_dir(), "indexed": own is not None,
                 "documents": sum(b["documents"] for b in buckets), "buckets": buckets,
-                "can_add": c.server.allow_upload}
+                "folders": linked_folders(own), "can_add": c.server.allow_upload}
+
+    def linked_folders(own) -> list[dict]:
+        """Folders picked as personal buckets (read in place) and the bucket their documents are in."""
+        from techrag.library import PERSONAL_BUCKET_PREFIX
+
+        if own is None:
+            return []
+        out = []
+        for r in own.roots():
+            if r.get("kind") != "bucket":
+                continue
+            docs = own.root_documents(r["id"])
+            out.append({"id": r["id"], "path": r["path"], "name": r["label"] or Path(r["path"]).name,
+                        "documents": len(docs), "status": r.get("last_status", ""),
+                        "bucket_id": PERSONAL_BUCKET_PREFIX + docs[0].bucket_id if docs else ""})
+        return out
 
     def check_can_add_personal() -> Path:
         c: Config = state["cfg"]
@@ -980,8 +1050,45 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                     raise HTTPException(500, f"the file could not be moved: {exc.__class__.__name__}")
             else:
                 trash, where = "kept", str(path)
-        e.personal.delete_document(own.id)
+        if trash == "kept":   # e.g. a document of a linked folder: the file stays, rescans leave it out
+            e.personal.exclude_document(own.id)
+        else:
+            e.personal.delete_document(own.id)
         return {"ok": True, "trash": trash, "path": where, "title": own.title}
+
+    @app.post("/api/personal/folder", dependencies=guard)
+    def personal_folder(req: FolderRequest):
+        """A folder of the user's picked as one personal bucket: every document under it is indexed where it is
+        (nothing copied, nothing written there) into the personal library."""
+        check_can_add_personal()
+        c: Config = state["cfg"]
+        path = Path(req.path).expanduser()
+        if not path.is_dir():
+            raise HTTPException(400, "folder not found")
+        try:
+            folder, picked = c.personal_dir.resolve(), path.resolve()
+        except OSError:
+            raise HTTPException(400, "folder not reachable")
+        if picked == folder or folder in picked.parents:
+            raise HTTPException(400, "this folder is already in the personal folder")
+        if picked in folder.parents:
+            raise HTTPException(400, "pick a folder that does not contain the personal folder")
+        store, _ = eng().ensure_personal()
+        known = next((r for r in store.roots() if same_path(r["path"], path)), None)
+        root_id = known["id"] if known else store.add_root(str(path), path.name or str(path), kind="bucket")
+        return {"root_id": root_id, "job": start_job("personal-folder", root_id=root_id, personal=True)["id"]}
+
+    @app.delete("/api/personal/folders/{root_id}", dependencies=guard)
+    def personal_folder_remove(root_id: int):
+        """Unlink a folder picked as a personal bucket: its documents leave the personal index; the folder and its
+        files are not touched."""
+        e = eng()
+        r = e.personal.root(root_id) if e.personal is not None else None
+        if r is None or r.get("kind") != "bucket":
+            raise HTTPException(404, "not a linked personal folder")
+        if jobs.running():
+            raise HTTPException(409, "indexing is running; remove the folder when it has finished")
+        return {"ok": True, "removed": e.personal.remove_root(root_id), "name": r["label"]}
 
     @app.post("/api/personal/rescan", dependencies=guard)
     def personal_rescan():

@@ -39,16 +39,19 @@
         <div class="missing-box small" id="missing-box" hidden></div>
         <div class="src-split" id="src-split">
           <div class="src-pane" id="src-shared">
-            <h3 class="src-group" data-i18n="sharedGroup"></h3>
+            <h3 class="src-group"><button type="button" class="src-toggle" data-pane="shared" aria-expanded="true"
+              aria-controls="collections" data-i18n="sharedGroup"></button></h3>
             <div class="bucket-list" id="collections"></div>
           </div>
           <div class="src-splitter" id="src-splitter" role="separator" tabindex="0" aria-orientation="horizontal"
                aria-controls="src-shared src-personal" aria-valuemin="15" aria-valuemax="85" data-i18n-title="srcSplitter"></div>
           <div class="src-pane" id="src-personal">
-            <h3 class="src-group" data-i18n="personalGroup"></h3>
+            <h3 class="src-group"><button type="button" class="src-toggle" data-pane="personal" aria-expanded="true"
+              aria-controls="personal-box personal-collections" data-i18n="personalGroup"></button></h3>
             <div class="personal-box" id="personal-box">
               <div class="row">
-                <button id="btn-personal-add" data-i18n="personalAdd"></button>
+                <button id="btn-personal-folder" data-i18n="personalFolder" data-i18n-title="personalFolderTitle"></button>
+                <button class="ghost" id="btn-personal-add" data-i18n="personalAdd"></button>
                 <button class="ghost" id="btn-personal-rescan" data-i18n-title="personalRescan">⟳</button>
                 <input type="file" id="personal-file-input" accept=".pdf,.txt,.md,.html,.htm,.docx" multiple hidden>
               </div>
@@ -187,6 +190,18 @@
         <h3 data-i18n="admSharedSource"></h3>
         <p class="hint" data-i18n="admSharedHint"></p>
         <div id="adm-roots" class="adm-roots small"></div>
+        <details class="adm-docs-box" id="adm-docs-box">
+          <summary><span data-i18n="admDocs"></span> <span class="small muted" id="adm-docs-count"></span></summary>
+          <p class="hint" data-i18n="admDocsHint"></p>
+          <input type="search" id="adm-doc-filter" class="doc-filter" autocomplete="off">
+          <div class="small adm-docs" id="adm-docs"></div>
+          <div class="small" id="adm-docs-status" role="status"></div>
+        </details>
+        <details class="adm-docs-box" id="adm-removed-box">
+          <summary><span data-i18n="admRemoved"></span> <span class="small muted" id="adm-removed-count"></span></summary>
+          <p class="hint" data-i18n="admRemovedHint"></p>
+          <div class="small adm-docs" id="adm-removed"></div>
+        </details>
         <div class="row" id="adm-shared-actions">
           <button type="button" id="btn-add-folder" data-i18n="addFolder"></button>
           <button type="button" class="ghost" id="btn-rescan" data-i18n="rescan"></button>

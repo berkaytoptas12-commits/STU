@@ -1,5 +1,36 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.11.0 — denetçi kesilmeleri, kişisel klasör bucket'ı, ortak belge kaldırma, daraltılabilir kaynaklar
+- **Denetçi "cut off" hataları:** doğrulama gevşetilmedi; kesik bir yanıt yine onay sayılmaz.
+  - Düşünme kontrolü `reasoning_effort` iken (ör. vLLM'de Gemma 4) düşünmemesi gereken çağrılar — denetçi, soru
+    çözümleme, düzeltme — artık düşünmeyi açıkça kapatıyor (`enable_thinking: false`). Önceden hiçbir şey
+    gönderilmiyordu; sunucunun varsayılanı "düşün" ise denetçi düşünüp token sınırını dolduruyordu. Sunucu bu
+    alanı reddederse bir kez günlüğe yazılır ve gönderilmez.
+  - Token sınırında kesilen bir kararın tekrarında yanıta daha geniş yer (2048 token) ayrılır; önceden aynı sınırla
+    tekrar sorulup yine kesiliyordu.
+  - Doğrulama kutusu yalnızca sonuçsuz kalan denetçi hatalarını gösterir ve bunları Türkçe yazar ("Denetçi 460 token
+    sınırının 430 token'ını düşünmeye harcadı ve cevabı kesildi: model sunucusu düşünmeyi kapatmadı …"). Tekrar
+    denemede tamamlananlar "n ifade için denetçi tekrar denendi ve tamamlandı" olarak not edilir; önceden ilk
+    denemenin hatası, ifadeler doğrulanmış olsa da listede kalıyordu.
+- **Kişisel › Klasör ekle…:** bir klasör seçin; klasör tek bir kişisel bucket olur (🔗, adı klasörün adı) ve içindeki
+  bütün belgeler alt klasörler dahil yerinde indekslenir — kopyalanmaz, klasöre bir şey yazılmaz. ⟳ yeni/değişen
+  dosyaları işler. ✕ klasörü kişisel kaynaklardan çıkarır (dosyalara dokunulmaz); böyle bir klasördeki bir belgenin
+  🗑'ü onu yalnızca indeksten çıkarır, dosya yerinde kalır ve sonraki taramalarda atlanır. "Dosya seç…" aynen duruyor.
+- **Admin › Ortak kütüphane › Belgeler:** ortak kütüphanedeki belgeler aranıp 🗑 ile kaldırılabilir. Belge yalnızca
+  indeksten çıkar; **dosyası silinmez**, yerinde kalır ve sonraki taramalar onu atlar. Kaldırma herkes için geçerlidir;
+  **Kaldırılan belgeler**'den "Geri al" ile belge klasörü yeniden taranarak tekrar indekslenir. Salt-okunur
+  kütüphanede ve indeksleme sürerken kaldırma yapılamaz.
+- **Daraltılabilir kaynaklar:** sol paneldeki **Ortak** ve **Kişisel** başlıklarına tıklayınca liste daralır, diğeri
+  boşalan yeri alır; durum korunur.
+- **Yükseltme:** kütüphane açılışta yerinde güncellenir — kaldırılan belgeler için bir tablo ve belge klasörlerine bir
+  tür sütunu eklenir; belgeler, embedding'ler ve ayarlar değişmez. Eski sürümün yazdığı bir kütüphane salt-okunur da
+  açılır. Yeniden indeksleme gerekmez.
+- Doğrulanan: birim/arayüz testleri (düşünmenin açıkça kapatılması ve sunucu reddederse bırakılması, kesilen kararın
+  daha geniş yerle tekrarı, düşünmeden kesilmenin Türkçe açıklaması, yalnızca sonuçsuz hataların listelenmesi;
+  ortak belgenin dosyasına dokunmadan kaldırılması, taramalarda atlanması ve geri alınması; klasörün tek bucket olarak
+  yerinde indekslenmesi, aynı adlı iki klasörün ayrı kalması, kişisel klasörle çakışan klasörün reddi; daraltmanın
+  korunması). Gerçek model sunucusunda (Gemma 4 / vLLM) denenmedi.
+
 ### 0.10.1 — Türkçe cevaplarda PDF vurgusu, kaynaklar cevapla birlikte
 - **Vurgu daha sık çıkıyor:** atıf ve doğrulama yerindeyken PDF'te vurgu çıkmamasının en sık nedenleri giderildi
   (yalnızca vurgu adımı değişti; doğrulama gevşetilmedi):

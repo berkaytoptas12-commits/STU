@@ -70,6 +70,27 @@ def test_reasoning_effort_control():
     client.chat([{"role": "user", "content": "q"}], thinking=True)
     client.chat([{"role": "user", "content": "q"}], thinking=False)
     assert bodies[0]["reasoning_effort"] == "high" and "reasoning_effort" not in bodies[1]
+    assert "chat_template_kwargs" not in bodies[0]
+    assert bodies[1]["chat_template_kwargs"] == {"enable_thinking": False}, \
+        "a call that must not think says so: reasoning_effort alone cannot turn thinking off"
+
+
+def test_reasoning_effort_mode_without_chat_template_kwargs(caplog):
+    bodies = []
+
+    def handler(req):
+        body = json.loads(req.content)
+        bodies.append(body)
+        if "chat_template_kwargs" in body:
+            return httpx.Response(400, json={"error": "Kwargs ['chat_template_kwargs'] are not supported"})
+        return httpx.Response(200, text=sse({"choices": [{"delta": {"content": "x"}}]}))
+
+    client = LLMClient(LLMConfig(model="m", thinking_control="reasoning_effort"), transport=httpx.MockTransport(handler))
+    with caplog.at_level("WARNING", logger="techrag.llm"):
+        assert client.chat([{"role": "user", "content": "q"}], thinking=False).content == "x"
+    assert "chat_template_kwargs" not in bodies[-1] and "refused chat_template_kwargs" in caplog.text
+    client.chat([{"role": "user", "content": "q"}], thinking=True)
+    assert bodies[-1]["reasoning_effort"] == "medium", "thinking on still works"
 
 
 def test_unreachable_server():

@@ -721,7 +721,9 @@ def test_chat_history_keeps_and_reopens_conversations(ui, cfg):
     _ask(ui, "I2C bus speed?")
     ui.wait_for_function("() => document.querySelectorAll('#chat-list .chat-item').length === 2")
     ui.locator("#chat-list .chat-item", has_text="DDR5 tRFC").click()
-    ui.wait_for_function("() => document.querySelectorAll('.msg.assistant').length === 1")
+    # the I2C chat on screen also has one answer: wait for the reopened conversation itself
+    ui.wait_for_function("""() => document.querySelectorAll('.msg.assistant').length === 1
+      && (document.querySelector('.msg.user') || {}).textContent === 'DDR5 tRFC değeri nedir?'""")
     msg = ui.locator(".msg.assistant").first
     assert "295" in msg.locator(".body").inner_text() and msg.locator(".msg-actions").is_visible()
     assert "DDR5 tRFC değeri nedir?" in ui.inner_text(".msg.user")
@@ -835,3 +837,86 @@ def test_strip_says_why_a_citation_has_no_highlight(ui, fake):
     ui.locator(".msg.assistant >> nth=1 >> .body button.cite").first.click()
     ui.wait_for_selector("#tab-source .hl.current")
     assert ui.locator("#tab-source .pv-note").count() == 0, "no note when the evidence is highlighted"
+
+
+def test_shared_and_personal_lists_collapse(ui):
+    def pane_heights():
+        return ui.evaluate("""() => ['#src-shared', '#src-personal'].map((s) =>
+          document.querySelector(s).getBoundingClientRect().height)""")
+    a, b = pane_heights()
+    ui.click(".src-toggle[data-pane=shared]")
+    assert ui.is_hidden("#collections") and ui.is_hidden("#src-splitter")
+    assert ui.get_attribute(".src-toggle[data-pane=shared]", "aria-expanded") == "false"
+    a2, b2 = pane_heights()
+    assert a2 < 40 and b2 > b + a - 60, "the open list takes the room of the collapsed one"
+    assert ui.evaluate("() => document.querySelector('.src-toggle[data-pane=shared]').textContent") == "Ortak"
+    ui.reload()
+    ui.wait_for_selector("#personal-box", state="attached")
+    assert ui.is_hidden("#collections"), "kept across restarts"
+    ui.click(".src-toggle[data-pane=personal]")
+    assert ui.is_hidden("#personal-box") and ui.is_hidden("#personal-collections")
+    ui.click(".src-toggle[data-pane=shared]")
+    ui.click(".src-toggle[data-pane=personal]")
+    ui.wait_for_selector("#collections .bucket")
+    assert ui.is_visible("#src-splitter") and ui.is_visible("#personal-box")
+    a3, b3 = pane_heights()
+    assert abs(a3 - a) < 15 and abs(b3 - b) < 15, "both open: the bar divides the room as before"
+
+
+def test_admin_removes_and_restores_a_shared_document(ui, cfg):
+    files = {p: p.read_bytes() for p in cfg.sources_dir.rglob("*") if p.is_file()}
+    count = ui.locator("#collections .bucket .count").evaluate_all("(els) => els.reduce((a, e) => a + +e.textContent, 0)")
+    _admin(ui, "adm-library")
+    ui.click("#adm-docs-box summary")
+    ui.wait_for_selector("#adm-docs .adm-doc-del")
+    assert "dosyası silinmez" in ui.inner_text("#adm-docs-box .hint")
+    ui.fill("#adm-doc-filter", "DDR5")
+    assert ui.locator("#adm-docs li").count() == 1
+    name = ui.inner_text("#adm-docs .adm-doc-name")
+    ui.once("dialog", lambda d: d.accept())
+    ui.click("#adm-docs .adm-doc-del")
+    ui.wait_for_function("(n) => document.querySelector('#adm-docs-status').textContent.includes(n)", arg=name)
+    ui.wait_for_selector("#adm-removed .adm-restore")
+    assert name in ui.inner_text("#adm-removed")
+    after = ui.locator("#collections .bucket .count").evaluate_all("(els) => els.reduce((a, e) => a + +e.textContent, 0)")
+    assert after == count - 1
+    assert {p: p.read_bytes() for p in files} == files, "no file deleted or changed"
+    ui.click("#adm-removed .adm-restore")
+    ui.wait_for_function(f"() => [...document.querySelectorAll('#collections .bucket .count')].reduce((a, e) => a + +e.textContent, 0) === {count}",
+                         timeout=30000)
+    ui.wait_for_function("() => document.querySelector('#adm-removed').textContent.includes('Kaldırılan belge yok')")
+
+
+def test_a_folder_becomes_one_personal_bucket(ui, tmp_path):
+    picked = tmp_path / "Proje Notları"
+    (picked / "alt").mkdir(parents=True)
+    (picked / "a.md").write_text("# A\n\nThe QQA4 rail is 0.9 V.\n", encoding="utf-8")
+    (picked / "alt" / "b.md").write_text("# B\n\nThe QQB4 rail is 0.8 V.\n", encoding="utf-8")
+    ui.once("dialog", lambda d: d.accept(str(picked)))
+    ui.click("#btn-personal-folder")
+    ui.wait_for_selector("#personal-collections .bucket .link-ic", state="attached", timeout=10000)  # listed at once
+    # indexed: one bucket with both documents (sub-folders included)
+    ui.wait_for_function("""() => { const c = document.querySelector('#personal-collections .bucket:not(.linked-empty) .count');
+      return c && c.textContent === '2'; }""", timeout=30000)
+    assert ui.locator("#personal-collections .bucket").count() == 1
+    assert ui.inner_text("#personal-collections .bucket-name") == "Proje Notları"
+    assert str(picked) in ui.get_attribute("#personal-collections .link-ic", "title")
+    ui.once("dialog", lambda d: d.accept())
+    ui.click("#personal-collections .bucket-unlink")
+    ui.wait_for_function("() => !document.querySelector('#personal-collections .bucket')")
+    assert "dosyalara dokunulmadı" in ui.inner_text("#personal-status")
+    assert (picked / "a.md").exists() and (picked / "alt" / "b.md").exists()
+
+
+def test_a_judge_cut_off_by_thinking_is_explained(ui, fake):
+    def judge(msgs):
+        import httpx
+
+        events = [{"choices": [{"delta": {"reasoning_content": "Let me think. " * 60}}]},
+                  {"choices": [{"delta": {}, "finish_reason": "length"}]}]
+        body = "".join(f"data: {json.dumps(e)}\n\n" for e in events) + "data: [DONE]\n\n"
+        return httpx.Response(200, text=body, headers={"content-type": "text/event-stream"})
+    fake.judge = judge
+    _ask(ui, "DDR5 tRFC değeri nedir?")
+    box = ui.inner_text(".msg.assistant .verify")
+    assert "düşünmeye harcadı" in box and "JudgeCutOff" not in box, box

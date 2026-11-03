@@ -61,7 +61,8 @@ CREATE TABLE IF NOT EXISTS roots (
     label TEXT DEFAULT '',
     added_at TEXT,
     last_scan TEXT DEFAULT '',
-    last_status TEXT DEFAULT ''
+    last_status TEXT DEFAULT '',
+    kind TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS chunks (
     id INTEGER PRIMARY KEY,
@@ -136,6 +137,16 @@ CREATE TABLE IF NOT EXISTS ingest_runs (
     finished_at TEXT,
     status TEXT,
     summary TEXT
+);
+-- Documents removed from the index on request. Their files are not touched; a rescan skips them until they
+-- are restored. Key: the document's path in the index (root id + relative path for folder documents).
+CREATE TABLE IF NOT EXISTS excluded (
+    path TEXT PRIMARY KEY,
+    root_id INTEGER,
+    rel_path TEXT DEFAULT '',
+    title TEXT DEFAULT '',
+    bucket TEXT DEFAULT '',
+    removed_at TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS doc_quality (
     path TEXT PRIMARY KEY,
@@ -372,7 +383,7 @@ class Store:
                 con.execute("UPDATE ingest_runs SET status='interrupted' WHERE status='running'")
         with self.connect() as con:
             self.columns = {t: {r[1] for r in con.execute(f"PRAGMA table_info({t})")}
-                            for t in ("chunks", "tables", "parameters", "pages", "documents", "roots")}
+                            for t in ("chunks", "tables", "parameters", "pages", "documents", "roots", "excluded")}
 
     @staticmethod
     def _migrate(con: sqlite3.Connection) -> None:
@@ -396,6 +407,8 @@ class Store:
         for col in ("status", "evidence", "value_kind"):
             if col not in cols["parameters"]:
                 con.execute(f"ALTER TABLE parameters ADD COLUMN {col} TEXT DEFAULT ''")
+        if "roots" in have and "kind" not in {r[1] for r in con.execute("PRAGMA table_info(roots)")}:
+            con.execute("ALTER TABLE roots ADD COLUMN kind TEXT DEFAULT ''")   # '' = sub-folders are buckets
         dcols = {r[1] for r in con.execute("PRAGMA table_info(documents)")}
         for col, decl in (("root_id", "INTEGER"), ("rel_path", "TEXT DEFAULT ''"), ("bucket", "TEXT DEFAULT ''"),
                           ("bucket_id", "TEXT DEFAULT ''"), ("subpath", "TEXT DEFAULT ''"),
@@ -741,15 +754,68 @@ class Store:
     def root(self, root_id: int) -> Optional[dict]:
         return next((r for r in self.roots() if r["id"] == root_id), None)
 
-    def add_root(self, path: str, label: str = "") -> int:
+    def add_root(self, path: str, label: str = "", kind: str = "") -> int:
+        """kind '' : the folders directly under it are the buckets; 'bucket': the whole folder is one bucket
+        (named after it), everything under it included."""
         self._writable()
         with self.connect() as con:
             row = con.execute("SELECT id FROM roots WHERE path=?", (path,)).fetchone()
             if row:
                 return row["id"]
-            cur = con.execute("INSERT INTO roots(path, label, added_at) VALUES(?,?,?)",
-                              (path, label or Path(path).name, datetime.now(timezone.utc).isoformat(timespec="seconds")))
+            cur = con.execute("INSERT INTO roots(path, label, added_at, kind) VALUES(?,?,?,?)",
+                              (path, label or Path(path).name, datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                               kind))
             return cur.lastrowid
+
+    def remove_root(self, root_id: int) -> int:
+        """Take a document folder out of the index: its documents and the folder entry. The folder and its files
+        are not touched. Returns how many documents were removed."""
+        self._writable()
+        with self.connect() as con:
+            ids = [r[0] for r in con.execute("SELECT id FROM documents WHERE root_id=?", (root_id,))]
+            for i in ids:
+                self.delete_document(i, con)
+            if self.columns.get("excluded"):
+                con.execute("DELETE FROM excluded WHERE root_id=?", (root_id,))
+            con.execute("DELETE FROM roots WHERE id=?", (root_id,))
+            self._bump_version(con)
+        return len(ids)
+
+    # ------------------------------------------------------- removed documents
+    def exclude_document(self, doc_id: int) -> Optional[dict]:
+        """Remove a document from the index and keep it out of later rescans; its file is not touched.
+        Undone with restore_excluded (the next scan of its folder indexes it again)."""
+        self._writable()
+        with self.connect() as con:
+            r = con.execute("SELECT * FROM documents WHERE id=?", (doc_id,)).fetchone()
+            if r is None:
+                return None
+            entry = {"path": r["path"], "root_id": r["root_id"], "rel_path": r["rel_path"] or r["path"],
+                     "title": r["title"], "bucket": r["bucket"],
+                     "removed_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+            con.execute("INSERT OR REPLACE INTO excluded(path, root_id, rel_path, title, bucket, removed_at) "
+                        "VALUES(:path, :root_id, :rel_path, :title, :bucket, :removed_at)", entry)
+            self.delete_document(doc_id, con)
+        return entry
+
+    def excluded(self) -> list[dict]:
+        if not self.columns.get("excluded"):
+            return []   # a library written by an older version
+        with self.connect() as con:
+            return [dict(r) for r in con.execute("SELECT * FROM excluded ORDER BY removed_at DESC")]
+
+    def excluded_rels(self, root_id: Optional[int]) -> set[str]:
+        """Relative paths a scan of this folder (None: the library's sources folder) leaves out."""
+        return {e["rel_path"] for e in self.excluded() if e["root_id"] == root_id}
+
+    def restore_excluded(self, path: str) -> Optional[dict]:
+        self._writable()
+        with self.connect() as con:
+            r = con.execute("SELECT * FROM excluded WHERE path=?", (path,)).fetchone()
+            if r is None:
+                return None
+            con.execute("DELETE FROM excluded WHERE path=?", (path,))
+        return dict(r)
 
     def set_root_status(self, root_id: int, status: str) -> None:
         self._writable()

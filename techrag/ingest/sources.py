@@ -116,9 +116,13 @@ def _inside(path: str, root: str) -> bool:
         return False
 
 
-def scan_root(root: str | Path, max_files: int = 200_000, exclude: tuple = ()) -> ScanResult:
+def scan_root(root: str | Path, max_files: int = 200_000, exclude: tuple = (), single_bucket: str = "",
+              skip_rels: frozenset | set = frozenset()) -> ScanResult:
     """Walk a document folder without following links/junctions and without leaving it. `exclude`: folders
-    to skip (the library folder itself, when it happens to sit inside the picked folder)."""
+    to skip (the library folder itself, when it happens to sit inside the picked folder).
+
+    single_bucket: the whole folder is one bucket of that name (its sub-folders are sub-paths in it) instead of
+    one bucket per top-level folder. skip_rels: documents removed from the index on request (left out)."""
     root = str(root)
     res = ScanResult(root=root)
     skip = {os.path.normcase(os.path.realpath(str(x))) for x in exclude}
@@ -177,10 +181,17 @@ def scan_root(root: str | Path, max_files: int = 200_000, exclude: tuple = ()) -
                     if len(res.unsupported) < MAX_LIST:
                         res.unsupported.append(rel)
                     continue
+                if rel in skip_rels:
+                    continue
                 st = e.stat()
-                bucket, sub = split_rel(rel)
-                res.files.append(FoundFile(e.path, rel, bucket, bucket_id_for(bucket), sub, st.st_size,
-                                           st.st_mtime_ns))
+                if single_bucket:
+                    bucket, sub = single_bucket, rel_dir
+                    # two picked folders of the same name stay two buckets
+                    bid = f"{bucket_id_for(single_bucket)}-{hashlib.sha1(os.path.normcase(root_real).encode('utf-8')).hexdigest()[:6]}"
+                else:
+                    bucket, sub = split_rel(rel)
+                    bid = bucket_id_for(bucket)
+                res.files.append(FoundFile(e.path, rel, bucket, bid, sub, st.st_size, st.st_mtime_ns))
                 if len(res.files) >= max_files:
                     res.error = f"stopped after {max_files} files"
                     return res

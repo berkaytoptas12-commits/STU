@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from contextlib import contextmanager
@@ -15,6 +16,8 @@ from techrag import api as _api
 from techrag import askctx
 from techrag.api import RETRY_STATUS, APIClient, APIError, backoff, connect_error, retry_after_seconds
 from techrag.config import LLMConfig, ServiceConfig
+
+log = logging.getLogger("techrag.llm")
 
 Message = dict
 
@@ -100,6 +103,9 @@ class LLMClient:
         self.model = (service or cfg).model
         self._send_template_kwargs = cfg.thinking_control == "chat_template"
         self._send_effort = cfg.thinking_control == "reasoning_effort"
+        # reasoning_effort only turns thinking on; a call that must not think (judge, planner, corrections)
+        # says so explicitly as well - otherwise the server's default applies, which may be "think"
+        self._send_off_kwargs = self._send_effort
         self._json_mode_ok = True
         self._usage_ok = True   # ask for token counts at the end of the stream (dropped if the server refuses)
         self.tools_supported: Optional[bool] = None if cfg.tools == "auto" else cfg.tools == "on"
@@ -122,6 +128,8 @@ class LLMClient:
             p["chat_template_kwargs"] = {"enable_thinking": bool(thinking)}
         elif self._send_effort and thinking:
             p["reasoning_effort"] = self.cfg.reasoning_effort
+        elif self._send_off_kwargs and not thinking:
+            p["chat_template_kwargs"] = {"enable_thinking": False}
         if json_mode and self._json_mode_ok:
             p["response_format"] = {"type": "json_object"}
         if self._usage_ok:
@@ -148,10 +156,13 @@ class LLMClient:
                     waited += 1
                     continue
                 body = (exc.body or str(exc)).lower()
-                if exc.status in (400, 422) and "chat_template_kwargs" in body and self._send_template_kwargs:
-                    self._send_template_kwargs = False
+                if exc.status in (400, 422) and "chat_template_kwargs" in body and "chat_template_kwargs" in payload:
+                    log.warning("the model server refused chat_template_kwargs (HTTP %s); thinking is no longer "
+                                "switched with it", exc.status)
+                    self._send_template_kwargs = self._send_off_kwargs = False
                     continue
-                if exc.status in (400, 422) and "reasoning_effort" in body and self._send_effort:
+                if exc.status in (400, 422) and "reasoning_effort" in body and "reasoning_effort" in payload:
+                    log.warning("the model server refused reasoning_effort (HTTP %s)", exc.status)
                     self._send_effort = False
                     continue
                 if exc.status in (400, 422) and "response_format" in body and json_mode and self._json_mode_ok:

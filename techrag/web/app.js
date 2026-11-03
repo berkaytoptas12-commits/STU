@@ -92,6 +92,9 @@ const I18N = {
     qOpenReport: "Kalite raporu",
     vRegenerated: "Doğrulanamayan ifadeler bir kez düzeltildi; diğer cümlelere dokunulmadı.",
     judgeDone: "bağımsız denetçi tamamlandı", judgeFailed: "bağımsız denetçi tamamlanamadı", judgeOff: "bağımsız denetçi kapalı", judgeNone: "denetçi gerekmedi",
+    judgeRetried: "{0} ifade için denetçi tekrar denendi ve tamamlandı",
+    judgeCut: "Denetçinin cevabı {0} token sınırında kesildi.",
+    judgeCutThinking: "Denetçi {0} token sınırının {1} token'ını düşünmeye harcadı ve cevabı kesildi: model sunucusu düşünmeyi kapatmadı (Admin › Ayarlar › Cevaplama › Düşünme kontrolü).",
     rc_invalid_citation: "Var olmayan kaynağa atıf: {sources}.",
     rc_no_citation: "Atıf yok: teknik bir ifade dayandığı kaynağı göstermeli.",
     rc_no_citation_inf: "Atıf yok: bir mühendislik yorumu, öncüllerinin geldiği kaynakları göstermeli.",
@@ -109,6 +112,8 @@ const I18N = {
     rc_judge_partial: "Bağımsız denetleyici: kaynaklar ifadeyi yalnızca kısmen destekliyor.",
     rc_judge_no_verdict: "Denetleyici bu ifade için geçerli bir karar döndürmedi (teknik sorun; ifade yanlış bulunmadı, doğrulanamadı).",
     rc_judge_error: "Denetleyiciye ulaşılamadı ya da yanıtı tamamlanmadı (teknik sorun; ifade yanlış bulunmadı, doğrulanamadı).",
+    rc_judge_cut_off: "Denetleyicinin cevabı {tokens} token sınırında kesildi (teknik sorun; ifade yanlış bulunmadı, doğrulanamadı).",
+    rc_judge_cut_off_thinking: "Denetleyici {tokens} token sınırının {thinking} token'ını düşünmeye harcadı ve cevabı kesildi; model sunucusu düşünmeyi kapatmadı (teknik sorun; ifade yanlış bulunmadı, doğrulanamadı).",
     refTable: "başvurulan Tablo {0}", refSection: "başvurulan Bölüm {0}",
     stSearchingMore: "Doğrudan bulunamadı — standardın ilgili gereksinimi aranıyor…",
     rcDetail: "gerekçe: {0}", rcTechnical: "teknik ayrıntı: {0}",
@@ -238,6 +243,22 @@ const I18N = {
     personalDeleteConfirm: "“{0}” kişisel kütüphaneden kaldırılsın mı?\n\nDosyanın kişisel klasördeki kopyası Geri Dönüşüm Kutusu'na taşınır; bilgisayarınızda seçtiğiniz asıl dosyaya dokunulmaz.",
     personalDeletedBin: "“{0}” kaldırıldı; kopyası Geri Dönüşüm Kutusu'nda.", personalDeletedFolder: "“{0}” kaldırıldı; kopyası şu klasöre taşındı: {1}",
     personalDeletedIndex: "“{0}” indeksten kaldırıldı.",
+    personalDeletedKept: "“{0}” kişisel indeksten kaldırıldı; dosyası klasöründe duruyor, sonraki taramalarda atlanır.",
+    personalFolder: "Klasör ekle…", personalFolderTitle: "Bir klasör seçin: tek bir bucket olur, içindeki bütün belgeler (alt klasörler dahil) yerinde indekslenir; hiçbir şey kopyalanmaz.",
+    personalLinked: "Bağlı klasör: {0}", personalUnlink: "Bu klasörü kişisel kaynaklardan çıkar (dosyalara dokunulmaz)",
+    personalUnlinkConfirm: "“{0}” klasörü kişisel kaynaklardan çıkarılsın mı?\n\nBelgeleri kişisel indeksten kaldırılır; klasör ve içindeki dosyalar olduğu gibi kalır.",
+    personalUnlinked: "“{0}” klasörü çıkarıldı ({1} belge indeksten kaldırıldı; dosyalara dokunulmadı).",
+    personalFolderEmpty: "henüz belge yok", personalFolderAdded: "“{0}” klasörü eklendi; içindeki belgeler indeksleniyor.",
+    personalDeleteLinkedConfirm: "“{0}” kişisel kütüphaneden kaldırılsın mı?\n\nDosya bağlı klasörde olduğu gibi kalır; yalnızca indeksten çıkar ve sonraki taramalarda atlanır.",
+    srcCollapse: "Daralt / genişlet",
+    admDocs: "Belgeler", admDocFilter: "Belge veya bucket ara",
+    admDocsHint: "Ortak kütüphanedeki bir belgeyi 🗑 ile kaldırabilirsiniz. Belge yalnızca indeksten çıkar: dosyası silinmez, yerinde kalır ve sonraki taramalarda atlanır. Kütüphaneyi kullanan herkes için kaldırılır; “Kaldırılan belgeler”den geri alınabilir.",
+    admDocsMore: "… ve {0} belge daha (aramayı daraltın)", admDocsNone: "Belge yok.", admDocsReadOnly: "Kütüphane salt-okunur açık: belge kaldırılamaz.",
+    sharedDelete: "Ortak kütüphaneden kaldır",
+    sharedDeleteConfirm: "“{0}” ortak kütüphaneden kaldırılsın mı?\n\nDosyası silinmez ve yerinde kalır; yalnızca indeksten çıkar ve sonraki taramalarda atlanır. Kütüphaneyi kullanan herkes için kaldırılır. “Kaldırılan belgeler”den geri alınabilir.",
+    sharedDeleted: "“{0}” ortak kütüphaneden kaldırıldı (dosyası yerinde duruyor).",
+    admRemoved: "Kaldırılan belgeler", admRemovedHint: "Geri alınan belge, klasörü yeniden taranarak tekrar indekslenir.",
+    admRemovedNone: "Kaldırılan belge yok.", restore: "Geri al", restoring: "Belge geri alınıyor",
     traceHint: "Bu oturumdaki sorular. Her sorunun altında modelin düşünmesi ve aradığı belgeler açılır-kapanır bölümlerde durur; sohbette gösterilmez.",
     traceNone: "Bu oturumda henüz soru sorulmadı.", traceThinking: "Düşünme", traceNoThinking: "Bu soruda düşünme metni yok (düşünme kapalıydı ya da sunucu göndermedi).",
     traceSearches: "Aranan belgeler", traceTools: "Aramalar", traceSources: "Modele verilen kaynaklar", traceCited: "atıf yapıldı",
@@ -333,6 +354,9 @@ const I18N = {
     qOpenReport: "Quality report",
     vRegenerated: "Failed statements were corrected once; the other sentences were left as they were.",
     judgeDone: "independent judge completed", judgeFailed: "independent judge NOT completed", judgeOff: "independent judge off", judgeNone: "judge not needed",
+    judgeRetried: "the judge was asked again for {0} statement(s) and completed",
+    judgeCut: "The judge's reply was cut off at its {0}-token limit.",
+    judgeCutThinking: "The judge spent {1} of its {0}-token limit thinking and its reply was cut off: the model server did not turn thinking off (Admin › Settings › Answering › Thinking control).",
     rc_invalid_citation: "Cites a source that does not exist: {sources}.",
     rc_no_citation: "No citation: a technical statement must cite the source it comes from.",
     rc_no_citation_inf: "No citation: an engineering inference must cite the sources its premises come from.",
@@ -350,6 +374,8 @@ const I18N = {
     rc_judge_partial: "Independent checker: the sources support the statement only partly.",
     rc_judge_no_verdict: "The checker returned no valid verdict for this statement (technical problem; the statement was not found wrong, it could not be verified).",
     rc_judge_error: "The checker could not be reached or its reply was incomplete (technical problem; the statement was not found wrong, it could not be verified).",
+    rc_judge_cut_off: "The checker's reply was cut off at its {tokens}-token limit (technical problem; the statement was not found wrong, it could not be verified).",
+    rc_judge_cut_off_thinking: "The checker spent {thinking} of its {tokens}-token limit thinking and its reply was cut off; the model server did not turn thinking off (technical problem; the statement was not found wrong, it could not be verified).",
     refTable: "referenced Table {0}", refSection: "referenced Section {0}",
     stSearchingMore: "Not found directly — searching for the standard's governing requirement…",
     rcDetail: "reason: {0}", rcTechnical: "technical detail: {0}",
@@ -479,6 +505,22 @@ const I18N = {
     personalDeleteConfirm: "Remove “{0}” from your personal library?\n\nIts copy in the personal folder goes to the Recycle Bin; the file you originally chose on your computer is not touched.",
     personalDeletedBin: "“{0}” removed; its copy is in the Recycle Bin.", personalDeletedFolder: "“{0}” removed; its copy was moved to: {1}",
     personalDeletedIndex: "“{0}” removed from the index.",
+    personalDeletedKept: "“{0}” removed from the personal index; its file stays in its folder and later scans leave it out.",
+    personalFolder: "Add folder…", personalFolderTitle: "Choose a folder: it becomes one bucket and every document in it (sub-folders included) is indexed where it is; nothing is copied.",
+    personalLinked: "Linked folder: {0}", personalUnlink: "Take this folder out of your personal sources (its files are not touched)",
+    personalUnlinkConfirm: "Take the folder “{0}” out of your personal sources?\n\nIts documents leave the personal index; the folder and its files stay as they are.",
+    personalUnlinked: "Folder “{0}” taken out ({1} documents removed from the index; no file touched).",
+    personalFolderEmpty: "no documents yet", personalFolderAdded: "Folder “{0}” added; its documents are being indexed.",
+    personalDeleteLinkedConfirm: "Remove “{0}” from your personal library?\n\nThe file stays in the linked folder; it only leaves the index and later scans leave it out.",
+    srcCollapse: "Collapse / expand",
+    admDocs: "Documents", admDocFilter: "Search documents or buckets",
+    admDocsHint: "A document of the shared library is removed with 🗑. It only leaves the index: its file is not deleted, stays where it is and later scans leave it out. It is removed for everyone using the library; it can be restored under “Removed documents”.",
+    admDocsMore: "… and {0} more (narrow the search)", admDocsNone: "No documents.", admDocsReadOnly: "The library is opened read-only: documents cannot be removed.",
+    sharedDelete: "Remove from the shared library",
+    sharedDeleteConfirm: "Remove “{0}” from the shared library?\n\nIts file is not deleted and stays where it is; it only leaves the index and later scans leave it out. It is removed for everyone using the library. It can be restored under “Removed documents”.",
+    sharedDeleted: "“{0}” removed from the shared library (its file stays where it is).",
+    admRemoved: "Removed documents", admRemovedHint: "A restored document is indexed again by a scan of its folder.",
+    admRemovedNone: "No removed documents.", restore: "Restore", restoring: "Restoring a document",
     traceHint: "Questions of this session. Under each, the model's thinking and the documents it searched are in collapsible sections; the chat does not show them.",
     traceNone: "No question asked in this session yet.", traceThinking: "Thinking", traceNoThinking: "No thinking text for this question (thinking was off or the server sent none).",
     traceSearches: "Searched documents", traceTools: "Searches", traceSources: "Sources given to the model", traceCited: "cited",
@@ -504,6 +546,7 @@ function applyI18n() {
   $$("[data-i18n-title]").forEach((el) => { el.title = t(el.dataset.i18nTitle); el.setAttribute("aria-label", el.title); });
   $("#question").placeholder = t("placeholder");
   $("#doc-filter").placeholder = t("filterPh");
+  $("#adm-doc-filter").placeholder = t("admDocFilter");
   $$(".lang").forEach((b) => b.classList.toggle("active", b.dataset.lang === LANG));
   const ex = $("#examples");
   if (ex) {
@@ -525,7 +568,8 @@ const state = { info: null, docs: [], selected: new Set(), selectedBuckets: new 
 
 // Panel layout preferences (per user, kept across restarts; never affect what is searched).
 function loadUi() {
-  const d = { leftCollapsed: false, rightHidden: false, rightW: 440, openBuckets: [], srcSplit: 0.5 };
+  const d = { leftCollapsed: false, rightHidden: false, rightW: 440, openBuckets: [], srcSplit: 0.5,
+    srcCollapsed: { shared: false, personal: false } };
   try { return Object.assign(d, JSON.parse(localStorage.getItem("techrag.ui") || "{}")); } catch { return d; }
 }
 function saveUi() { safeSet("techrag.ui", JSON.stringify(state.ui)); }
@@ -709,6 +753,7 @@ async function loadDocs() {
   const ids = new Set(state.docs.map((d) => d.id));
   for (const id of [...state.selected]) if (!ids.has(id)) state.selected.delete(id);
   renderCollections();
+  if ($("#dlg-admin").open && state.adminPage === "adm-library") renderAdminDocs();
 }
 
 function docTags(d) {
@@ -725,11 +770,26 @@ const bucketName = (b) => (b && b.name) || t("generalBucket");
 const fold = (x) => String(x || "").toLocaleLowerCase("tr").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ı/g, "i");
 const docLocation = (d) => [d.bucket || t("generalBucket"), d.subpath, (d.rel_path || d.path).split("/").pop()].filter(Boolean).join(" / ");
 
+const linkedFolders = () => ((state.info && state.info.personal) || {}).folders || [];
+
 function renderCollections() {
   const all = (state.info && state.info.buckets) || [];
   const q = fold(state.filter.trim());
   fillBuckets($("#collections"), all.filter((b) => !b.personal), q, t("viewerEmpty").replace(/\s*\[n\].*$/, ""));
-  fillBuckets($("#personal-collections"), all.filter((b) => b.personal), q, t("personalEmpty"));
+  fillBuckets($("#personal-collections"), all.filter((b) => b.personal), q, linkedFolders().length ? "" : t("personalEmpty"));
+  // a linked folder without indexed documents yet (being indexed, or empty) is still listed, so it can be taken out
+  for (const f of linkedFolders().filter((x) => !x.documents)) {
+    const row = document.createElement("div");
+    row.className = "bucket linked-empty";
+    row.innerHTML = `<div class="bucket-head"><span class="link-ic" title="${esc(t("personalLinked", f.path))}">🔗</span>
+      <span class="bucket-name" title="${esc(f.path)}"></span><span class="small muted">${esc(t("personalFolderEmpty"))}</span>
+      <button type="button" class="ghost icon small bucket-unlink" title="${esc(t("personalUnlink"))}" aria-label="${esc(t("personalUnlink"))}">✕</button></div>`;
+    $(".bucket-name", row).textContent = f.name;
+    $(".bucket-unlink", row).addEventListener("click", () => unlinkPersonalFolder(f));
+    const wrap = $("#personal-collections");
+    if (wrap.firstElementChild && wrap.firstElementChild.matches("p.muted")) wrap.innerHTML = "";
+    wrap.append(row);
+  }
   $("#doc-count").textContent = state.docs.length ? String(state.docs.length) : "";
   $("#doc-count").title = state.docs.length ? `${state.docs.length} ${t("docsShort")}` : "";
   renderScopeLine();
@@ -751,9 +811,12 @@ function fillBuckets(wrap, buckets, q, emptyText) {
     sec.className = "bucket" + (open ? " open" : "") + (bsel ? " selected" : "");
     sec.dataset.bucket = b.id;
     const miss = b.missing ? ` <span class="tag errata" title="${esc(t("missingNotice", b.missing))}">⚠${b.missing}</span>` : "";
+    const linked = b.personal ? linkedFolders().find((f) => f.bucket_id === b.id) : null;
     sec.innerHTML = `<div class="bucket-head"><button type="button" class="chev" aria-expanded="${open}">${open ? "▾" : "▸"}</button>
       <input type="checkbox" class="bucket-cb" ${bsel ? "checked" : ""} title="${esc(t("scopeLine", bucketName(b)))}">
-      <span class="bucket-name" title="${esc(bucketName(b))}">${esc(bucketName(b))}</span>${miss}<span class="count">${docs.length}</span></div>`;
+      ${linked ? `<span class="link-ic" title="${esc(t("personalLinked", linked.path))}">🔗</span>` : ""}<span class="bucket-name" title="${esc(linked ? linked.path : bucketName(b))}">${esc(bucketName(b))}</span>${miss}<span class="count">${docs.length}</span>${linked
+        ? `<button type="button" class="ghost icon small bucket-unlink" title="${esc(t("personalUnlink"))}" aria-label="${esc(t("personalUnlink"))}">✕</button>` : ""}</div>`;
+    if (linked) $(".bucket-unlink", sec).addEventListener("click", () => unlinkPersonalFolder(linked));
     const list = document.createElement("div");
     list.className = "bucket-docs";
     list.hidden = !open;
@@ -771,7 +834,7 @@ function fillBuckets(wrap, buckets, q, emptyText) {
       $("input", row).addEventListener("change", (e) => { e.target.checked ? state.selected.add(doc.id) : state.selected.delete(doc.id); renderCollections(); });
       a.addEventListener("click", (e) => { e.preventDefault(); showDocument(doc.id); });
       const del = $(".doc-del", row);
-      if (del) del.addEventListener("click", () => deletePersonal(doc));
+      if (del) del.addEventListener("click", () => deletePersonal(doc, !!linked));
       list.append(row);
     }
     $(".chev", sec).addEventListener("click", () => toggleBucket(b.id));
@@ -784,7 +847,7 @@ function fillBuckets(wrap, buckets, q, emptyText) {
     sec.append(list);
     wrap.append(sec);
   }
-  if (!wrap.children.length) wrap.innerHTML = `<p class="muted small">${esc(q ? t("nothingFound") : emptyText)}</p>`;
+  if (!wrap.children.length && (q || emptyText)) wrap.innerHTML = `<p class="muted small">${esc(q ? t("nothingFound") : emptyText)}</p>`;
 }
 
 function renderMissing() {
@@ -1161,12 +1224,13 @@ function claimReasons(c) {
     let key = "rc_" + k.code;
     if (k.code === "no_citation" && k.inference) key = "rc_no_citation_inf";
     if (k.code === "value_not_found" && (k.elsewhere || []).length) key = "rc_value_elsewhere";
+    if (k.code === "judge_cut_off" && k.thinking) key = "rc_judge_cut_off_thinking";
     const vals = { value: k.value ?? "", sources: citeRefs(k.sources), source: k.source ?? "", elsewhere: citeRefs(k.elsewhere),
-      values: (k.values || []).join(", ") };
+      values: (k.values || []).join(", "), tokens: k.tokens ?? "", thinking: k.thinking ?? "" };
     let s = t(key);
     if (s === key) return k.detail || k.code;
     s = s.replace(/\{(\w+)\}/g, (_, n) => vals[n] ?? "");
-    if (k.detail) s += " " + t(k.code === "judge_error" || k.code === "judge_no_verdict" ? "rcTechnical" : "rcDetail", k.detail);
+    if (k.detail && k.code !== "judge_cut_off") s += " " + t(k.code === "judge_error" || k.code === "judge_no_verdict" ? "rcTechnical" : "rcDetail", k.detail);
     return s;
   });
 }
@@ -1191,12 +1255,17 @@ function renderVerification(el, v, confidence) {
   const notes = [];
   if (v.status !== "clarify") {
     notes.push(!j.enabled ? t("judgeOff") : j.completed ? t("judgeDone") : j.called ? t("judgeFailed") : t("judgeNone"));
+    if (j.retried) notes.push(t("judgeRetried", j.retried));
     if (v.regenerated) notes.push(t("vRegenerated"));
     if (v.citation_fixes) notes.push(t("vCiteFixed", v.citation_fixes));
     if (confidence != null) notes.push(`rerank ${(confidence * 100).toFixed(0)}%`);
   }
   html += `<div class="small">${notes.map(esc).join(" · ")}</div>`;
-  if ((j.errors || []).length) html += `<div class="small muted">${esc(j.errors.join(" | "))}</div>`;
+  // Only what stayed unresolved (answers saved by older versions list every failed try); a cut-off reply in words.
+  const probs = j.problems === undefined ? null : j.problems.filter((k) => k.code === "judge_cut_off")
+    .map((k) => k.thinking ? t("judgeCutThinking", k.tokens, k.thinking) : t("judgeCut", k.tokens));
+  const errs = probs === null ? (j.errors || []) : probs.concat((j.errors || []).filter((e) => !/JudgeCutOff/.test(e)));
+  if (errs.length) html += `<div class="small muted judge-errors">${esc(errs.join(" | "))}</div>`;
   const failed = (v.details || []).filter((c) => c.outcome === "removed" || c.outcome === "flagged");
   if (failed.length) {
     html += `<details><summary>${t("removedList")} (${failed.length})</summary><ul>${failed.map((c) =>
@@ -2391,6 +2460,81 @@ function renderAdminLibrary() {
   const buckets = (i.buckets || []).filter((b) => !b.personal).map((b) => `<span class="tag">${esc(bucketName(b))} · ${b.documents}</span>`).join(" ");
   $("#adm-roots").innerHTML = `<ul class="roots-list">${rows.join("")}</ul>${roots.length ? "" : `<p class="muted">${esc(t("rootsNone"))}</p>`}`
     + `<div class="roots-buckets"><b>${esc(t("rootsBuckets"))}:</b> ${buckets || "—"}</div>`;
+  renderAdminDocs();
+  loadRemoved();
+}
+
+// The shared library's documents in Admin: one can be taken out of the index (its file stays where it is and
+// later scans leave it out); the removed ones are listed below and can be restored.
+const isPersonalDoc = (d) => String(d.bucket_id || "").startsWith("kisisel:");
+const ADMIN_DOCS_SHOWN = 300;
+function renderAdminDocs() {
+  const i = state.info || {};
+  const docs = state.docs.filter((d) => !isPersonalDoc(d));
+  const q = fold($("#adm-doc-filter").value.trim());
+  const hits = q ? docs.filter((d) => fold(`${d.title} ${d.bucket || ""} ${d.rel_path || d.path}`).includes(q)) : docs;
+  const canRemove = !i.read_only;
+  $("#adm-docs-count").textContent = `(${docs.length})`;
+  const box = $("#adm-docs");
+  box.innerHTML = (canRemove ? "" : `<p class="muted">${esc(t("admDocsReadOnly"))}</p>`)
+    + (hits.length ? "" : `<p class="muted">${esc(t("admDocsNone"))}</p>`);
+  const ul = document.createElement("ul");
+  ul.className = "adm-doc-list";
+  for (const d of hits.slice(0, ADMIN_DOCS_SHOWN)) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="adm-doc-name"></span> <span class="muted adm-doc-loc"></span>${canRemove
+      ? ` <button type="button" class="ghost icon small adm-doc-del" title="${esc(t("sharedDelete"))}" aria-label="${esc(t("sharedDelete"))}">🗑</button>` : ""}`;
+    $(".adm-doc-name", li).textContent = d.title;
+    $(".adm-doc-loc", li).textContent = docLocation(d);
+    const del = $(".adm-doc-del", li);
+    if (del) del.addEventListener("click", () => removeShared(d));
+    ul.append(li);
+  }
+  box.append(ul);
+  if (hits.length > ADMIN_DOCS_SHOWN) box.insertAdjacentHTML("beforeend", `<p class="muted">${esc(t("admDocsMore", hits.length - ADMIN_DOCS_SHOWN))}</p>`);
+}
+async function removeShared(doc) {
+  if (!confirm(t("sharedDeleteConfirm", doc.title))) return;
+  const st = $("#adm-docs-status");
+  try {
+    await api(`/api/library/documents/${doc.id}`, { method: "DELETE" });
+    st.textContent = t("sharedDeleted", doc.title);
+    $("#adm-removed-box").open = true;   // where it went, and how it comes back
+    state.selected.delete(doc.id);
+    await loadInfo();
+    await loadDocs();
+    renderAdminDocs();
+    loadRemoved();
+  } catch (e) { st.textContent = `${t("errorPrefix")}: ${e.message}`; }
+}
+async function loadRemoved() {
+  const box = $("#adm-removed");
+  let list = [];
+  try { list = await getJSON("/api/library/removed"); } catch (e) { box.innerHTML = `<p class="bad">${esc(e.message)}</p>`; return; }
+  $("#adm-removed-count").textContent = list.length ? `(${list.length})` : "";
+  if (!list.length) { box.innerHTML = `<p class="muted">${esc(t("admRemovedNone"))}</p>`; return; }
+  const ro = (state.info || {}).read_only;
+  box.innerHTML = "";
+  const ul = document.createElement("ul");
+  ul.className = "adm-doc-list";
+  for (const e of list) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="adm-doc-name"></span> <span class="muted adm-doc-loc"></span> <span class="muted">${esc(fmtTime(e.removed_at))}</span>${ro
+      ? "" : ` <button type="button" class="ghost small adm-restore">${esc(t("restore"))}</button>`}`;
+    $(".adm-doc-name", li).textContent = e.title;
+    $(".adm-doc-loc", li).textContent = [e.bucket || t("generalBucket"), e.rel_path].join(" / ");
+    const b = $(".adm-restore", li);
+    if (b) b.addEventListener("click", async () => {
+      b.disabled = true;
+      try {
+        const r = await postJSON("/api/library/removed/restore", { path: e.path });
+        loadRemoved();
+        await pollJob(r.job, t("restoring"));
+      } catch (err) { b.disabled = false; alert(`${t("errorPrefix")}: ${err.message}`); }
+    });
+    ul.append(li);
+  }
+  box.append(ul);
 }
 function renderTraces() {
   const box = $("#trace-list");
@@ -2459,13 +2603,39 @@ async function uploadPersonal(files) {
     catch (e) { alert(`${t("errorPrefix")}: ${e.message}`); }
   }
 }
-async function deletePersonal(doc) {
-  if (!confirm(t("personalDeleteConfirm", doc.title))) return;
+async function addPersonalFolder() {
+  const p = desk() ? await desk().pick_folder() : prompt(t("pickFolderPrompt"), "");
+  if (!p) return;
+  const st = $("#personal-status");
+  try {
+    const r = await postJSON("/api/personal/folder", { path: p });
+    st.textContent = t("personalFolderAdded", p.split(/[\\/]/).filter(Boolean).pop() || p);
+    st.hidden = false;
+    await loadInfo();
+    renderCollections();
+    await pollJob(r.job, t("personalIndexing"));
+  } catch (e) { alert(`${t("errorPrefix")}: ${e.message}`); }
+}
+async function unlinkPersonalFolder(f) {
+  if (!confirm(t("personalUnlinkConfirm", f.name))) return;
+  const st = $("#personal-status");
+  try {
+    const r = await api(`/api/personal/folders/${f.id}`, { method: "DELETE" }).then((x) => x.json());
+    st.textContent = t("personalUnlinked", f.name, r.removed);
+    st.hidden = false;
+    if (f.bucket_id) state.selectedBuckets.delete(f.bucket_id);
+    await loadInfo();
+    await loadDocs();
+  } catch (e) { alert(`${t("errorPrefix")}: ${e.message}`); }
+}
+async function deletePersonal(doc, linked = false) {
+  if (!confirm(t(linked ? "personalDeleteLinkedConfirm" : "personalDeleteConfirm", doc.title))) return;
   const st = $("#personal-status");
   try {
     const r = await api(`/api/personal/documents/${doc.id}`, { method: "DELETE" }).then((x) => x.json());
     st.textContent = r.trash === "recycle_bin" ? t("personalDeletedBin", doc.title)
-      : r.trash === "folder" ? t("personalDeletedFolder", doc.title, r.path) : t("personalDeletedIndex", doc.title);
+      : r.trash === "folder" ? t("personalDeletedFolder", doc.title, r.path)
+      : r.trash === "kept" ? t("personalDeletedKept", doc.title) : t("personalDeletedIndex", doc.title);
     st.hidden = false;
     state.selected.delete(doc.id);
     await loadInfo();
@@ -2478,9 +2648,25 @@ async function deletePersonal(doc) {
 const clampSplit = (r) => Math.min(0.85, Math.max(0.15, Number.isFinite(r) ? r : 0.5));
 function applySrcSplit() {
   const r = clampSplit(state.ui.srcSplit);
-  $("#src-shared").style.flex = `${r} 1 0`;
-  $("#src-personal").style.flex = `${1 - r} 1 0`;
+  const c = Object.assign({ shared: false, personal: false }, state.ui.srcCollapsed);
+  for (const [pane, closed] of Object.entries(c)) {
+    $(`#src-${pane}`).classList.toggle("collapsed", closed);
+    const btn = $(`.src-toggle[data-pane=${pane}]`);
+    btn.setAttribute("aria-expanded", String(!closed));
+    btn.title = t("srcCollapse");
+  }
+  // a collapsed list is only its title; the open one takes the room (both open: the bar divides it)
+  $("#src-shared").style.flex = c.shared ? "0 0 auto" : c.personal ? "1 1 0" : `${r} 1 0`;
+  $("#src-personal").style.flex = c.personal ? "0 0 auto" : c.shared ? "1 1 0" : `${1 - r} 1 0`;
+  $("#src-splitter").hidden = c.shared || c.personal;
   $("#src-splitter").setAttribute("aria-valuenow", String(Math.round(r * 100)));
+}
+function toggleSrcPane(pane) {
+  const c = Object.assign({ shared: false, personal: false }, state.ui.srcCollapsed);
+  c[pane] = !c[pane];
+  state.ui.srcCollapsed = c;
+  saveUi();
+  applySrcSplit();
 }
 function bindSrcSplitter() {
   const sp = $("#src-splitter");
@@ -2580,6 +2766,9 @@ function bind() {
     .catch((e) => { $("#usage-status").textContent = `${t("errorPrefix")}: ${e.message}`; }));
   $("#btn-pick-usage").addEventListener("click", () => pickFolder($("#usage-dir")));
   $("#btn-personal-add").addEventListener("click", addPersonalFiles);
+  $("#btn-personal-folder").addEventListener("click", addPersonalFolder);
+  $$(".src-toggle").forEach((b) => b.addEventListener("click", () => toggleSrcPane(b.dataset.pane)));
+  $("#adm-doc-filter").addEventListener("input", renderAdminDocs);
   $("#btn-personal-rescan").addEventListener("click", rescanPersonal);
   $("#personal-change").addEventListener("click", (e) => { e.preventDefault(); changePersonalDir(); });
   bindSrcSplitter();

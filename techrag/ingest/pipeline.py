@@ -305,7 +305,7 @@ class Ingestor:
                 raise ValueError("folders outside the library are added as document folders (add-folder)")
             self._outside_file(target, rel_target, rebuild, report)
         else:
-            scan = scan_root(root)
+            scan = scan_root(root, skip_rels=self.store.excluded_rels(None))
             docs = [d for d in self.store.root_documents(None) if not Path(d.path).is_absolute()]
             if target.resolve() != root.resolve():
                 prefix = "" if rel_target == "." else rel_target
@@ -323,7 +323,8 @@ class Ingestor:
 
     def sync_root(self, root_id: int, rebuild: bool = False, report: Optional[IngestReport] = None,
                   finish: bool = True) -> IngestReport:
-        """A document folder the user picked: read in place, buckets from its top-level folders."""
+        """A document folder the user picked: read in place, buckets from its top-level folders (or the whole
+        folder as one bucket, for a root of kind 'bucket'). Documents removed on request are left out."""
         start = time.time()
         r = self.store.root(root_id)
         if r is None:
@@ -332,7 +333,9 @@ class Ingestor:
         report = report if report is not None else IngestReport()
         self._begin_run(report)
         self.status({"phase": "scan", "root": r["path"]})
-        scan = scan_root(r["path"], exclude=(self.cfg.library_dir,))
+        scan = scan_root(r["path"], exclude=(self.cfg.library_dir,),
+                         single_bucket=(r.get("label") or Path(r["path"]).name) if r.get("kind") == "bucket" else "",
+                         skip_rels=self.store.excluded_rels(root_id))
         if not scan.reachable:
             self.progress(f"folder not reachable, nothing changed: {r['path']} ({scan.error})")
             with self.gate.write():
@@ -363,6 +366,22 @@ class Ingestor:
             try:
                 self.sync_root(r["id"], rebuild, report, finish=False)
             except Exception as exc:
+                report.failed[r["path"]] = scrub(f"{exc.__class__.__name__}: {exc}")
+        report.seconds = time.time() - start
+        self._finish(report)
+        return report
+
+    def sync_roots(self, root_ids: list[int], rebuild: bool = False) -> IngestReport:
+        """Several document folders as one run (the personal folder and the folders linked to it)."""
+        start = time.time()
+        report = IngestReport()
+        for rid in root_ids:
+            try:
+                self.sync_root(rid, rebuild, report, finish=False)
+            except IngestStopped:
+                raise
+            except Exception as exc:
+                r = self.store.root(rid) or {"path": f"#{rid}"}
                 report.failed[r["path"]] = scrub(f"{exc.__class__.__name__}: {exc}")
         report.seconds = time.time() - start
         self._finish(report)

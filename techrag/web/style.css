@@ -85,6 +85,23 @@ body.narrow .viewer { position: fixed; z-index: 21; right: 8px; top: 52px; botto
 
 .sources { display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
 .src-group { margin: 4px 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.src-toggle { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; text-transform: inherit;
+  letter-spacing: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.src-toggle::before { content: "▾"; font-size: 11px; width: 10px; display: inline-block; }
+.src-toggle[aria-expanded="false"]::before { content: "▸"; }
+.src-toggle:hover { color: var(--text); }
+.src-pane.collapsed { min-height: 0; }
+.src-pane.collapsed > :not(.src-group) { display: none; }
+.link-ic { font-size: 11px; cursor: help; }
+.bucket-head .bucket-unlink { margin-left: 2px; padding: 0 4px; font-size: 11px; color: var(--muted); }
+.bucket-head .bucket-unlink:hover { color: var(--bad); }
+.linked-empty .bucket-head { padding-left: 4px; }
+.adm-docs-box { margin: 8px 0; }
+.adm-docs-box > summary { cursor: pointer; font-weight: 600; }
+.adm-doc-list { list-style: none; padding: 0; margin: 6px 0; max-height: 260px; overflow: auto; }
+.adm-doc-list li { display: flex; align-items: center; gap: 6px; padding: 2px 0; border-bottom: 1px solid var(--border); }
+.adm-doc-list .adm-doc-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.adm-doc-list .adm-doc-loc { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .personal-box { display: flex; flex-direction: column; gap: 4px; }
 .personal-box .row { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
 .personal-box button { font-size: 12.5px; padding: 4px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

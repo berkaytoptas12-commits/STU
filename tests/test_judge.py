@@ -8,7 +8,7 @@ import httpx
 
 from conftest import judge_calls
 from fakeserver import sources_in
-from techrag.engine import JUDGE_REPLY_BASE, JUDGE_REPLY_PER_CLAIM
+from techrag.engine import JUDGE_REPLY_BASE, JUDGE_REPLY_PER_CLAIM, JUDGE_RETRY_REPLY
 from techrag.prompts import JUDGE_SYSTEM
 from techrag.retrieval import Passage
 from techrag.tools import SourceRegistry
@@ -102,7 +102,32 @@ def test_a_cut_off_reply_is_not_a_verdict(engine, fake):
     fake.judge = judge
     fin = final(engine, "DDR5 tRFC değeri nedir?")
     v = fin["verification"]
-    assert v["status"] == "supported" and any("cut off" in e for e in v["judge"]["errors"])
+    assert v["status"] == "supported" and v["judge"]["completed"]
+    assert v["judge"]["errors"] == [] and v["judge"]["problems"] == [], "a failure a retry settled is not listed"
+    assert v["judge"]["retried"] == 2, "but counted"
+    kept = [c for c in v["details"] if c["outcome"] == "kept"]
+    assert kept and not any(k["code"].startswith("judge_") for c in kept for k in c.get("codes", [])), \
+        "the settled claims carry no judge error"
+    retries = [c["body"]["max_tokens"] for c in judge_calls(fake)][1:]
+    assert retries and min(retries) >= JUDGE_RETRY_REPLY, "a cut-off verdict is asked again with more room"
+
+
+def test_a_judge_that_keeps_thinking_until_the_limit_is_reported(engine, fake):
+    fake.answer = _many_claims_answer(1)
+
+    def judge(msgs):   # every reply: thinking until the limit, no verdict
+        events = [{"choices": [{"delta": {"reasoning_content": "Let me think about it. " * 40}}]},
+                  {"choices": [{"delta": {}, "finish_reason": "length"}]}]
+        body = "".join(f"data: {json.dumps(e)}\n\n" for e in events) + "data: [DONE]\n\n"
+        return httpx.Response(200, text=body, headers={"content-type": "text/event-stream"})
+    fake.judge = judge
+    v = final(engine, "DDR5 tRFC değeri nedir?")["verification"]
+    assert not v["judge"]["completed"] and v["status"] != "supported", "a cut-off reply is never a verdict"
+    probs = v["judge"]["problems"]
+    assert probs and probs[0]["code"] == "judge_cut_off" and probs[0]["thinking"] > 0
+    assert any("thinking" in e for e in v["judge"]["errors"])
+    failed = [c for c in v["details"] if c["status"] == "unverified"]
+    assert failed and failed[0]["codes"][-1]["code"] == "judge_cut_off" and failed[0]["codes"][-1]["thinking"] > 0
 
 
 def test_server_context_length_is_used_when_smaller(engine, fake, cfg, monkeypatch):
