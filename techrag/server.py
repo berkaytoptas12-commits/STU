@@ -310,7 +310,9 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 raise HTTPException(400, "folder not found")
             except OSError as exc:
                 raise HTTPException(400, f"the file could not be written: {exc.__class__.__name__}")
-            update_settings(state["cfg"], {"org": {"path": str(Path(out["file"]).parent), "asked": True}})
+            # "others open it read-only" is for the others: the admin's own way of opening it is kept as their own
+            update_settings(state["cfg"], {"org": {"path": str(Path(out["file"]).parent), "asked": True},
+                                           "read_only": state["cfg"].read_only})
             state["cfg"].org.path, state["cfg"].org.asked = str(Path(out["file"]).parent), True
         return out
 

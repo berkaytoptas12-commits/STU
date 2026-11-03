@@ -375,6 +375,9 @@ her şey burada toplanır):
   "Kaydet" düğmesi vardır.
 * **Ortak kütüphane:** ortak dosyaların nereden geldiği (kütüphane klasörü, eklenen belge klasörleri ve belge
   sayıları, bucket'lar), belge klasörü ekleme, yeniden tarama, kalite raporu, kütüphane açma/yayımlama.
+  **Kütüphane klasörü** alanına yazılan veya "…" ile seçilen klasör **Aç** ile uygulanır ve kaydedilir (yeni bir sohbet
+  başlar). Uygulanmamış bir değişiklik alanın altında belirtilir; Admin penceresi değişiklik uygulanmadan kapatılırsa
+  açılıp açılmayacağı sorulur. "Salt-okunur aç" yalnızca indekslenmiş bir kütüphane (`index.sqlite`) için geçerlidir.
   **Belgeler** bölümünde ortak kütüphanenin belgeleri aranıp **🗑** ile kaldırılabilir: belge yalnızca indeksten
   çıkar, **dosyası silinmez** ve yerinde kalır (belge klasöründe de kütüphanenin kendi klasöründe de), sonraki
   taramalar onu atlar. Kaldırma kütüphaneyi kullanan herkes için geçerlidir; salt-okunur açılmış kütüphanede ve
@@ -498,8 +501,9 @@ her şey burada toplanır):
 
 ### PDF'de kanıt vurgulama
 
-0. **İçindekiler:** PDF'in sol tarafında açılır-kapanır bir şerittir; alttaki şeritteki **☰** ile açılıp kapanır,
-   PDF ile arasındaki çizgi sürüklenerek (veya ←/→) genişliği ayarlanır (sayfa panelin en az %40'ını korur). Bir
+0. **İçindekiler:** PDF'in sol tarafında açılır-kapanır bir şerittir. Tek düğmeyle açılıp kapanır: açıkken
+   başlığındaki **‹** kapatır, kapalıyken sayfanın sol üstündeki **☰ İçindekiler** açar; **Ctrl+B** ve alttaki
+   şeritteki **☰** de aynı işi yapar. PDF ile arasındaki çizgi sürüklenerek (veya ←/→) genişliği ayarlanır (sayfa panelin en az %40'ını korur). Bir
    başlığa tıklamak o sayfaya gider. Sol listeden açılan belgede açık, atıftan açılan kaynakta kapalı başlar; açık/kapalı
    durumu ve genişlik bir sonraki açılışta korunur. PDF'in içindekiler bilgisi yoksa şerit görünmez.
 1. Cevaptaki **[n]** atfına tıklayın: sağdaki kaynak paneli doğru dokümanı ve sayfayı açar.

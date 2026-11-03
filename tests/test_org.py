@@ -141,3 +141,16 @@ def test_admin_saves_and_a_first_start_uses_them(client, cfg, tmp_path):
     assert r["ok"] and r["org"]["loaded"] and r["org"]["source"] == "user"
     r = client.post("/api/org/use", json={"path": ""}).json()
     assert r["ok"] and load_user_settings()["org"]["asked"] is True
+
+
+def test_the_admin_keeps_opening_the_library_their_own_way(client, cfg, tmp_path, monkeypatch):
+    """"Others open it read-only" is for the others: after a restart the admin's own library is not read-only."""
+    share = tmp_path / "paylasim"
+    share.mkdir()
+    r = client.post("/api/org/save", json={"path": str(share)}).json()
+    assert yaml.safe_load((share / org.ORG_FILE).read_text(encoding="utf-8"))["read_only"] is True
+    assert r["file"] and load_user_settings()["read_only"] is False
+    monkeypatch.delenv("TECHRAG_NO_USER_SETTINGS", raising=False)
+    org._reset()
+    restarted = load_config()
+    assert restarted.read_only is False and org.STATUS["loaded"]

@@ -250,7 +250,11 @@ const I18N = {
     personalUnlinked: "“{0}” klasörü çıkarıldı ({1} belge indeksten kaldırıldı; dosyalara dokunulmadı).",
     personalFolderEmpty: "henüz belge yok", personalFolderAdded: "“{0}” klasörü eklendi; içindeki belgeler indeksleniyor.",
     personalDeleteLinkedConfirm: "“{0}” kişisel kütüphaneden kaldırılsın mı?\n\nDosya bağlı klasörde olduğu gibi kalır; yalnızca indeksten çıkar ve sonraki taramalarda atlanır.",
-    srcCollapse: "Daralt / genişlet", tocShow: "İçindekiler (aç / kapat)", tocResize: "İçindekiler genişliğini ayarla (sürükleyin; ←/→; çift tık: varsayılan)",
+    libPending: "Klasör değişikliği henüz uygulanmadı: uygulamak için “Aç”a basın.",
+    libPendingConfirm: "Kütüphane klasörünü “{0}” olarak değiştirdiniz ama açmadınız. Şimdi açılsın mı?",
+    libNoIndex: "Bu klasörde indeks (index.sqlite) yok. Salt-okunur yalnızca indekslenmiş bir kütüphane açılabilir; yeni bir kütüphane için “Salt-okunur aç” işaretini kaldırın.",
+    tocClose: "İçindekileri kapat (Ctrl+B)",
+    srcCollapse: "Daralt / genişlet", tocShow: "İçindekiler (aç / kapat, Ctrl+B)", tocResize: "İçindekiler genişliğini ayarla (sürükleyin; ←/→; çift tık: varsayılan)",
     orgTitle: "Kurum ayarları", orgFolder: "Kaydedileceği klasör (ağ klasörü; ör. ortak kütüphane klasörü)",
     orgHint: "Kayıtlı ayarlarınız (model sunucuları ve modeller, cevaplama ve gelişmiş ayarlar, bağlantı güvenliği, ortak kütüphane klasörü, kullanım günlüğü klasörü) bu klasöre kurum-ayarlari.yaml olarak yazılır. API anahtarı ve kişisel klasörler yazılmaz. Exe'nin yanına da bu klasörü gösteren SayisalTasarimUzmani.kurum.txt bırakılır: exe'yi bu dosyayla birlikte verdiğiniz kullanıcılar ayarları buradan alır, yalnızca API anahtarlarını girer. Kurum ayarları varsayılandır, kullanıcı değiştirebilir. Önce yukarıdaki ayarları kaydedin.",
     orgReadOnly: "Diğer kullanıcılar ortak kütüphaneyi salt-okunur açsın", orgSave: "Kurum ayarlarını kaydet",
@@ -523,7 +527,11 @@ const I18N = {
     personalUnlinked: "Folder “{0}” taken out ({1} documents removed from the index; no file touched).",
     personalFolderEmpty: "no documents yet", personalFolderAdded: "Folder “{0}” added; its documents are being indexed.",
     personalDeleteLinkedConfirm: "Remove “{0}” from your personal library?\n\nThe file stays in the linked folder; it only leaves the index and later scans leave it out.",
-    srcCollapse: "Collapse / expand", tocShow: "Contents (show / hide)", tocResize: "Resize the contents (drag; ←/→; double click: default)",
+    libPending: "The folder change is not applied yet: press “Open” to apply it.",
+    libPendingConfirm: "You changed the library folder to “{0}” but did not open it. Open it now?",
+    libNoIndex: "This folder holds no index (index.sqlite). Only an indexed library can be opened read-only; for a new library untick “Open read-only”.",
+    tocClose: "Hide the contents (Ctrl+B)",
+    srcCollapse: "Collapse / expand", tocShow: "Contents (show / hide, Ctrl+B)", tocResize: "Resize the contents (drag; ←/→; double click: default)",
     orgTitle: "Organization settings", orgFolder: "Folder to save them to (a network folder; e.g. the shared library's)",
     orgHint: "Your saved settings (model servers and models, answering and advanced settings, connection security, the shared library folder, the usage log folder) are written into this folder as kurum-ayarlari.yaml. Never the API key or personal folders. Next to the exe, SayisalTasarimUzmani.kurum.txt pointing to this folder is left: users you give the exe with this file get the settings from here and only enter their API key. Organization settings are defaults; users can change them. Save the settings above first.",
     orgReadOnly: "Other users open the shared library read-only", orgSave: "Save organization settings",
@@ -1096,7 +1104,7 @@ const clampToc = (w, shell) => Math.round(Math.min(Math.max(TOC_MIN, Number.isFi
 function addToc(shell, box, toc, key, go) {
   const side = document.createElement("aside");
   side.className = "toc-side";
-  side.innerHTML = `<div class="toc-head">${esc(t("toc"))}</div><ul class="toc">${toc.slice(0, 2000).map(([lvl, title, page]) =>
+  side.innerHTML = `<div class="toc-head"><span>${esc(t("toc"))}</span><button type="button" class="ghost icon small toc-close" title="${esc(t("tocClose"))}" aria-label="${esc(t("tocClose"))}">‹</button></div><ul class="toc">${toc.slice(0, 2000).map(([lvl, title, page]) =>
     `<li style="padding-left:${Math.max(0, lvl - 1) * 12}px"><a href="#" data-page="${+page}" title="${esc(title)}"></a><span class="pg">${+page}</span></li>`).join("")}</ul>`;
   $$("a", side).forEach((a, i) => { a.textContent = toc[i][1]; a.addEventListener("click", (e) => { e.preventDefault(); go(+a.dataset.page); }); });
   const bar = document.createElement("div");
@@ -1107,19 +1115,29 @@ function addToc(shell, box, toc, key, go) {
   bar.title = t("tocResize");
   shell.prepend(side, bar);
   const btn = $(".pv-toc", box);
+  const opener = document.createElement("button");
+  opener.type = "button";
+  opener.className = "toc-open";
+  opener.textContent = `☰ ${t("toc")}`;
+  opener.title = t("tocShow");
+  box.append(opener);
   const apply = () => {
     const opened = !!(state.ui.tocOpen || {})[key];
     side.hidden = bar.hidden = !opened;
+    opener.hidden = opened;
     side.style.width = `${clampToc(state.ui.tocW, shell)}px`;
     btn.setAttribute("aria-pressed", String(opened));
     btn.classList.toggle("on", opened);
   };
-  btn.hidden = false;
-  btn.addEventListener("click", () => {
+  const toggle = () => {
     state.ui.tocOpen = Object.assign({ doc: true, src: false }, state.ui.tocOpen, { [key]: !(state.ui.tocOpen || {})[key] });
     saveUi();
     apply();
-  });
+  };
+  btn.hidden = false;
+  btn.addEventListener("click", toggle);
+  opener.addEventListener("click", toggle);
+  $(".toc-close", side).addEventListener("click", toggle);
   const set = (w) => { state.ui.tocW = clampToc(w, shell); side.style.width = `${state.ui.tocW}px`; };
   bar.addEventListener("pointerdown", (e) => {
     e.preventDefault();
@@ -2561,6 +2579,45 @@ async function pickFolder(input) {
   if (desk()) { const p = await desk().pick_folder(); if (p) input.value = p; }
   else { const p = prompt(t("pickFolderPrompt"), input.value); if (p) input.value = p; }
 }
+// A typed or picked library folder is applied with "Open" (it starts a new chat: ids belong to a library). A
+// change not applied yet is pointed out, and offered when Admin is closed - it is never dropped silently.
+function libPendingPath() {
+  const i = state.info || {};
+  const v = $("#lib-new-path").value.trim();
+  if (!v) return "";
+  return v !== (i.library || "") || $("#lib-readonly").checked !== !!i.read_only ? v : "";
+}
+function showLibPending() {
+  const el = $("#lib-pending");
+  el.hidden = !libPendingPath();
+  el.textContent = el.hidden ? "" : t("libPending");
+}
+async function openLibraryNow() {
+  const st = $("#lib-status");
+  st.classList.remove("bad");
+  try {
+    const r = await postJSON("/api/library/open", { path: $("#lib-new-path").value.trim(), read_only: $("#lib-readonly").checked });
+    st.textContent = r.error ? `${t("errorPrefix")}: ${r.error}` : t("opened");
+    st.classList.toggle("bad", !!r.error);
+    if (!r.error) {  // document ids belong to a library: nothing selected or cited in the old one carries over
+      state.selected.clear();
+      state.selectedBuckets.clear();
+      newChat(t("newChatStarted"));
+      $("#tab-source").innerHTML = `<p class="muted">${esc(t("viewerEmpty"))}</p>`;
+      state.viewSeq++;
+    }
+    await loadInfo();
+    await loadDocs();
+    $("#lib-path").textContent = state.info.library;
+    renderAdminLibrary();
+    showLibPending();
+    return !r.error;
+  } catch (e) {
+    st.textContent = `${t("errorPrefix")}: ${/no index\.sqlite/.test(e.message) ? t("libNoIndex") : e.message}`;
+    st.classList.add("bad");
+    return false;
+  }
+}
 function fillLibrary() {
   const i = state.info;
   $("#lib-path").textContent = i ? i.library : "";
@@ -2568,6 +2625,7 @@ function fillLibrary() {
   $("#lib-new-path").value = i ? i.library : "";
   $("#lib-readonly").checked = !!(i && i.read_only);
   $("#lib-status").textContent = "";
+  showLibPending();
   const legacy = (i && i.legacy_documents) || 0;
   $("#lib-legacy").hidden = !legacy || (i && i.read_only);
   $("#lib-legacy-text").textContent = legacy ? t("legacyNotice", legacy) : "";
@@ -2932,25 +2990,24 @@ function bind() {
   $("#btn-eval-download").addEventListener("click", () => downloadText("/api/eval/questions", "questions.yaml")
     .catch((e) => { $("#eval-status").textContent = `${t("errorPrefix")}: ${e.message}`; }));
   $("#btn-fb-send").addEventListener("click", submitFeedback);
-  $("#btn-pick-lib").addEventListener("click", () => pickFolder($("#lib-new-path")));
-  $("#btn-pick-publish").addEventListener("click", () => pickFolder($("#lib-publish-path")));
-  $("#btn-open-lib").addEventListener("click", async () => {
-    try {
-      const r = await postJSON("/api/library/open", { path: $("#lib-new-path").value, read_only: $("#lib-readonly").checked });
-      $("#lib-status").textContent = r.error ? `${t("errorPrefix")}: ${r.error}` : t("opened");
-      if (!r.error) {  // document ids belong to a library: nothing selected or cited in the old one carries over
-        state.selected.clear();
-        state.selectedBuckets.clear();
-        newChat(t("newChatStarted"));
-        $("#tab-source").innerHTML = `<p class="muted">${esc(t("viewerEmpty"))}</p>`;
-        state.viewSeq++;
-      }
-      await loadInfo();
-      await loadDocs();
-      $("#lib-path").textContent = state.info.library;
-      renderAdminLibrary();
-    } catch (e) { $("#lib-status").textContent = `${t("errorPrefix")}: ${e.message}`; }
+  $("#btn-pick-lib").addEventListener("click", async () => { await pickFolder($("#lib-new-path")); showLibPending(); });
+  $("#lib-new-path").addEventListener("input", showLibPending);
+  $("#lib-readonly").addEventListener("change", showLibPending);
+  $("#dlg-admin").addEventListener("close", async () => {
+    const p = libPendingPath();
+    if (!p) return;
+    if (confirm(t("libPendingConfirm", p))) {
+      if (!(await openLibraryNow())) { openAdmin("adm-library"); }   // the reason is shown there
+    } else fillLibrary();
   });
+  // Ctrl+B: the contents of the PDF shown in the source panel
+  document.addEventListener("keydown", (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || (e.key !== "b" && e.key !== "B")) return;
+    const b = $("#tab-source .pv-toc:not([hidden])");
+    if (b) { e.preventDefault(); b.click(); }
+  });
+  $("#btn-pick-publish").addEventListener("click", () => pickFolder($("#lib-publish-path")));
+  $("#btn-open-lib").addEventListener("click", () => { openLibraryNow(); });
   $("#btn-publish").addEventListener("click", async () => {
     try { const r = await postJSON("/api/library/publish", { dest: $("#lib-publish-path").value }); $("#lib-status").textContent = t("published", r.path); }
     catch (e) { $("#lib-status").textContent = `${t("errorPrefix")}: ${e.message}`; }

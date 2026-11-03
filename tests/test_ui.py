@@ -1016,3 +1016,40 @@ def test_admin_saves_the_organization_settings(ui, tmp_path):
     assert org.POINTER_FILE in status and "dağıtırken" in status
     assert (share / org.ORG_FILE).exists() and (tmp_path / "exe" / org.POINTER_FILE).exists()
     ui.wait_for_function("(p) => document.querySelector('#org-status').textContent.includes(p)", arg=str(share))
+
+
+def test_contents_open_and_close_with_one_button(ui):
+    ui.click("#collections .bucket-name >> nth=0")
+    ui.click("#collections .doc .doc-name >> nth=0")
+    ui.wait_for_selector("#tab-source .toc-side .toc a")
+    ui.click("#tab-source .toc-side .toc-close")
+    assert ui.is_hidden("#tab-source .toc-side")
+    opener = ui.locator("#tab-source .toc-open")
+    assert opener.is_visible() and "İçindekiler" in opener.inner_text(), "an open button over the page when closed"
+    opener.click()
+    assert ui.is_visible("#tab-source .toc-side") and ui.is_hidden("#tab-source .toc-open")
+    ui.click("#tab-source .page-view")
+    ui.keyboard.press("Control+b")
+    assert ui.is_hidden("#tab-source .toc-side"), "Ctrl+B"
+    ui.keyboard.press("Control+b")
+    assert ui.is_visible("#tab-source .toc-side")
+
+
+def test_a_changed_library_folder_is_not_dropped(ui, tmp_path, cfg):
+    new_lib = tmp_path / "yeni-kutuphane"
+    new_lib.mkdir()
+    _admin(ui, "adm-library")
+    assert ui.is_hidden("#lib-pending")
+    ui.check("#lib-readonly")
+    ui.fill("#lib-new-path", str(new_lib))
+    assert ui.is_visible("#lib-pending") and "Aç" in ui.inner_text("#lib-pending")
+    ui.click("#btn-open-lib")       # read-only needs an indexed library: said in words
+    ui.wait_for_function("() => document.querySelector('#lib-status').textContent.includes('index.sqlite')")
+    assert "Salt-okunur aç" in ui.inner_text("#lib-status")
+    ui.uncheck("#lib-readonly")
+    # closing Admin with the change not applied asks; yes opens it
+    ui.once("dialog", lambda d: d.accept())
+    ui.keyboard.press("Escape")
+    ui.wait_for_function("(p) => state.info && state.info.library === p", arg=str(new_lib.resolve()))
+    _admin(ui, "adm-library")
+    assert ui.input_value("#lib-new-path") == str(new_lib.resolve()) and ui.is_hidden("#lib-pending")

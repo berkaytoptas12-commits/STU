@@ -1,5 +1,19 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.12.1 — içindekiler tek düğmeyle, kütüphane klasörü değişikliği kaybolmuyor
+- **İçindekiler tek düğmeyle açılıp kapanır:** açıkken başlığındaki **‹** kapatır, kapalıyken sayfanın sol üstünde
+  **☰ İçindekiler** düğmesi görünür; **Ctrl+B** de açar/kapatır (alttaki şeritteki ☰ de duruyor).
+- **Kütüphane klasörü değişikliği kaybolmuyor:** Admin › Ortak kütüphane'de klasör alana yazılıp veya "…" ile seçilip
+  "Aç"a basılmadan pencere kapatılırsa değişiklik uygulanmıyor ve sessizce kayboluyordu. Artık uygulanmamış değişiklik
+  alanın altında belirtiliyor ve Admin kapatılırken "Şimdi açılsın mı?" diye soruluyor. "Salt-okunur aç" işaretliyken
+  indekssiz bir klasör açılamamasının nedeni de Türkçe yazılıyor.
+- **Düzeltme (0.12.0):** "Diğer kullanıcılar ortak kütüphaneyi salt-okunur açsın" seçiliyken kurum ayarlarını
+  kaydeden kişinin kendi kütüphanesi de bir sonraki açılışta salt-okunur açılıyordu. Kaydedenin kendi açma biçimi artık
+  kendi ayarı olarak korunuyor.
+- Doğrulanan: arayüz testleri (içindekilerin başlıktaki düğme, sayfa üstündeki düğme ve Ctrl+B ile açılıp kapanması;
+  uygulanmamış klasörün belirtilmesi, kapatırken sorulması ve açılınca kaydedilmesi; salt-okunur indekssiz klasör
+  mesajı) ve kurum ayarlarını kaydedenin kütüphanesinin yeniden açılışta salt-okunur olmaması.
+
 ### 0.12.0 — kurum ayarları ortak klasörde, içindekiler PDF'in solunda
 - **Kurum ayarları:** Admin › Ayarlar › **Kurum ayarları** › "Kurum ayarlarını kaydet" ile kayıtlı ayarlarınız (model
   sunucuları ve modeller, cevaplama ve gelişmiş ayarlar, bağlantı güvenliği, ortak kütüphane klasörü, kullanım günlüğü
