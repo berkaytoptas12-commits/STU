@@ -191,6 +191,29 @@ başkasına verince ayarlar onunla gitmez. Bunun için ayarlar bir kez **ortak b
   ayarlanmamışsa ilk açılışta bir kez "Kurum ayarları nerede?" diye sorulur ("Kurum ayarı kullanmıyorum" da
   seçilebilir).
 * **Ağ klasörüne ulaşılamazsa** (ör. dizüstü ağ dışında) son okunan kopya kullanılır ve üst şeritte belirtilir.
+
+### 2.5 Ağdaki ortak kütüphanenin yerel kopyası
+
+Ağ klasöründeki bir indeks SQLite tarafından sayfa sayfa (4 KB) ağ üzerinden okunur; her yeni soru anahtar kelime
+dizininin başka bölümlerini okuduğu için arama yerelde saniyeler sürerken ağda dakikalar sürebiliyordu. Ortak kütüphane
+**salt-okunur ve bir ağ klasöründen** (UNC yolu veya ağ sürücüsü) açıldığında uygulama indeksin (`index.sqlite`) bir
+kopyasını bu bilgisayara (`%LOCALAPPDATA%\SayisalTasarimUzmani\cache\mirror\…`) alır ve aramayı oradan yapar.
+Belgeler (PDF'ler) ağda kalır; bir sayfa yalnızca görüntülenirken okunur.
+
+* **Kopyalama:** büyük bloklarla, tek seferde (ağda hızlı yol). Kopya kullanılmadan önce denetlenir: kopyalanırken
+  ağdaki dosya değişmişse atılıp yeniden alınır, SQLite bütünlük denetiminden (`quick_check`) geçmeyen kopya
+  kullanılmaz. Kopya tamamlanmadan devreye girmez; yer yoksa alınmaz (neden yazılır).
+* **Güncellik:** ağdaki indeks dakikada bir denetlenir (sürüm damgası, boyut ve tarih: birkaç baytlık okuma). Kütüphane
+  ağda güncellenince (indeksleme, kaldırma, geri alma…) yeni kopya arka planda alınır ve uygulama ona geçer; o sırada
+  önceki kopya cevap vermeye devam eder, süren bir soru başladığı kopyayla biter. Eski kopya silinir.
+* **İlk açılış:** kopya hazır olana kadar ağdaki kütüphane kullanılır; sonraki açılışlarda kopya hemen kullanılır ve
+  arkadan denetlenir.
+* **Ağ yokken:** kopya çalışmaya devam eder (üst şeritte belirtilir); belge sayfaları ağa bağlanınca görüntülenir.
+* **Admin › Ortak kütüphane:** kopyanın durumu (güncel / alınıyor / alınamadı, boyut, son eşitleme), **Şimdi denetle**
+  ve kopyayı kapatma. Kütüphaneye yazan kişi (salt-okunur olmayan açış) her zaman ağdaki dosyayı kullanır.
+* Bedeli: her kullanıcının diskinde indeks büyüklüğünde yer (indeks belgelerin metnini içerir); kütüphane
+  güncellendikten sonra yeni kopya alınana kadar (en geç ~1 dakika + kopyalama süresi) önceki sürüm aranır.
+* Ayar: `paths.mirror` = `auto` (ağ klasörleri; varsayılan) | `on` | `off`.
 * Elle düzenlenmiş bir kurum dosyası API anahtarı, sunucu erişim anahtarı veya kişisel klasör yolu **koyamaz**; bu
   alanlar okunurken atılır.
 
@@ -727,6 +750,7 @@ girerek açıyorsa model sunucuları için **"Sistem proxy ayarlarını kullan"*
 techrag/
   desktop.py       exe giriş noktası: tek örnek, süreç içi FastAPI, gizli açılan pywebview sohbet penceresi,
                    gizle/göster, güvenli çıkış; argümanla CLI
+  mirror.py        ağdaki salt-okunur kütüphanenin indeksinin yerel kopyası, dakikada bir güncellik denetimi
   org.py           kurum ayarları: ortak klasördeki kurum-ayarlari.yaml, exe'nin yanındaki işaretçi, yerel kopya
   icon.py          uygulamanın dosya simgesi: launcher'ın mikroçip çizimi, derlemede .ico olarak yazılır
   launcher.py      mikroçip simgesi (Win32 katmanlı pencere, DPI/çoklu monitör, sağ tık menüsü, aç/gizle için

@@ -250,6 +250,15 @@ const I18N = {
     personalUnlinked: "“{0}” klasörü çıkarıldı ({1} belge indeksten kaldırıldı; dosyalara dokunulmadı).",
     personalFolderEmpty: "henüz belge yok", personalFolderAdded: "“{0}” klasörü eklendi; içindeki belgeler indeksleniyor.",
     personalDeleteLinkedConfirm: "“{0}” kişisel kütüphaneden kaldırılsın mı?\n\nDosya bağlı klasörde olduğu gibi kalır; yalnızca indeksten çıkar ve sonraki taramalarda atlanır.",
+    mirrorUse: "Ağdaki ortak kütüphanenin yerel kopyasını kullan (arama hızlanır)", mirrorSync: "Şimdi denetle",
+    mirrorReady: "Yerel kopya güncel ({0}; son eşitleme {1}). Ağdaki kütüphane dakikada bir denetleniyor; güncellenince yeni kopya kendiliğinden alınır.",
+    mirrorCopying: "Ortak kütüphanenin yerel kopyası alınıyor: %{0}. Bu sırada önceki kopya ya da ağdaki kütüphane kullanılıyor.",
+    mirrorNetwork: "Yerel kopya hazırlanıyor; şimdilik ağdaki kütüphane kullanılıyor.",
+    mirrorStale: "Kütüphanenin yeni sürümü alınamadı ({0}); önceki kopya kullanılıyor, kısa süre sonra yeniden denenecek.",
+    mirrorOffline: "Ağdaki ortak kütüphaneye ulaşılamıyor; yerel kopya kullanılıyor (son eşitleme {0}). Belge sayfaları ağa bağlanınca görüntülenebilir.",
+    mirrorError: "Yerel kopya alınamadı ({0}); ağdaki kütüphane kullanılıyor.",
+    mirrorOff: "Yerel kopya kapalı: arama ağdaki kütüphaneden yapılıyor.", mirrorWritable: "Kütüphane yazılabilir açık: yerel kopya kullanılmaz (yazan kişi ağdaki dosyayı kullanır).",
+    mirrorLocal: "Kütüphane bu bilgisayarda: yerel kopya gerekmiyor.",
     libPending: "Klasör değişikliği henüz uygulanmadı: uygulamak için “Aç”a basın.",
     libPendingConfirm: "Kütüphane klasörünü “{0}” olarak değiştirdiniz ama açmadınız. Şimdi açılsın mı?",
     libNoIndex: "Bu klasörde indeks (index.sqlite) yok. Salt-okunur yalnızca indekslenmiş bir kütüphane açılabilir; yeni bir kütüphane için “Salt-okunur aç” işaretini kaldırın.",
@@ -527,6 +536,15 @@ const I18N = {
     personalUnlinked: "Folder “{0}” taken out ({1} documents removed from the index; no file touched).",
     personalFolderEmpty: "no documents yet", personalFolderAdded: "Folder “{0}” added; its documents are being indexed.",
     personalDeleteLinkedConfirm: "Remove “{0}” from your personal library?\n\nThe file stays in the linked folder; it only leaves the index and later scans leave it out.",
+    mirrorUse: "Use a local copy of the shared library on the network (faster search)", mirrorSync: "Check now",
+    mirrorReady: "Local copy up to date ({0}; last synced {1}). The network library is checked every minute; a new copy is taken when it changes.",
+    mirrorCopying: "Taking the local copy of the shared library: {0}%. Meanwhile the previous copy or the network library is used.",
+    mirrorNetwork: "The local copy is being prepared; the network library is used for now.",
+    mirrorStale: "The library's new version could not be taken ({0}); the previous copy is used and it is tried again shortly.",
+    mirrorOffline: "The shared library on the network cannot be reached; the local copy is used (last synced {0}). Document pages show when the network is back.",
+    mirrorError: "The local copy could not be taken ({0}); the network library is used.",
+    mirrorOff: "Local copy off: searching reads the network library.", mirrorWritable: "The library is open for writing: no local copy (whoever writes uses the network file).",
+    mirrorLocal: "The library is on this computer: no local copy needed.",
     libPending: "The folder change is not applied yet: press “Open” to apply it.",
     libPendingConfirm: "You changed the library folder to “{0}” but did not open it. Open it now?",
     libNoIndex: "This folder holds no index (index.sqlite). Only an indexed library can be opened read-only; for a new library untick “Open read-only”.",
@@ -761,6 +779,7 @@ function renderInfo() {
   if (i.error) { banner.hidden = false; banner.textContent = `${t("errorPrefix")}: ${i.error}`; }
   else if (i.legacy_documents && !i.read_only) { banner.hidden = false; banner.textContent = `${t("legacyNotice", i.legacy_documents)} → ${t("admin")} › ${t("admShared")} › ${t("migrate")}`; }
   else if (i.org && i.org.path && (i.org.cached || !i.org.loaded)) { banner.hidden = false; banner.textContent = orgLine(i.org); }
+  else if (i.mirror && i.mirror.enabled && i.mirror.state === "offline") { banner.hidden = false; banner.textContent = mirrorText(i.mirror); }
   else if (missing.length) { banner.hidden = false; banner.textContent = `${t("settings")}: ${missing.map((s) => t("svc_" + s)).join(", ")} — ${t("model")}?`; }
   else banner.hidden = true;
   $("#collection-list").innerHTML = (i.buckets || []).filter((b) => b.name && !b.personal).map((b) => `<option value="${esc(b.name)}"></option>`).join("");
@@ -2618,8 +2637,32 @@ async function openLibraryNow() {
     return false;
   }
 }
+// The local copy of a read-only network library (techrag/mirror.py): its state, "check now", on/off.
+const fmtMB = (b) => `${(Number(b || 0) / 1048576).toLocaleString(LANG === "tr" ? "tr-TR" : "en-US", { maximumFractionDigits: 0 })} MB`;
+let mirrorPoll = null;
+function mirrorText(m) {
+  if (!m) return "";
+  if (!m.enabled) return t(!m.read_only ? "mirrorWritable" : m.mode === "off" ? "mirrorOff" : "mirrorLocal");
+  const err = String(m.error || "").replace(/^\w+: /, "");
+  return { ready: t("mirrorReady", fmtMB(m.size), fmtTime(m.synced_at)), copying: t("mirrorCopying", Math.round((m.progress || 0) * 100)),
+    network: t("mirrorNetwork"), stale: t("mirrorStale", err), offline: t("mirrorOffline", fmtTime(m.synced_at)),
+    error: t("mirrorError", err) }[m.state] || "";
+}
+function renderMirror() {
+  const m = (state.info || {}).mirror;
+  $("#lib-mirror").hidden = !m || !m.read_only;
+  if (!m) return;
+  $("#lib-mirror-text").textContent = mirrorText(m);
+  $("#btn-mirror-sync").hidden = !m.enabled;
+  $("#lib-mirror-on").checked = m.mode !== "off";
+  clearTimeout(mirrorPoll);
+  if (m.enabled && ["copying", "network"].includes(m.state) && $("#dlg-admin").open) {
+    mirrorPoll = setTimeout(async () => { try { await loadInfo(); } catch { /* next time */ } renderMirror(); }, 2000);
+  }
+}
 function fillLibrary() {
   const i = state.info;
+  renderMirror();
   $("#lib-path").textContent = i ? i.library : "";
   $("#lib-ro").hidden = !(i && i.read_only);
   $("#lib-new-path").value = i ? i.library : "";
@@ -2969,6 +3012,14 @@ function bind() {
   $("#btn-personal-add").addEventListener("click", addPersonalFiles);
   $("#btn-personal-folder").addEventListener("click", addPersonalFolder);
   $("#btn-org-save").addEventListener("click", saveOrg);
+  $("#btn-mirror-sync").addEventListener("click", async () => {
+    try { await postJSON("/api/library/mirror/sync", {}); setTimeout(async () => { await loadInfo(); renderMirror(); }, 800); }
+    catch (e) { $("#lib-mirror-text").textContent = `${t("errorPrefix")}: ${e.message}`; }
+  });
+  $("#lib-mirror-on").addEventListener("change", async (e) => {
+    try { await postJSON("/api/settings", { paths: { mirror: e.target.checked ? "auto" : "off" } }, "PUT"); await loadInfo(); await loadDocs(); renderMirror(); }
+    catch (err) { alert(`${t("errorPrefix")}: ${err.message}`); }
+  });
   $("#btn-pick-org").addEventListener("click", () => pickFolder($("#org-path")));
   $("#btn-pick-org-ask").addEventListener("click", () => pickFolder($("#org-ask-path")));
   $("#btn-org-use").addEventListener("click", () => { const p = $("#org-ask-path").value.trim(); if (p) useOrg(p); else $("#org-ask-path").focus(); });

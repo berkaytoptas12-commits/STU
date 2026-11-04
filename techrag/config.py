@@ -184,6 +184,9 @@ class PathsConfig:
     # The user's own documents: files picked in "Kişisel" are copied here and indexed in <folder>/_indeks,
     # searched together with the (shared, possibly read-only) library.
     personal_dir: str = field(default_factory=_default_personal)
+    # A read-only shared library on a network folder is searched from a copy of its index on this computer, kept up
+    # to date automatically (techrag/mirror.py): auto (network folders) | on | off
+    mirror: str = "auto"
 
 
 @dataclass

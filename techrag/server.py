@@ -22,10 +22,11 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from techrag import __version__, askctx, org, tls
+from techrag import __version__, askctx, mirror, org, tls
 from techrag.api import APIClient, check_service, configure_tls, current_tls, normalize_base_url
 from techrag.config import PERSONAL_INDEX_DIR, Config, ServiceConfig, _apply_env, apply_dict, resource_path, same_path
 from techrag.engine import RAGEngine
+from techrag.store import Store
 from techrag.ingest.loaders import SUPPORTED_SUFFIXES
 from techrag.ingest.pipeline import IngestStopped, WriteGate
 from techrag.settings import MASK, load_user_settings, public_settings, settings_path, update_settings
@@ -172,9 +173,22 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
     state = {"cfg": cfg, "engine": engine, "error": None}
     engine_lock = threading.Lock()
 
+    def mirror_ready(path: Path) -> None:
+        """A new local copy of the (read-only, network) library's index: answer from it from now on."""
+        e = state["engine"]
+        if e is None or not mirror.wanted(state["cfg"]):
+            return
+        try:
+            e.replace_shared(Store(path, read_only=True))
+        except Exception as exc:
+            mirrors.mirror.status.update(state="error", error=f"{exc.__class__.__name__}: {exc}"[:300])
+
+    mirrors = mirror.MirrorManager(mirror_ready)
+
     def build_engine(c: Config) -> None:
         try:
-            state["engine"] = RAGEngine(c)
+            local = mirrors.configure(c)
+            state["engine"] = RAGEngine(c, store=Store(local, read_only=True) if local else None)
             state["error"] = None
         except Exception as exc:
             state["engine"] = None
@@ -182,6 +196,8 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
 
     if engine is None:
         build_engine(cfg)
+    else:
+        mirrors.configure(cfg)
 
     def eng() -> RAGEngine:
         e = state["engine"]
@@ -202,12 +218,15 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
     async def lifespan(app: FastAPI):
         if warmup:
             threading.Thread(target=warm, daemon=True).start()
+            mirrors.start()
         yield
+        mirrors.stop()
 
     # Swagger UI pulls assets from a CDN, which does not exist in an air-gapped network.
     app = FastAPI(title="techrag", version=__version__, docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.jobs = jobs
     app.state.state = state
+    app.state.mirrors = mirrors
     # desktop: called with {"kind": final|clarify|error, "question", "status"} when an answer is ready (the app
     # tells the user when its window is minimized, hidden or behind other windows)
     app.state.on_answer = None
@@ -262,7 +281,19 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 "models": {s: getattr(c, s).model for s in SERVICES},
                 "stats": stats, "domains": domains, "error": state["error"],
                 "allow_upload": c.server.allow_upload and not c.read_only,
-                "personal": personal_info(), "org": org.public_status(c)}
+                "personal": personal_info(), "org": org.public_status(c),
+                "mirror": dict(mirrors.status(), read_only=c.read_only)}
+
+    @app.post("/api/library/mirror/sync", dependencies=guard)
+    def mirror_sync():
+        """Look at the network library now (instead of within the minute) and copy it when it changed."""
+        if mirrors.mirror is None:
+            raise HTTPException(400, "no local copy is used for this library")
+        if mirrors._thread is not None and mirrors._thread.is_alive():
+            mirrors.sync_now()
+        else:
+            threading.Thread(target=mirrors.check, daemon=True).start()
+        return {"ok": True, "mirror": mirrors.status()}
 
     # -------------------------------------------------------------- settings
     @app.get("/api/settings", dependencies=guard)

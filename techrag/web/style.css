@@ -317,6 +317,8 @@ button.cite { background: var(--accent-soft); color: var(--accent); border: 0; p
   box-shadow: 0 2px 10px rgba(0, 0, 0, .18); }
 .toc-open:hover, .toc-open:focus-visible { opacity: 1; }
 .lib-pending { color: var(--warn); margin: 4px 0 0; }
+.lib-mirror { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0 0 8px; color: var(--muted); }
+.lib-mirror label { margin: 0; }
 #lib-status.bad { color: var(--bad); }
 .toc-split { flex: none; width: 9px; cursor: col-resize; position: relative; touch-action: none; }
 .toc-split::after { content: ""; position: absolute; top: 30%; bottom: 30%; left: 3px; width: 3px; border-radius: 2px;

@@ -1,5 +1,22 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.13.0 — ağdaki ortak kütüphanenin yerel kopyası (hızlı arama)
+- **Arama ağda dakikalar sürüyordu:** ağ klasöründeki indeks sayfa sayfa (4 KB) ağ üzerinden okunuyordu; her yeni soru
+  anahtar kelime dizininin başka bölümlerini okuduğu için aynı soru tekrarında hızlı, yeni soruda dakikalar sürüyordu.
+- **Yerel kopya:** ortak kütüphane salt-okunur ve bir ağ klasöründen açıldığında indeksin (`index.sqlite`) bir kopyası
+  bu bilgisayara alınır ve arama oradan yapılır; PDF'ler ağda kalır. Kopya büyük bloklarla tek seferde alınır, kopyalanırken
+  ağdaki dosya değişmişse atılıp yeniden alınır ve bütünlük denetiminden geçmeden kullanılmaz.
+- **Kendiliğinden güncellenir:** ağdaki indeks dakikada bir denetlenir; kütüphaneyi ağda güncellediğinizde yeni kopya
+  arka planda alınır ve uygulama ona geçer (o sırada önceki kopya cevap verir). Ağ yokken kopya çalışmaya devam eder.
+- **Admin › Ortak kütüphane:** kopyanın durumu, boyutu, son eşitleme zamanı, **Şimdi denetle** ve kopyayı kapatma.
+  Kütüphaneye yazan kişi (yazılabilir açış) ağdaki dosyayı kullanmaya devam eder.
+- Bedeli: her kullanıcının diskinde indeks büyüklüğünde yer; güncellemeler en geç ~1 dakika + kopyalama süresi sonra
+  görünür.
+- Doğrulanan: testler (kopyanın alınıp aramanın ondan yapılması, ağdaki değişikliğin fark edilip yeni kopyaya
+  geçilmesi ve eskisinin silinmesi, kopyalama sırasında değişen ve bütünlük denetiminden geçmeyen kopyanın
+  kullanılmaması, ağ yokken kopyayla çalışma, yazılabilir kütüphanenin hiç kopyalanmaması). Gerçek bir Windows ağ
+  paylaşımında hızın ne kadar arttığı ölçülmedi.
+
 ### 0.12.1 — içindekiler tek düğmeyle, kütüphane klasörü değişikliği kaybolmuyor
 - **İçindekiler tek düğmeyle açılıp kapanır:** açıkken başlığındaki **‹** kapatır, kapalıyken sayfanın sol üstünde
   **☰ İçindekiler** düğmesi görünür; **Ctrl+B** de açar/kapatır (alttaki şeritteki ☰ de duruyor).

@@ -102,6 +102,15 @@ class RAGEngine:
                       if self.personal is not None else self.shared)
         self.catalog = DocCatalog(self.store)
 
+    def replace_shared(self, store: Store) -> None:
+        """Answer from another copy of the shared library's index from now on (the local copy of a network library
+        was taken or renewed). Its vectors are loaded first, so the switch costs a question nothing; a question
+        already running finishes on the copy it started with."""
+        store.vectors()
+        with self._lock:
+            self.shared = store
+            self._set_view()
+
     def ensure_personal(self) -> tuple[Store, int]:
         """The personal library, created on first use: (its store, the id of the personal folder as its document
         folder)."""
