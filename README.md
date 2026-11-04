@@ -203,16 +203,18 @@ Belgeler (PDF'ler) ağda kalır; bir sayfa yalnızca görüntülenirken okunur.
 * **Kopyalama:** büyük bloklarla, tek seferde (ağda hızlı yol). Kopya kullanılmadan önce denetlenir: kopyalanırken
   ağdaki dosya değişmişse atılıp yeniden alınır, SQLite bütünlük denetiminden (`quick_check`) geçmeyen kopya
   kullanılmaz. Kopya tamamlanmadan devreye girmez; yer yoksa alınmaz (neden yazılır).
-* **Güncellik:** ağdaki indeks dakikada bir denetlenir (sürüm damgası, boyut ve tarih: birkaç baytlık okuma). Kütüphane
-  ağda güncellenince (indeksleme, kaldırma, geri alma…) yeni kopya arka planda alınır ve uygulama ona geçer; o sırada
-  önceki kopya cevap vermeye devam eder, süren bir soru başladığı kopyayla biter. Eski kopya silinir.
+* **Güncellik:** ağdaki indeks **uygulama açılırken** denetlenir (sürüm damgası, boyut ve tarih: birkaç baytlık okuma;
+  kütüphane Admin'den yeniden açıldığında ve **Şimdi denetle** ile de). Kütüphane ağda güncellendiyse (indeksleme,
+  kaldırma, geri alma…) yeni kopya arka planda alınır ve uygulama ona geçer; o sırada önceki kopya cevap vermeye devam
+  eder, süren bir soru başladığı kopyayla biter. Eski kopya silinir. Uygulama açıkken düzenli denetim yapılmaz.
 * **İlk açılış:** kopya hazır olana kadar ağdaki kütüphane kullanılır; sonraki açılışlarda kopya hemen kullanılır ve
   arkadan denetlenir.
 * **Ağ yokken:** kopya çalışmaya devam eder (üst şeritte belirtilir); belge sayfaları ağa bağlanınca görüntülenir.
 * **Admin › Ortak kütüphane:** kopyanın durumu (güncel / alınıyor / alınamadı, boyut, son eşitleme), **Şimdi denetle**
   ve kopyayı kapatma. Kütüphaneye yazan kişi (salt-okunur olmayan açış) her zaman ağdaki dosyayı kullanır.
 * Bedeli: her kullanıcının diskinde indeks büyüklüğünde yer (indeks belgelerin metnini içerir); kütüphane
-  güncellendikten sonra yeni kopya alınana kadar (en geç ~1 dakika + kopyalama süresi) önceki sürüm aranır.
+  güncellendikten sonra, kullanıcı uygulamayı yeniden açana (veya **Şimdi denetle**'ye basana) kadar önceki sürüm
+  aranır.
 * Ayar: `paths.mirror` = `auto` (ağ klasörleri; varsayılan) | `on` | `off`.
 * Elle düzenlenmiş bir kurum dosyası API anahtarı, sunucu erişim anahtarı veya kişisel klasör yolu **koyamaz**; bu
   alanlar okunurken atılır.

@@ -286,7 +286,8 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
 
     @app.post("/api/library/mirror/sync", dependencies=guard)
     def mirror_sync():
-        """Look at the network library now (instead of within the minute) and copy it when it changed."""
+        """Look at the network library now (it is otherwise looked at when the app starts) and copy it when it
+        changed."""
         if mirrors.mirror is None:
             raise HTTPException(400, "no local copy is used for this library")
         if mirrors._thread is not None and mirrors._thread.is_alive():

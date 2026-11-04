@@ -9,9 +9,10 @@ read only when it is shown).
 * The copy is a plain sequential file copy with large reads (the fast way over a network share), checked before it
   is used: the network file must not have changed while it was copied (else it is thrown away and taken again) and
   SQLite's quick_check must pass. A copy is never half-written: it becomes active only when complete.
-* The network index is looked at once a minute (its version stamp, size and time - a few bytes): when the library
-  was updated there, the new index is copied in the background and the app switches to it; until then the previous
-  copy keeps answering. A question already running finishes on the copy it started with.
+* The network index is looked at when the app starts (and when the library is opened, or with "Check now" in
+  Admin): its version stamp, size and time - a few bytes. When the library was updated there, the new index is copied
+  in the background and the app switches to it; until then the previous copy keeps answering. A question already
+  running finishes on the copy it started with. There is no periodic check while the app runs.
 * Away from the network the copy keeps working (pages of documents cannot be shown then).
 * Only for a library opened read-only: whoever writes the library uses the network file itself.
 * paths.mirror: auto (network folders only) | on | off.
@@ -36,7 +37,7 @@ from techrag.store import sqlite_ro_uri
 
 log = logging.getLogger("techrag.mirror")
 
-CHECK_SECONDS = 60
+CHECK_SECONDS = None   # no periodic check: at start, when the library is (re)opened, and on "Check now"
 CHUNK = 8 * 1024 * 1024
 STATE_FILE = "mirror.json"
 
@@ -185,7 +186,7 @@ class Mirror:
 class MirrorManager:
     """Keeps the copy of the current library fresh and tells the app when a new copy is ready."""
 
-    def __init__(self, on_ready: Callable[[Path], None], interval: float = CHECK_SECONDS):
+    def __init__(self, on_ready: Callable[[Path], None], interval: Optional[float] = CHECK_SECONDS):
         self.on_ready = on_ready
         self.interval = interval
         self.mirror: Optional[Mirror] = None
@@ -241,10 +242,11 @@ class MirrorManager:
         self._wake.set()
 
     def _run(self) -> None:
+        """One check at start; then only when woken (the library was (re)opened, or "Check now")."""
         while not self._stop.is_set():
+            self._wake.clear()
             try:
                 self.check()
             except Exception as exc:   # never let the loop die
                 log.warning("library copy check failed: %s", exc)
             self._wake.wait(self.interval)
-            self._wake.clear()

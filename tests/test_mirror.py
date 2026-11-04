@@ -150,3 +150,29 @@ def test_the_writable_library_is_never_copied(cfg, engine, tmp_path, monkeypatch
         assert not m["enabled"] and m["state"] == "off" and not m["read_only"]
         assert client.post("/api/library/mirror/sync").status_code == 400
     assert not (Path(cfg.paths.cache_dir) / "mirror").exists()
+
+
+def test_the_network_library_is_looked_at_on_start_and_on_request_only(shared, engine):
+    import time
+
+    mgr, _ = _manager(engine)
+    calls = []
+    mgr.check = lambda: calls.append(time.time()) or False
+    mgr.configure(shared)
+    mgr.start()
+    try:
+        for _ in range(100):
+            if calls:
+                break
+            time.sleep(0.02)
+        time.sleep(0.3)
+        assert len(calls) == 1, "once when the app starts, no periodic check"
+        mgr.sync_now()                      # Admin › "Şimdi denetle"
+        for _ in range(100):
+            if len(calls) == 2:
+                break
+            time.sleep(0.02)
+        time.sleep(0.2)
+        assert len(calls) == 2
+    finally:
+        mgr.stop()

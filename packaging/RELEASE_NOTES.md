@@ -6,12 +6,13 @@
 - **Yerel kopya:** ortak kütüphane salt-okunur ve bir ağ klasöründen açıldığında indeksin (`index.sqlite`) bir kopyası
   bu bilgisayara alınır ve arama oradan yapılır; PDF'ler ağda kalır. Kopya büyük bloklarla tek seferde alınır, kopyalanırken
   ağdaki dosya değişmişse atılıp yeniden alınır ve bütünlük denetiminden geçmeden kullanılmaz.
-- **Kendiliğinden güncellenir:** ağdaki indeks dakikada bir denetlenir; kütüphaneyi ağda güncellediğinizde yeni kopya
-  arka planda alınır ve uygulama ona geçer (o sırada önceki kopya cevap verir). Ağ yokken kopya çalışmaya devam eder.
+- **Kendiliğinden güncellenir:** ağdaki indeks uygulama açılırken denetlenir (Admin'deki **Şimdi denetle** ile de);
+  kütüphaneyi ağda güncellediyseniz yeni kopya arka planda alınır ve uygulama ona geçer (o sırada önceki kopya cevap
+  verir). Uygulama açıkken düzenli denetim yapılmaz. Ağ yokken kopya çalışmaya devam eder.
 - **Admin › Ortak kütüphane:** kopyanın durumu, boyutu, son eşitleme zamanı, **Şimdi denetle** ve kopyayı kapatma.
   Kütüphaneye yazan kişi (yazılabilir açış) ağdaki dosyayı kullanmaya devam eder.
-- Bedeli: her kullanıcının diskinde indeks büyüklüğünde yer; güncellemeler en geç ~1 dakika + kopyalama süresi sonra
-  görünür.
+- Bedeli: her kullanıcının diskinde indeks büyüklüğünde yer; güncellemeler kullanıcı uygulamayı yeniden açtığında
+  (veya **Şimdi denetle**'ye bastığında) görünür.
 - Doğrulanan: testler (kopyanın alınıp aramanın ondan yapılması, ağdaki değişikliğin fark edilip yeni kopyaya
   geçilmesi ve eskisinin silinmesi, kopyalama sırasında değişen ve bütünlük denetiminden geçmeyen kopyanın
   kullanılmaması, ağ yokken kopyayla çalışma, yazılabilir kütüphanenin hiç kopyalanmaması). Gerçek bir Windows ağ
