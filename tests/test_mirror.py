@@ -176,3 +176,33 @@ def test_the_network_library_is_looked_at_on_start_and_on_request_only(shared, e
         assert len(calls) == 2
     finally:
         mgr.stop()
+
+
+def test_a_question_waits_for_the_first_copy_instead_of_reading_the_network(shared, engine, tmp_path, monkeypatch):
+    """On a new computer the first question used to read the network index page by page (minutes, "stuck at
+    searching"); it now waits for the copy, says so, and answers from it."""
+    import json
+    import time
+
+    monkeypatch.setenv("TECHRAG_SETTINGS", str(tmp_path / "settings.json"))
+    real_sync = mirror.Mirror.sync
+
+    def slow_sync(self, progress=None):
+        self.status.update(state="copying", progress=0.0)
+        time.sleep(1.0)                 # a network that takes a while
+        return real_sync(self, progress)
+
+    monkeypatch.setattr(mirror.Mirror, "sync", slow_sync)
+    with TestClient(create_app(shared, engine, warmup=False, desktop=True)) as client:
+        mgr = client.app.state.mirrors
+        mgr.start()
+        try:
+            with client.stream("POST", "/api/ask", json={"question": "DDR5 tRFC değeri nedir?"}) as r:
+                events = [json.loads(line[5:]) for line in r.iter_lines() if line.startswith("data:")]
+        finally:
+            mgr.stop()
+        stages = [e.get("stage") for e in events if e["type"] == "status"]
+        assert "mirror" in stages and stages.index("mirror") < stages.index("planning"), stages
+        final = next(e for e in events if e["type"] == "final")
+        assert "295" in final["answer"]
+        assert Path(engine.shared.db_path) == mgr.mirror.current(), "answered from the local copy"

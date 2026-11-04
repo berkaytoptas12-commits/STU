@@ -24,6 +24,7 @@ const I18N = {
     publishTo: "Yayımlanacak hedef klasör (ör. ağ paylaşımı)", publish: "Yayımla", rebuild: "Tamamen yeniden oluştur",
     reasoning: "Model düşünmesi", copy: "Kopyala", copied: "Kopyalandı ✓",
     placeholder: "Sorunuzu yazın (Türkçe veya İngilizce)… Enter: gönder, Shift+Enter: yeni satır",
+    stMirror: "Ortak kütüphanenin yerel kopyası alınıyor (ilk açılış, bir kez): %{0}…",
     stPlanning: "Soru çözümleniyor ve kaynaklar aranıyor…", stAnswering: "Cevap yazılıyor…", stVerifying: "İfadeler kaynaklara karşı doğrulanıyor…",
     stRegenerating: "{0} ifade doğrulanamadı, düzeltiliyor…", stNoTools: "Sunucu araç çağrısını desteklemiyor; araçsız devam ediliyor.",
     scopeEntity: "kapsam: {0} (soruda geçen standart)", scopeUser: "kapsam: seçili bucket / dokümanlar", scopeDomain: "koleksiyon: {0}", scopeAll: "kapsam: tüm kütüphane",
@@ -310,6 +311,7 @@ const I18N = {
     publishTo: "Publish to folder (e.g. a network share)", publish: "Publish", rebuild: "Full rebuild",
     reasoning: "Model reasoning", copy: "Copy", copied: "Copied ✓",
     placeholder: "Type your question (English or Turkish)… Enter: send, Shift+Enter: new line",
+    stMirror: "Taking the local copy of the shared library (first start, once): {0}%…",
     stPlanning: "Analysing the question and searching…", stAnswering: "Writing the answer…", stVerifying: "Checking statements against the sources…",
     stRegenerating: "{0} statement(s) failed verification, correcting…", stNoTools: "The server does not support tool calls; continuing without tools.",
     scopeEntity: "scope: {0} (named in the question)", scopeUser: "scope: selected buckets / documents", scopeDomain: "collection: {0}", scopeAll: "scope: whole library",
@@ -1412,7 +1414,7 @@ const fmtInt = (n) => Number(n || 0).toLocaleString(LANG === "tr" ? "tr-TR" : "e
 // the first token). Counts marked ≈ are estimated from the text (the server reported no token usage).
 function timingDetailHtml(ev) {
   const tm = ev.timings || {};
-  const search = ["bm25", "dense", "rerank"].reduce((a, k) => a + (tm[k] || 0), 0);
+  const search = ["bm25", "vectors", "dense", "rerank"].reduce((a, k) => a + (tm[k] || 0), 0);
   const rows = [
     [t("tPlan"), tm.plan],
     [t("tSearch"), search || null],
@@ -1442,7 +1444,7 @@ function timingDetailHtml(ev) {
 function stageText(ev) {
   return { planning: t("stPlanning"), answering: t("stAnswering"), verifying: t("stVerifying"),
     regenerating: t("stRegenerating", ev.failed || ""), tools_unsupported: t("stNoTools"),
-    searching_more: t("stSearchingMore") }[ev.stage] || "";
+    searching_more: t("stSearchingMore"), mirror: t("stMirror", Math.round((ev.progress || 0) * 100)) }[ev.stage] || "";
 }
 
 // A clarifying question waits for the user's reply: the next message is merged into the question it belongs to

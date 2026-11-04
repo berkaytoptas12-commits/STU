@@ -346,6 +346,9 @@ class Retriever:
         timings["bm25"] = round(timings.get("bm25", 0) + time.time() - t, 3)
         t = time.time()
         index = self.store.vectors()
+        if time.time() - t > 0.05:   # loaded now (first question, or the library changed)
+            timings["vectors"] = round(timings.get("vectors", 0) + time.time() - t, 3)
+        t = time.time()
         if index.size:
             qvecs = self.embedder.embed_queries(plan.dense_queries())
             mask = index.mask(None, scope.doc_ids)

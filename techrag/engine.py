@@ -219,14 +219,17 @@ class RAGEngine:
                  domains: Optional[Sequence[str]] = None, doc_ids: Optional[Sequence[int]] = None,
                  top_k: Optional[int] = None, buckets: Optional[Sequence[str]] = None) -> RetrievalResult:
         t = time.time()
+        log.info("question: planning")
         with askctx.stage("plan"):
             plan = self.planner.plan(question, history)
         plan_time = time.time() - t
+        log.info("question planned in %.1f s; searching", plan_time)
         askctx.check()
         self.check_index_compatibility()
         res = self.retriever.search(plan, domains=domains, doc_ids=doc_ids, top_k=top_k, buckets=buckets,
                                     budget_tokens=int(self.context_tokens() * 0.6))
         res.timings["plan"] = round(plan_time, 3)
+        log.info("search took %s (s)", {k: v for k, v in res.timings.items() if k != "plan"})
         askctx.check()
         return res
 

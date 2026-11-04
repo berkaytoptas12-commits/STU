@@ -137,6 +137,8 @@ class Mirror:
                 free = shutil.disk_usage(self.dir).free
                 if free < size * 1.1 + 200 * 1024 * 1024:
                     raise OSError(f"not enough disk space ({free // 2**20} MB free, {size // 2**20} MB needed)")
+                t0 = time.time()
+                log.info("copying the library index (%d MB) to this computer", size // 2**20)
                 stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
                 part = self.dir / f"index-{stamp}.sqlite.part"
                 done = 0
@@ -165,6 +167,7 @@ class Mirror:
                     {"source": str(self.source), "identity": before, "file": str(final), "size": size,
                      "synced_at": synced}))
                 self.status.update(state="ready", progress=1.0, size=size, synced_at=synced, path=str(final))
+                log.info("library index copied in %.1f s", time.time() - t0)
                 return final
             except Exception as exc:
                 self.status.update(state="error" if not self.current() else "stale",
@@ -231,6 +234,9 @@ class MirrorManager:
 
     def sync_now(self) -> None:
         self._wake.set()
+
+    def running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
 
     def start(self) -> None:
         if self._thread is None:

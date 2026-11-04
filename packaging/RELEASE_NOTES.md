@@ -1,5 +1,18 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.13.1 — yeni bilgisayarda ilk soru "aranıyor"da takılmıyor
+- **Düzeltme:** yeni bir bilgisayarda, ortak kütüphanenin yerel kopyası henüz alınmamışken uygulama açılışta vektörleri
+  ve arama dizinini ağdan sayfa sayfa okumaya başlıyordu; ilk soru "Soru çözümleniyor ve kaynaklar aranıyor…"
+  aşamasında dakikalarca bekliyordu (aynı anda yerel kopya da çekildiği için dosya ağdan iki kez okunuyordu). Artık
+  ilk kopya alınırken ağdan okuma yapılmaz; soru kopyanın bitmesini bekler (tek parça okuma, çok daha kısa) ve
+  sohbette "Ortak kütüphanenin yerel kopyası alınıyor (ilk açılış, bir kez): %…" görünür, sonra kopyadan cevaplanır.
+  Kopya alınamazsa (veya 15 dakikayı aşarsa) ağdaki kütüphaneyle devam edilir.
+- **Günlükte aşama süreleri:** `techrag.log` her soruda soru çözümleme, arama (anahtar kelime, vektör yükleme,
+  embedding, rerank) sürelerini ve yerel kopyanın ne kadar sürede alındığını yazar; bir soru takılırsa nerede beklediği
+  görülür. Cevabın altındaki "Süre" dökümünde "Arama" satırı vektör yüklemeyi de içerir.
+- Doğrulanan: test (ilk kopya alınırken sorulan sorunun kopyayı beklemesi, bunu bildirmesi ve kopyadan cevaplanması).
+  Gerçek bir Windows ağ paylaşımında denenmedi.
+
 ### 0.13.0 — ağdaki ortak kütüphanenin yerel kopyası (hızlı arama)
 - **Arama ağda dakikalar sürüyordu:** ağ klasöründeki indeks sayfa sayfa (4 KB) ağ üzerinden okunuyordu; her yeni soru
   anahtar kelime dizininin başka bölümlerini okuduğu için aynı soru tekrarında hızlı, yeni soruda dakikalar sürüyordu.
