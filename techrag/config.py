@@ -440,12 +440,13 @@ def load_config(path: Optional[str | Path] = None, user_settings: Optional[bool]
         user_settings = not os.environ.get("TECHRAG_NO_USER_SETTINGS")
     if user_settings:
         from techrag import org
-        from techrag.settings import load_user_settings
+        from techrag.settings import follow_org, load_user_settings
 
         user = load_user_settings()
-        # the organization's settings are defaults: the user's own settings win over them
+        # the organization's settings are defaults: the user's own settings win over them, unless the organization
+        # changed that setting after the user chose theirs (the newest decision wins: settings.follow_org)
         apply_dict(cfg, org.load(user), strict=False)
-        apply_dict(cfg, user, strict=False)
+        apply_dict(cfg, follow_org(user), strict=False)
     _apply_env(cfg)
     cfg.share_api_key()
     if cfg.offline:

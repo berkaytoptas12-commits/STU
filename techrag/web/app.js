@@ -271,6 +271,11 @@ const I18N = {
     orgNone: "Kurum ayarı kullanılmıyor.", orgFrom: "Kurum ayarları: {0}", orgFromCached: "Kurum ayarları: {0} (klasöre ulaşılamadı; son okunan kopya kullanılıyor)",
     orgFromError: "Kurum ayarları okunamadı: {0}", orgSrc_pointer: "exe'nin yanındaki dosyadan", orgSrc_user: "ilk açılışta verilen klasörden",
     orgSrc_env: "ortam değişkeninden", orgSrc_saved: "bu bilgisayardan kaydedildi",
+    orgReplaced: "Kurum ayarlarında sonradan değiştirildiği için şu kişisel ayarlarınızın yerine kurum değeri geçti: {0}. İsterseniz yeniden değiştirebilirsiniz.",
+    orgSet_paths_library_dir: "ortak kütüphane klasörü", orgSet_llm_model: "sohbet modeli", orgSet_llm_base_url: "sohbet modeli sunucusu",
+    orgSet_vision_model: "görsel model (VLM)", orgSet_vision_base_url: "görsel model sunucusu", orgSet_embedding_model: "embedding modeli",
+    orgSet_embedding_base_url: "embedding sunucusu", orgSet_reranker_model: "reranker modeli", orgSet_reranker_base_url: "reranker sunucusu",
+    orgSet_usage_log_dir: "kullanım günlüğü klasörü",
     orgSaved: "Kaydedildi: {0}", orgPointer: "Exe'nin yanına {0} yazıldı. Exe'yi dağıtırken bu dosyayı da verin (zip sürümünde klasörün içinde kalır).",
     orgPointerFailed: "Exe'nin yanına işaretçi dosyası yazılamadı ({0}). Exe'nin yanına SayisalTasarimUzmani.kurum.txt adında bir dosya koyup içine şu satırı yazın: {1}",
     orgPointerDev: "Uygulama exe olarak çalışmadığı için işaretçi dosyası yazılmadı. Exe'nin yanına SayisalTasarimUzmani.kurum.txt koyup içine şu satırı yazın: {0}",
@@ -558,6 +563,11 @@ const I18N = {
     orgNone: "No organization settings in use.", orgFrom: "Organization settings: {0}", orgFromCached: "Organization settings: {0} (folder not reachable; the copy read last time is used)",
     orgFromError: "Organization settings could not be read: {0}", orgSrc_pointer: "from the file next to the exe", orgSrc_user: "from the folder given at first start",
     orgSrc_env: "from the environment variable", orgSrc_saved: "saved from this computer",
+    orgReplaced: "Changed later in the organization settings, so the organization's value replaced your own: {0}. You can change them again.",
+    orgSet_paths_library_dir: "shared library folder", orgSet_llm_model: "chat model", orgSet_llm_base_url: "chat model server",
+    orgSet_vision_model: "vision model (VLM)", orgSet_vision_base_url: "vision model server", orgSet_embedding_model: "embedding model",
+    orgSet_embedding_base_url: "embedding server", orgSet_reranker_model: "reranker model", orgSet_reranker_base_url: "reranker server",
+    orgSet_usage_log_dir: "usage log folder",
     orgSaved: "Saved: {0}", orgPointer: "{0} was written next to the exe. Hand it out with the exe (in the zip version it stays in the folder).",
     orgPointerFailed: "The pointer file could not be written next to the exe ({0}). Put a file named SayisalTasarimUzmani.kurum.txt next to the exe with this line in it: {1}",
     orgPointerDev: "The app does not run as an exe, so no pointer file was written. Put SayisalTasarimUzmani.kurum.txt next to the exe with this line in it: {0}",
@@ -2503,9 +2513,16 @@ function orgLine(o) {
   if (!o.loaded) return t("orgFromError", where);
   return t("orgFrom", where);
 }
+// Own settings the organization replaced at this start (it changed them after the user chose theirs).
+function orgReplacedLine(o) {
+  const names = (o && o.replaced) || [];
+  if (!names.length) return "";
+  const label = (n) => { const k = "orgSet_" + n.replace(/\./g, "_"); const s = t(k); return s !== k ? s : n; };
+  return " " + t("orgReplaced", names.map(label).join(", "));
+}
 function renderOrgStatus() {
   const o = (state.info || {}).org || {};
-  $("#org-status").textContent = orgLine(o);
+  $("#org-status").textContent = orgLine(o) + orgReplacedLine(o);
   if (!$("#org-path").value) {
     const lib = (state.info || {}).library || "";
     $("#org-path").value = o.path ? o.path.replace(/[\\/][^\\/]+\.ya?ml$/i, "") : (lib.startsWith("\\\\") ? lib : "");

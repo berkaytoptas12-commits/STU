@@ -3,6 +3,7 @@ exe; read by everyone's app at start as defaults (the user's own settings win; n
 or personal folders; the copy read last time when the folder cannot be reached; asked once at first start."""
 
 import json
+import os
 
 import pytest
 import yaml
@@ -114,6 +115,110 @@ def test_the_environment_variable_and_the_first_start_answer(tmp_path, user_sett
     assert org.STATUS["source"] == "env"
 
 
+def _edit_org(share, **changes):
+    """The administrator saves the organization settings again with some values changed."""
+    data = yaml.safe_load((share / org.ORG_FILE).read_text(encoding="utf-8"))
+    for name, value in changes.items():
+        section, key = name.split("__")
+        data[section][key] = value
+    (share / org.ORG_FILE).write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+
+
+def test_the_newest_decision_wins(tmp_path, user_settings):
+    """A user's own library folder stays theirs until the administrator changes that setting in the organization
+    file; then the administrator's new folder applies (and the user can choose again)."""
+    share, lib = tmp_path / "share", tmp_path / "ortak"
+    share.mkdir()
+    lib.mkdir()
+    admin = _admin_cfg(tmp_path)
+    admin.paths.library_dir = str(lib)
+    org.save(share, admin)
+    cfg = load_config()
+    assert cfg.paths.library_dir == str(lib)
+    # the same folder written differently is not a choice of the user's own
+    update_settings(cfg, {"paths": {"library_dir": str(lib) + "/"}})
+    assert "paths" not in json.loads(user_settings.read_text(encoding="utf-8"))
+    cfg = update_settings(cfg, {"paths": {"library_dir": str(tmp_path / "benim")}})
+    stored = json.loads(user_settings.read_text(encoding="utf-8"))
+    assert stored["_org_base"]["paths.library_dir"] == str(lib)
+    assert load_config().paths.library_dir == str(tmp_path / "benim"), "chosen after the organization's value"
+    _edit_org(share, llm__model="gemma-yeni")           # another setting changes: the user's folder stays
+    cfg = load_config()
+    assert cfg.paths.library_dir == str(tmp_path / "benim") and cfg.llm.model == "gemma-yeni"
+    assert org.public_status(cfg)["replaced"] == []
+    _edit_org(share, paths__library_dir=str(tmp_path / "yeni"))   # the administrator moves the library
+    cfg = load_config()
+    assert cfg.paths.library_dir == str(tmp_path / "yeni"), "the administrator decided later"
+    assert org.public_status(cfg)["replaced"] == ["paths.library_dir"]
+    stored = json.loads(user_settings.read_text(encoding="utf-8"))
+    assert "paths" not in stored and stored["_org_replaced"]["paths.library_dir"]["value"] == str(tmp_path / "benim")
+    cfg = load_config()
+    assert cfg.paths.library_dir == str(tmp_path / "yeni") and org.public_status(cfg)["replaced"] == []
+    update_settings(cfg, {"paths": {"library_dir": str(tmp_path / "yine-benim")}})   # the user chooses again
+    assert load_config().paths.library_dir == str(tmp_path / "yine-benim")
+    assert "paths.library_dir" not in json.loads(user_settings.read_text(encoding="utf-8")).get("_org_replaced", {})
+
+
+def test_settings_saved_by_an_older_version_give_way_to_the_organization(tmp_path, user_settings):
+    """An install set up before the organization settings (or before this version): its own values were saved with
+    nothing to tell when; the organization's values apply - the API key, personal folders and how this user opens
+    the library stay theirs."""
+    share = tmp_path / "share"
+    share.mkdir()
+    admin = _admin_cfg(tmp_path)
+    admin.paths.library_dir = str(tmp_path / "ortak")
+    org.save(share, admin)
+    old = {"auth": {"api_key": "sk-mine"}, "llm": {"model": "eski-model", "base_url": "http://eski:8000/v1"},
+           "paths": {"library_dir": "\\\\eski\\library", "personal_dir": str(tmp_path / "kisisel")},
+           "answer": {"judge_batch": 3}, "read_only": False, "ui": {"language": "tr"}}
+    user_settings.parent.mkdir(parents=True, exist_ok=True)
+    user_settings.write_text(json.dumps(old), encoding="utf-8")
+    day_before = (share / org.ORG_FILE).stat().st_mtime - 86400
+    os.utime(user_settings, (day_before, day_before))   # set up before the administrator's last save
+    org._reset()
+    cfg = load_config()
+    assert cfg.paths.library_dir == str(tmp_path / "ortak") and cfg.llm.model == "gemma-4-31B-it"
+    assert cfg.llm.base_url == "http://gpu01:8003/v1" and cfg.answer.judge_batch == Config().answer.judge_batch
+    assert cfg.auth.api_key == "sk-mine" and cfg.paths.personal_dir == str(tmp_path / "kisisel")
+    assert cfg.read_only is False, "how this user opens the library stays theirs"
+    assert sorted(org.public_status(cfg)["replaced"]) == ["answer.judge_batch", "llm.base_url", "llm.model",
+                                                         "paths.library_dir"]
+    stored = load_user_settings()
+    assert stored["auth"]["api_key"] == "sk-mine" and stored["paths"] == {"personal_dir": str(tmp_path / "kisisel")}
+    assert stored["read_only"] is False and stored["_org_base"] == {"read_only": True}
+    assert stored["_org_replaced"]["llm.model"]["value"] == "eski-model"
+    again = load_config()                 # nothing more to do the next time
+    assert org.public_status(again)["replaced"] == [] and again.paths.library_dir == cfg.paths.library_dir
+    # the organization's folder cannot be read and no copy was read before: the user's settings are left alone
+    org._reset()
+    (tmp_path / "exe" / org.POINTER_FILE).write_text(str(tmp_path / "yok"), encoding="utf-8")
+    assert load_user_settings() == stored and load_config().read_only is False
+
+
+def test_own_settings_of_an_older_version_changed_after_the_last_save_stay(tmp_path, user_settings):
+    """The administrator's own computer: saving the organization settings writes the user's settings file right
+    after; what the administrator changed since then (with an older version) stays theirs on updating."""
+    share = tmp_path / "share"
+    share.mkdir()
+    admin = _admin_cfg(tmp_path)
+    admin.paths.library_dir = str(tmp_path / "ortak")
+    org.save(share, admin)
+    saved = (share / org.ORG_FILE).stat().st_mtime
+    user_settings.parent.mkdir(parents=True, exist_ok=True)
+    user_settings.write_text(json.dumps({"llm": {"thinking_control": "chat_template"}, "read_only": False}),
+                             encoding="utf-8")
+    os.utime(user_settings, (saved + 3600, saved + 3600))      # changed an hour after the organization's save
+    org._reset()
+    cfg = load_config()
+    assert cfg.llm.thinking_control == "chat_template" and org.public_status(cfg)["replaced"] == []
+    stored = load_user_settings()
+    assert stored["_org_base"] == {"llm.thinking_control": "reasoning_effort", "read_only": True}
+    # from now on the usual rule: the administrator changes that setting later -> theirs applies
+    _edit_org(share, llm__thinking_control="none")
+    cfg = load_config()
+    assert cfg.llm.thinking_control == "none" and org.public_status(cfg)["replaced"] == ["llm.thinking_control"]
+
+
 # ---------------------------------------------------------------------------------------------- API
 
 @pytest.fixture()
@@ -154,3 +259,14 @@ def test_the_admin_keeps_opening_the_library_their_own_way(client, cfg, tmp_path
     org._reset()
     restarted = load_config()
     assert restarted.read_only is False and org.STATUS["loaded"]
+    # the admin moves the library and saves the organization settings again: after a restart the admin opens the
+    # new folder, still not read-only, and nothing of theirs was replaced
+    new = tmp_path / "yeni-kutuphane"
+    assert not client.post("/api/library/open", json={"path": str(new), "read_only": False}).json()["error"]
+    client.post("/api/org/save", json={"path": str(share)})
+    assert yaml.safe_load((share / org.ORG_FILE).read_text(encoding="utf-8"))["paths"]["library_dir"] == str(new)
+    org._reset()
+    restarted = load_config()
+    assert restarted.paths.library_dir == str(new) and restarted.read_only is False
+    assert org.STATUS["replaced"] == []
+    assert client.get("/api/info").json()["org"]["replaced"] == []

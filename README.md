@@ -186,6 +186,21 @@ başkasına verince ayarlar onunla gitmez. Bunun için ayarlar bir kez **ortak b
   kendi dosyasına yalnızca kurum ayarından farklı olan değerler yazılır; böylece kurum dosyasını sonradan
   değiştirdiğinizde (yeniden **Kurum ayarlarını kaydet**) değişiklik, o ayarı kendisi değiştirmemiş herkese bir sonraki
   açılışta uygulanır. Exe'yi yeniden dağıtmanız gerekmez.
+* **En yeni karar geçerlidir:** kullanıcının kendi değeri, seçtiği anda kurum dosyasında o ayarın değeri neyse onunla
+  birlikte kaydedilir. Siz kurum dosyasında **o ayarı** sonradan değiştirirseniz (ör. ortak kütüphane klasörünü
+  taşırsınız) sizin yeni değeriniz, o ayarı kendisi değiştirmiş kullanıcılarda da bir sonraki açılışta geçerli olur;
+  kullanıcı isterse yeniden değiştirebilir. Değiştirmediğiniz ayarlarda kullanıcıların kendi seçimleri kalır.
+  Kurum dosyasını her kaydedişte **değeri değişen her ayar** yeni karar sayılır.
+* **Eski kurulumlar:** 0.13.2'den önce kaydedilmiş kişisel değerlerin ne zaman seçildiği tek tek bilinmez. Bunun için
+  dosya tarihlerine bakılır: kullanıcının ayar dosyası kurum dosyasının son kaydından **önce** yazıldıysa kurum değeri
+  geçer (ör. sonradan kütüphaneyi taşıdığınız bir iş arkadaşı); **sonra** yazıldıysa kullanıcının değeri kalır (ör.
+  yöneticinin kendi bilgisayarı: "Kurum ayarlarını kaydet" ayar dosyasını hemen ardından yazar). Bu karşılaştırma
+  yalnızca bir kez, yeni sürümün ilk açılışında yapılır. **API anahtarı, kişisel klasör, dil ve kullanıcının ortak
+  kütüphaneyi salt-okunur açıp açmadığı** her zaman kullanıcıda kalır.
+* Yerine kurum değeri geçen kişisel değerler silinmez: kullanıcının `settings.json` dosyasında `_org_replaced` altında
+  saklanır ve uygulanmaz. **Admin › Ayarlar**'daki kurum ayarları satırı o açılışta hangi ayarların değiştiğini söyler.
+* **Yeni ayarlar uygulama yeniden başlayınca okunur.** Sohbet penceresinin ✕ düğmesi uygulamadan çıkmaz, exe'ye yeniden
+  çift tıklamak da çalışan uygulamayı öne getirir; tam çıkış: simgeye sağ tık → **Uygulamadan çık**.
 * **Bulunma sırası:** `TECHRAG_ORG_SETTINGS` ortam değişkeni (BT grup ilkesiyle verebilir; klasör veya dosya yolu) →
   exe'nin yanındaki `SayisalTasarimUzmani.kurum.txt` → ilk açılışta verilen klasör. Hiçbiri yoksa ve uygulama hiç
   ayarlanmamışsa ilk açılışta bir kez "Kurum ayarları nerede?" diye sorulur ("Kurum ayarı kullanmıyorum" da

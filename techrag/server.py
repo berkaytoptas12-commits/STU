@@ -323,9 +323,11 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
     def _apply_org(values: dict) -> None:
         """Rebuild the running configuration with new organization settings: defaults < organization < the user's
         own settings < environment (as at start-up)."""
+        from techrag.settings import follow_org
+
         new_cfg = state["cfg"].copy()
         apply_dict(new_cfg, values, strict=False)
-        apply_dict(new_cfg, load_user_settings(), strict=False)
+        apply_dict(new_cfg, follow_org(load_user_settings()), strict=False)
         _apply_env(new_cfg)
         new_cfg.share_api_key(adopt_legacy=False)
         new_cfg.server = state["cfg"].server

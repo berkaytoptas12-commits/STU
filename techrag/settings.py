@@ -25,6 +25,13 @@ SECTIONS = ("auth", "llm", "vision", "embedding", "reranker", "paths", "ui", "an
             "org")
 SERVICE_SECTIONS = ("llm", "vision", "embedding", "reranker")   # the chat model's key first (see _migrate_keys)
 MASK = "••••••••"
+# Per own setting the organization could set: the organization's value when the user chose theirs (None: it set
+# none then). A later, different organization value is a newer decision and replaces the user's (follow_org).
+BASE_KEY = "_org_base"
+# Own values the organization's newer decision replaced: kept here (not applied), for reference.
+REPLACED_KEY = "_org_replaced"
+# Clocks of this computer and of the server holding the organization file may differ by this much (seconds).
+CLOCK_SLACK = 300
 
 
 def settings_path() -> Path:
@@ -170,14 +177,28 @@ def update_settings(cfg: Config, patch: dict) -> Config:
 
     stored = load_user_settings()
     _migrate_keys(stored)
+    base = stored[BASE_KEY] if isinstance(stored.get(BASE_KEY), dict) else {}
+    replaced = stored[REPLACED_KEY] if isinstance(stored.get(REPLACED_KEY), dict) else {}
+
+    def keep(section: str, k: str, v: Any, holder: dict) -> None:
+        """Only what differs from the organization settings is kept as the user's own (a setting left as the
+        organization has it follows the organization file when that changes later), together with the
+        organization's value at this moment: a later, different one replaces it (follow_org)."""
+        name, org_value = org.setting_name(section, k), org.value(section, k)
+        replaced.pop(name, None)
+        if org_value is not None and org.same(section, k, v, org_value):
+            holder.pop(k, None)
+            base.pop(name, None)
+            return
+        holder[k] = v
+        if org.sets(section, k):
+            base[name] = org_value
+
     applied: dict = {}
     for section, values in (patch or {}).items():
         if section == "read_only":
             applied["read_only"] = bool(values)
-            if org.value("read_only", "") == applied["read_only"]:
-                stored.pop("read_only", None)   # the organization's value: keep following it
-            else:
-                stored["read_only"] = applied["read_only"]
+            keep("read_only", "read_only", applied["read_only"], stored)
             continue
         if section not in SECTIONS or not isinstance(values, dict):
             continue
@@ -186,16 +207,16 @@ def update_settings(cfg: Config, patch: dict) -> Config:
             if k in SECRET_KEYS and (v == MASK or v is None or section != "auth"):
                 continue
             now[k] = v
-            # Only what differs from the organization settings is kept as the user's own: a setting left as the
-            # organization has it follows the organization file when that changes later.
-            if org.value(section, k) is not None and org.value(section, k) == v:
-                dest.pop(k, None)
-            else:
-                dest[k] = v
+            keep(section, k, v, dest)
             if k in SECRET_KEYS:
                 _UNREADABLE.pop((section, k), None)  # explicitly replaced (or cleared) by the user
         if not dest:
             stored.pop(section, None)
+    for key, value in ((BASE_KEY, base), (REPLACED_KEY, replaced)):
+        if value:
+            stored[key] = value
+        else:
+            stored.pop(key, None)
     # Only what changed goes into the running config: environment variables and command-line options (e.g.
     # --library, TECHRAG_READ_ONLY) keep winning, as they did at start-up.
     probe = cfg.copy()
@@ -205,6 +226,89 @@ def update_settings(cfg: Config, patch: dict) -> Config:
     probe.share_api_key(adopt_legacy=False)
     save_user_settings(stored)
     return probe
+
+
+def follow_org(user: dict, persist: bool = True) -> dict:
+    """The user's own settings to apply over the organization settings just loaded: the newest decision wins.
+
+    * An own value equal to the organization's is not the user's own: it is dropped (the setting follows the
+      organization file from now on).
+    * An own value chosen while the organization had the value it has now is kept (the user's choice is newer).
+    * When the organization file sets that setting to something else now, the administrator decided after the
+      user: the organization's value replaces the user's. The user's value is moved aside (REPLACED_KEY), never
+      applied again; the user can change the setting again (a new own value).
+    * Own values saved before the organization's value was recorded with them (older versions): when the user's
+      settings file was written after the organization file was last saved (e.g. the administrator's own computer:
+      saving the organization settings writes it right after), they are kept and the organization's value is
+      recorded with them; otherwise the organization decided later and its value applies. How this user opens the
+      library (read_only) is always kept.
+    Nothing changes when the organization settings could not be read (no file, no copy read before). The settings
+    file is rewritten only when something changed; the replaced names are in org.STATUS["replaced"] for the UI."""
+    from datetime import datetime, timezone
+
+    from techrag import org
+
+    org.STATUS["replaced"] = []
+    if not org.STATUS.get("loaded") or not isinstance(user, dict):
+        return user
+    base = user[BASE_KEY] if isinstance(user.get(BASE_KEY), dict) else {}
+    moved = user[REPLACED_KEY] if isinstance(user.get(REPLACED_KEY), dict) else {}
+    try:
+        written = settings_path().stat().st_mtime
+    except OSError:
+        written = None
+    org_saved = org.STATUS.get("mtime")
+    written_later = written is not None and org_saved is not None and written > org_saved - CLOCK_SLACK
+    items = [("read_only", "read_only", user)] if "read_only" in user else []
+    items += [(s, k, user[s]) for s in SECTIONS if isinstance(user.get(s), dict) for k in list(user[s])]
+    replaced: list[str] = []
+    emptied: set[str] = set()
+    changed = False
+    for section, k, holder in items:
+        if not org.sets(section, k):
+            continue
+        org_value = org.value(section, k)
+        if org_value is None:
+            continue
+        name, own = org.setting_name(section, k), holder[k]
+        if org.same(section, k, own, org_value):
+            holder.pop(k)
+            base.pop(name, None)
+            emptied.add(section)
+            changed = True
+            continue
+        if name in base:
+            if org.same(section, k, base[name], org_value):
+                continue                    # chosen while the organization had this value: the user's is newer
+        elif section == "read_only" or written_later:
+            base[name] = org_value          # how this user opens the library / chosen after the organization's save
+            changed = True
+            continue
+        holder.pop(k)
+        base.pop(name, None)
+        moved[name] = {"value": own, "organization": org_value,
+                       "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        replaced.append(name)
+        emptied.add(section)
+        changed = True
+    for section in emptied:
+        if section != "read_only" and user.get(section) == {}:
+            user.pop(section)
+    for key, value in ((BASE_KEY, base), (REPLACED_KEY, moved)):
+        if value:
+            user[key] = value
+        else:
+            user.pop(key, None)
+    org.STATUS["replaced"] = replaced
+    if replaced:
+        log.info("the organization settings changed after this user's own choice; they now apply to: %s",
+                 ", ".join(replaced))
+    if changed and persist:
+        try:
+            save_user_settings(user)
+        except OSError as exc:
+            log.warning("user settings could not be updated: %s", exc.__class__.__name__)
+    return user
 
 
 # Advanced settings the UI edits: (section, key) -> (lowest, highest)

@@ -1018,6 +1018,21 @@ def test_admin_saves_the_organization_settings(ui, tmp_path):
     ui.wait_for_function("(p) => document.querySelector('#org-status').textContent.includes(p)", arg=str(share))
 
 
+def test_admin_settings_say_which_own_settings_the_organization_replaced(ui, tmp_path):
+    from techrag import org
+
+    org.STATUS.update(path=str(tmp_path / "ortak" / org.ORG_FILE), source="pointer", loaded=True,
+                      replaced=["paths.library_dir", "llm.model", "answer.judge_batch"])
+    try:
+        ui.evaluate("() => loadInfo()")
+        _admin(ui, "adm-settings")
+        ui.wait_for_function("() => document.querySelector('#org-status').textContent.includes('yerine kurum değeri')")
+        text = ui.inner_text("#org-status")
+        assert "ortak kütüphane klasörü, sohbet modeli, answer.judge_batch" in text
+    finally:
+        org._reset()
+
+
 def test_contents_open_and_close_with_one_button(ui):
     ui.click("#collections .bucket-name >> nth=0")
     ui.click("#collections .doc .doc-name >> nth=0")

@@ -11,6 +11,12 @@ folder (usually the shared library's folder), so that the exe can be handed to o
 * Applied as defaults: built-in defaults < organization settings < the user's own settings < environment. Nothing is
   locked; a user's own settings file keeps only what differs from the organization settings, so a later change of
   the organization file reaches everyone who did not change that setting themselves.
+* The newest decision wins: a user's own value is kept with the organization's value at the time it was chosen.
+  When the organization file later sets that setting to something else, the organization's new value replaces the
+  user's (the user can change it again afterwards). Own values saved before this was recorded (older versions):
+  when the user's settings file was written after the organization file was last saved, they are kept; otherwise
+  the organization's value applies. How the user opens the library (read-only or not) is always kept. See
+  techrag.settings.follow_org.
 * When the folder cannot be reached (a laptop away from the network) the copy read last time is used.
 """
 
@@ -38,11 +44,47 @@ EXPORT = {"llm": ("api_key",), "vision": ("api_key",), "embedding": ("api_key",)
           "answer": (), "retrieval": (), "tls": (), "usage": ()}
 EXPORT_PATHS = ("library_dir",)
 
-STATUS: dict = {"path": "", "source": "", "loaded": False, "cached": False, "error": "", "values": {}}
+STATUS: dict = {"path": "", "source": "", "loaded": False, "cached": False, "error": "", "values": {},
+                "replaced": [], "mtime": None}
 
 
 def _reset() -> None:
-    STATUS.update(path="", source="", loaded=False, cached=False, error="", values={})
+    STATUS.update(path="", source="", loaded=False, cached=False, error="", values={}, replaced=[], mtime=None)
+
+
+def _mtime(path: Path) -> Optional[float]:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return None
+
+
+def sets(section: str, key: str) -> bool:
+    """Whether the organization file can set this setting at all."""
+    if section == "read_only":
+        return True
+    if section == "paths":
+        return key in EXPORT_PATHS
+    return section in EXPORT and key not in EXPORT[section]
+
+
+def setting_name(section: str, key: str) -> str:
+    return "read_only" if section == "read_only" else f"{section}.{key}"
+
+
+def same(section: str, key: str, a: Any, b: Any) -> bool:
+    """Whether two values of a setting are the same; the library folder compared as a path (the same folder written
+    differently, e.g. with a trailing separator or in other letter case on Windows)."""
+    if a == b:
+        return True
+    if section == "paths" and key == "library_dir" and a and b:
+        norm = [os.path.normcase(os.path.normpath(str(x).strip())) for x in (a, b)]
+        if norm[0] == norm[1]:
+            return True
+        from techrag.config import same_path
+
+        return same_path(str(a).strip(), str(b).strip())
+    return False
 
 
 def pointer_path() -> Optional[Path]:
@@ -113,10 +155,10 @@ def load(user: dict) -> dict:
     STATUS.update(path=str(path), source=source)
     try:
         values = _clean(yaml.safe_load(path.read_text(encoding="utf-8-sig")))
-        STATUS.update(loaded=True, values=values)
+        STATUS.update(loaded=True, values=values, mtime=_mtime(path))   # mtime: when it was last saved
         try:   # for the days the folder cannot be reached
-            write_text_atomic(_cache_path(), yaml.safe_dump({"_source": str(path), **values}, allow_unicode=True,
-                                                            sort_keys=False))
+            write_text_atomic(_cache_path(), yaml.safe_dump({"_source": str(path), "_mtime": STATUS["mtime"],
+                                                             **values}, allow_unicode=True, sort_keys=False))
         except OSError:
             pass
         return values
@@ -128,7 +170,9 @@ def load(user: dict) -> dict:
         cached = yaml.safe_load(_cache_path().read_text(encoding="utf-8"))
         if isinstance(cached, dict) and cached.get("_source") == str(path):
             values = _clean(cached)
-            STATUS.update(loaded=True, cached=True, values=values)
+            mtime = cached.get("_mtime")
+            STATUS.update(loaded=True, cached=True, values=values,
+                          mtime=float(mtime) if isinstance(mtime, (int, float)) else None)
             log.warning("organization settings %s not reachable (%s); the copy read last time is used", path,
                         STATUS["error"])
             return values
@@ -185,7 +229,8 @@ def save(folder: str | Path, cfg: Config, others_read_only: bool = True) -> dict
             out["pointer"] = str(ptr)
         except OSError as exc:
             out["pointer_error"] = exc.__class__.__name__
-    STATUS.update(path=str(target), source="saved", loaded=True, cached=False, error="", values=_clean(data))
+    STATUS.update(path=str(target), source="saved", loaded=True, cached=False, error="", values=_clean(data),
+                  replaced=[], mtime=_mtime(target))
     return out
 
 
@@ -196,4 +241,5 @@ def public_status(cfg: Config) -> dict:
     return {"path": STATUS["path"], "source": STATUS["source"], "loaded": STATUS["loaded"],
             "cached": STATUS["cached"], "error": STATUS["error"], "pointer": str(pointer_path() or ""),
             "ask": not STATUS["path"] and not cfg.org.asked and unconfigured,
-            "needs_key": STATUS["loaded"] and not cfg.auth.api_key}
+            "needs_key": STATUS["loaded"] and not cfg.auth.api_key,
+            "replaced": list(STATUS.get("replaced") or [])}

@@ -1,6 +1,32 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
-### 0.13.2 — yayımlanan kütüphanede kalite raporu
+### 0.13.2 — kurum ayarlarında en yeni karar geçerli; yayımlanan kütüphanede kalite raporu
+- **Kurum ayarları, en yeni karar geçerli:** önceden bir kullanıcının kendi değeri (ör. ortak kütüphane klasörü) kurum
+  ayarını her zaman eziyordu; kurum dosyasında o ayarı değiştirseniz bile o kullanıcıda eski değer kalıyordu. Artık
+  kullanıcının değeri, seçtiği anda kurum dosyasında o ayarın değeri neyse onunla birlikte kaydedilir. Kurum
+  dosyasında o ayarı sonradan değiştirirseniz yeni değeriniz o kullanıcıda da bir sonraki açılışta geçerli olur;
+  kullanıcı isterse yeniden değiştirebilir. Değiştirmediğiniz ayarlarda kullanıcıların kendi seçimleri kalır.
+  Hiçbir ayar kilitlenmez.
+- **Eski kurulumlar:** önceki sürümlerin kaydettiği kişisel değerler için yeni sürümün ilk açılışında dosya tarihlerine
+  bakılır. Kullanıcının ayar dosyası kurum dosyasının son kaydından önce yazıldıysa kurum değeri geçer (ör. siz
+  kütüphaneyi taşıdıktan sonra hâlâ eski yeri açan iş arkadaşınız). Sonra yazıldıysa kullanıcının değeri kalır (ör.
+  sizin bilgisayarınız: "Kurum ayarlarını kaydet" ayar dosyanızı hemen ardından yazar; kurum ayarlarını kaydettikten
+  sonra değiştirdiğiniz ayarlar sizde kalır). Bu yalnızca kurum dosyasının belirlediği ve değeri farklı olan ayarlar
+  için geçerlidir. API anahtarı, kişisel klasör, dil ve kullanıcının ortak kütüphaneyi salt-okunur açıp açmadığı her
+  zaman kullanıcıda kalır. Yerine kurum değeri geçen değerler silinmez, kullanıcının ayar dosyasında ayrı saklanır.
+  **Admin › Ayarlar**'daki kurum ayarları satırı hangi ayarların değiştiğini söyler.
+- Aynı klasörün farklı yazılışı (ör. sonda ayraç, Windows'ta büyük/küçük harf) artık kullanıcının "kendi değeri"
+  sayılmaz.
+- Hatırlatma: yeni kurum ayarları uygulama yeniden başlayınca okunur. Sohbet penceresini ✕ ile kapatmak veya exe'ye
+  yeniden çift tıklamak uygulamayı yeniden başlatmaz; tam çıkış: simgeye sağ tık → **Uygulamadan çık**.
+- Doğrulanan: testler (kullanıcının sonradan seçtiği klasörün korunması; yöneticinin klasörü taşıyınca yeni klasörün
+  geçmesi; başka bir ayar değişince kullanıcının klasörünün kalması; eski sürümün kaydettiği değerlerin yerine kurum
+  değerinin geçmesi, anahtar ve salt-okunur seçiminin kalması; kurum kaydından sonra değiştirilmiş eski değerlerin
+  kalması; yöneticinin kendi açış biçiminin korunması; kurum
+  dosyasına ulaşılamayınca hiçbir şeyin değişmemesi; Admin'deki bilgi satırı). Gerçek iki bilgisayarlı kurulumda
+  denenmedi.
+
+**Yayımlanan kütüphanede kalite raporu**
 - **Düzeltme:** **Admin › Ortak kütüphane → Yayımla** ile üretilen pakette, belge klasörlerinden eklenmiş belgelerin
   kalite kayıtları eski klasör anahtarında kalıyordu (belgeler paket içindeki yeni yollarını alırken). Bu yüzden
   yayımlanan kütüphanenin **İndeksleme kalite raporu** bu belgelerin hepsi için "kalite bilgisi yok" diyordu. Artık
