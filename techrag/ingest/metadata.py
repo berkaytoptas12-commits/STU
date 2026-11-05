@@ -74,6 +74,12 @@ _SERIES_NOISE = re.compile(
     r"final|clean|redline|copy|rev(?:ision)?|version|ver|r\d+(?:\.\d+)*|v\d+(?:\.\d+)*|\d+(?:\.\d+)+[a-z]?|"
     r"(?:19|20)\d{2}|[a-z])\b")
 _JESD_ID = re.compile(r"\bjesd\s?(\d+)(?:-(\d+))?", re.I)
+# VESA's titles for the 1.x DisplayPort standards: "Version 1, Revision 2" is version 1.2 (the words before it name
+# the standard). Integer version, then revision: PCIe's "Revision 5.0, Version 1.0" does not match.
+_VERSION_REVISION = re.compile(r"(?:^|[\n.;:])\s*([A-Za-z][\w()/ -]{2,60}?)[\s,]+version\s+(\d+)\s*,\s*"
+                               r"revision\s+(\d+[a-z]?)\b", re.I)
+# A cover line naming the document with its version: "VESA DisplayPort (DP) Standard" / "Version 1.4".
+_COVER_VERSION = re.compile(r"(?:^|\n)\s*([A-Za-z][\w()/ -]{2,60}?)[\s,]+version\s+(\d+\.\d+[a-z]?)\b", re.I)
 _VERSION = re.compile(r"(?<![\w.])(?<!rev )(?<!r)(\d+\.\d+)(?![\w.])", re.I)
 
 
@@ -150,12 +156,38 @@ def llm_metadata(client: LLMClient, front_text: str, doc_sha: str, cache_dir: Pa
     return obj
 
 
+def own_version_names(llm: dict, pdf_title: str, front_text: str) -> list[str]:
+    """The document named with its own version, from its title and first lines - evidence of what it IS, unlike
+    the other versions its front matter mentions ("compatible with DP 1.2 sinks ...").
+    * "Version 1, Revision 2" (VESA DisplayPort 1.x titles) -> "VESA DisplayPort Standard 1.2";
+    * when the model could not name the standard (no metadata): the cover line "<name> Version 1.4" ->
+      "<name> 1.4" (with metadata the model's standard and version already say it)."""
+    head = "\n".join(x for x in (llm.get("title", ""), pdf_title, (front_text or "")[:800]) if x)
+    out = []
+    m = _VERSION_REVISION.search(head)
+    if m:
+        out.append(f"{(llm.get('standard') or m.group(1)).strip()} {m.group(2)}.{m.group(3)}")
+    elif not (llm.get("standard") and llm.get("version")):
+        m = _COVER_VERSION.search("\n".join(x for x in (pdf_title, (front_text or "")[:400]) if x))
+        if m:
+            out.append(f"{m.group(1).strip()} {m.group(2)}")
+    return out
+
+
+def standard_tags(registry: DomainRegistry, domain: str, filename: str, pdf_title: str, front_text: str,
+                  llm: Optional[dict] = None) -> list[str]:
+    """The standards a document is (registry.document_entities), from its file name, title, the model's reading
+    of its front page and the front matter."""
+    llm = llm or {}
+    extra = [llm.get("standard", ""), f"{llm.get('standard', '')} {llm.get('version', '')}", llm.get("title", ""),
+             *own_version_names(llm, pdf_title, front_text)]
+    return registry.document_entities(domain, filename, pdf_title, front_text[:4000], [e for e in extra if e.strip()])
+
+
 def build_metadata(registry: DomainRegistry, domain: str, filename: str, pdf_title: str, front_text: str,
                    llm: Optional[dict] = None) -> DocMeta:
     llm = llm or {}
-    extra = [llm.get("standard", ""), f"{llm.get('standard', '')} {llm.get('version', '')}", llm.get("title", "")]
-    entities = registry.document_entities(domain, filename, pdf_title, front_text[:4000],
-                                          [e for e in extra if e.strip()])
+    entities = standard_tags(registry, domain, filename, pdf_title, front_text, llm)
     head = f"{filename} {pdf_title} {llm.get('title', '')}"
     doc_type = regex_doc_type(head) or (llm.get("doc_type") or "").lower() or regex_doc_type(front_text[:1500]) or "base"
     if doc_type not in ("base", "errata", "ecn", "amendment", "appnote", "guide", "other"):

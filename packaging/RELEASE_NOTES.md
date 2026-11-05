@@ -1,5 +1,31 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.15.0 — aile adları ve DisplayPort sürümleri
+- **"LPDDR nedir" gibi sorular doğru belgeleri buluyor.** Anahtar kelime araması "LPDDR4"ü tek kelime saydığı için
+  "LPDDR" yazınca LPDDR belgelerinin hiçbiri bulunmuyordu; geriye sorunun genel kelimeleri ("low power", "memory",
+  "data rate") kalıyor, bunlarla dolu ilgisiz bir belge (ör. bir işlemci datasheet'i) öne geçebiliyordu. Artık
+  kütüphanenin bir adı yalnızca sürümlü yazdığı durumlarda (tek başına "LPDDR" neredeyse hiç geçmiyor, "LPDDR4/4X/5"
+  sık geçiyor) arama bu yazılışları da arar. **Filtre değildir:** hiçbir belge aramadan çıkarılmaz. Kütüphanede kendi
+  hâliyle geçen adlarda ("SPI", "USB") ve böyle bir ad içermeyen sorularda arama aynen eskisi gibidir. Yazılışlar
+  kütüphanenin kendi dizininden okunur; ek model çağrısı yoktur, soru başına gecikme milisaniyenin altındadır.
+- **DisplayPort sürümleri:** VESA'nın "Version 1, Revision 2" başlığı DisplayPort 1.2 olarak okunur; her sürüm (1.0,
+  1.1, 1.2, 1.3, 1.4, 2.x, eDP) ayrı tanınır; soruda "display port 1.2", "DP v1.2", "DP1.2" yazılışları da tanınır.
+  Belge, ilk sayfalarında en çok andığı sürümle (yeni standartlar eski sürümleri çok anar) değil kendi başlığındaki
+  sürümle etiketlenir. Önceden 1.2 belgesi etiketsiz kalabiliyor, 1.4 ve 2.1 belgeleri "1.2" etiketi alıp 1.4 de
+  2.1'in "eski revizyonu" sayılabiliyordu; bu yüzden 1.2 sorusu 2.x belgesinden cevaplanıyordu.
+- **Mevcut kütüphane bir kez yeniden etiketlenir:** yalnızca tanımı değişen koleksiyonun (DisplayPort) belgeleri,
+  kayıtlı dosya adı, PDF başlığı, model okuması ve kapak metninden; yeniden indeksleme ve model çağrısı olmadan.
+  Diğer belgelerin etiketleri değişmez. Ortak kütüphaneyi **yazılabilir açan** uygulama bunu açılışta yapar
+  (salt-okunur açanlar sonucu yerel kopyayla alır). Bu belgelerin arama vektörleri bir sonraki **Tümünü yeniden
+  tara**'da yeni etiketle yeniden hesaplanır (VLM önbellekten gelir; yalnızca embedding çağrısı).
+- Mevcut kurallar değişmedi: soruda adı geçen bir sürüm, aramayı (daha önce olduğu gibi) o sürümle etiketli
+  belgelere daraltır; yeni bir kesin filtre eklenmedi.
+- Doğrulanan: testler ("LPDDR" yalnız başına hiçbir LPDDR belgesini bulmuyorken artık ikisini de buluyor; "SPI" gibi
+  adlarda ve örnek soru setinin tamamında arama sorgusu değişmiyor; DisplayPort başlıklarının model okumasıyla ve
+  okuması olmadan doğru etiketlenmesi; yeniden etiketlemenin yalnızca DisplayPort belgelerini değiştirmesi, model
+  çağrısı yapmaması, bir kez çalışması, salt-okunur kütüphaneye dokunmaması; sonraki taramada yalnızca bu belgelerin
+  yeniden işlenmesi). Kullanıcının gerçek kütüphanesinde denenmedi.
+
 ### 0.14.1 — top k ayarları Admin › Ayarlar › Gelişmiş'te; denetçi kapatma uyarısı
 - **Top k ayarları:** Admin › Ayarlar › Gelişmiş'te "Modele verilen pasaj sayısı (top k)" (varsayılan 8, 1–30),
   "Rerank'e giden aday sayısı" (40), "Anahtar kelime araması aday sayısı (BM25 top k)" (50) ve "Vektör araması aday

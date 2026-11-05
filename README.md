@@ -377,6 +377,21 @@ işlenmez (mevcut tablolar korunur), yeni/değişen belgelere ve yeniden indeksl
   indekslenir. Aynı adlı farklı bir dosya varsa `Ad (2).pdf` olarak kaydedilir.
 * Dosya adına standart ve sürümü yazmak etiketlemeyi kesinleştirir (`JESD79-5B_DDR5.pdf`, `PCIe_Base_5.0.pdf`).
   Errata/ECN dosyalarının adında "Errata"/"ECN" geçsin.
+* **Belgenin kendi sürümü:** bir belge, ilk sayfalarında en çok andığı sürümle değil kendi başlığındaki sürümle
+  etiketlenir. VESA'nın DisplayPort 1.x başlıkları ("Version 1, Revision 2") 1.2 olarak okunur; her DisplayPort
+  sürümü (1.0, 1.1, 1.2, 1.3, 1.4, 2.x, eDP) ayrı standarttır ve 1.4 ile 2.1 birbirinin eski revizyonu sayılmaz.
+  Soruda "display port 1.2", "DP v1.2", "DP1.2" yazılışları da tanınır.
+* **Etiket kuralları değişince:** `domains.yaml`'daki standart tanımı değişen koleksiyonların belgeleri (yalnızca
+  onlar) bir kez yeniden etiketlenir: dosya adı, PDF başlığı, model okumasının kaydı ve kapak metninden; yeniden
+  indeksleme ve model çağrısı olmadan. Kütüphaneyi yazılabilir açan uygulama bunu açılışta (veya taramada) yapar;
+  salt-okunur açanlar sonuçları yerel kopyayla alır. Bu belgelerin arama vektörleri bir sonraki **Tümünü yeniden
+  tara**'da yeni etiketle yeniden hesaplanır (VLM sonuçları önbellekten gelir); o zamana kadar eski vektörler
+  kullanılır. Diğer belgelerin etiketleri değişmez.
+* **Aile adları:** bir kısaltmayı kütüphane yalnızca sürümlü yazıyorsa ("LPDDR4", "LPDDR5"; tek başına "LPDDR"
+  neredeyse hiç geçmiyorsa), soruda "LPDDR" yazınca anahtar kelime araması bu yazılışları da arar. Bu bir filtre
+  değildir, aramaya seçenek ekler. Kütüphanede kendi hâliyle geçen kısaltmalarda ("SPI", "USB") ve bu tür bir ad
+  içermeyen sorularda arama aynen eskisi gibidir. Yazılışlar kütüphanenin kendi anahtar kelime dizininden okunur
+  (LPDDR6 eklenince kendiliğinden bulunur).
 * Standart/sürüm kalıpları `techrag/resources/domains.yaml` içindedir (koleksiyon klasörleri, desenler,
   kısaltma sözlüğü, Türkçe→İngilizce terimler). Yeni bir standart ailesi bir YAML bloğu ile eklenir.
 * Taranmış PDF'ler önce OCR'dan geçirilmeli (`ocrmypdf`); metin katmanı olmayan sayfalarda ne tablo

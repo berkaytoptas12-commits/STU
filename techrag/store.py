@@ -9,6 +9,7 @@ typed parameter store (+FTS5).
 from __future__ import annotations
 
 import json
+import logging
 import re
 import shutil
 import sqlite3
@@ -170,6 +171,8 @@ nerede o olan olarak olur olursa on ona onu onun sadece şu şey ve veya ya yani
 söyle ver verir midir mıdır olmalı olmalıdır gerekir lütfen
 """.split())
 
+log = logging.getLogger("techrag.store")
+
 
 @dataclass
 class ChunkRow:
@@ -319,6 +322,10 @@ def _lower(text: str) -> str:
     return text.replace("İ", "i").lower()
 
 
+# A versioned form of a family name as the keyword index keeps it: "lpddr" + "4x", "uhbr" + "20", "ddr" + "5".
+_VARIANT_SUFFIX = re.compile(r"\d{1,3}[a-z]{0,2}")
+
+
 def fts_query(text: str, max_terms: int = 48) -> str:
     """Free text -> safe FTS5 OR-query of quoted terms (stopwords and 1-char tokens dropped)."""
     seen: list[str] = []
@@ -367,6 +374,8 @@ class Store:
         self._vectors: Optional[VectorIndex] = None
         self._vectors_version: Optional[str] = None
         self._lock = threading.Lock()
+        self._variants: dict[str, list[str]] = {}
+        self._variants_version: Optional[str] = None
         self._geom_cache: dict[tuple[int, int], object] = {}
         if read_only:
             if not self.db_path.exists():
@@ -1044,6 +1053,31 @@ class Store:
             rows = con.execute("SELECT page, label FROM pages WHERE doc_id=? AND label != ''", (doc_id,)).fetchall()
         return {r["page"]: r["label"] for r in rows}
 
+    def front_text(self, doc_id: int, pages: int = 3, max_chars: int = 8000) -> str:
+        """The indexed text of a document's first pages (its front matter), in reading order."""
+        with self.connect() as con:
+            rows = con.execute("SELECT text FROM chunks WHERE doc_id=? AND page_start<=? ORDER BY ordinal",
+                               (doc_id, pages)).fetchall()
+        return "\n".join(r[0] for r in rows)[:max_chars]
+
+    def set_standard_tags(self, updates: Iterable[tuple[int, list]]) -> None:
+        """New standard tags for documents whose tag rules changed. Nothing else of the document changes; it is
+        marked to be processed again at the next scan so that its search vectors (which carry its standard name)
+        are made with the new tags too - until then the old vectors keep answering."""
+        self._writable()
+        with self.connect() as con:
+            for doc_id, entities in updates:
+                r = con.execute("SELECT entities, metadata, ingest_fp FROM documents WHERE id=?", (doc_id,)).fetchone()
+                if r is None:
+                    continue
+                meta = json.loads(r["metadata"] or "{}")
+                meta.setdefault("embedded_entities", json.loads(r["entities"] or "[]"))
+                fp = r["ingest_fp"] or ""
+                con.execute("UPDATE documents SET entities=?, metadata=?, ingest_fp=? WHERE id=?",
+                            (json.dumps(list(entities)), json.dumps(meta, ensure_ascii=False),
+                             fp if fp.startswith("retag") else f"retag:{fp}", doc_id))
+            self._bump_version(con)
+
     def set_superseded(self, pairs: Iterable[tuple[int, Optional[int]]]) -> None:
         self._writable()
         with self.connect() as con:
@@ -1241,6 +1275,48 @@ class Store:
         with self.connect() as con:
             rows = con.execute(sql, params).fetchall()
         return [(r["id"], -float(r["score"])) for r in rows]
+
+    def term_variants(self, terms: Iterable[str], limit: int = 8) -> dict[str, list[str]]:
+        """The versioned forms in which this library writes a family name: 'lpddr' -> lpddr4, lpddr4x, lpddr5 ...
+
+        The keyword index keeps "LPDDR4" as one word, so a question about "LPDDR" did not find a document that only
+        ever says "LPDDR4" - only the question's general words were left to match, and an unrelated document full
+        of them could come first. Given only for a term this library (almost) never writes as it is while its
+        versioned forms are common: a term the library does use as written ("SPI", "USB", "rate") gets nothing,
+        so such searches stay exactly as they were. Read from the keyword index's own vocabulary (works on a
+        read-only library, no model call); remembered until the library changes."""
+        words = [t for t in dict.fromkeys(str(t).lower() for t in terms) if 3 <= len(t) <= 10 and t.isalpha()]
+        if not words:
+            return {}
+        version = self.get_meta("index_version")
+        with self._lock:
+            if version != self._variants_version:
+                self._variants, self._variants_version = {}, version
+            known = dict(self._variants)
+        todo = [t for t in words if t not in known]
+        if todo:
+            found: dict[str, list[str]] = {}
+            try:
+                with self.connect() as con:
+                    con.execute("CREATE VIRTUAL TABLE IF NOT EXISTS temp.chunks_vocab "
+                                "USING fts5vocab(main, chunks_fts, row)")
+                    for t in todo:
+                        rows = con.execute("SELECT term, doc FROM temp.chunks_vocab WHERE term >= ? AND term < ?",
+                                           (t, t + "\uffff")).fetchall()
+                        bare = sum(r[1] for r in rows if r[0] == t)
+                        forms = sorted(((r[0], r[1]) for r in rows
+                                        if r[0] != t and _VARIANT_SUFFIX.fullmatch(r[0][len(t):])),
+                                       key=lambda x: (-x[1], x[0]))
+                        total = sum(n for _, n in forms)
+                        found[t] = [f for f, _ in forms[:limit]] if forms and bare * 4 <= total else []
+            except sqlite3.Error as exc:   # an index without the keyword table: nothing to add
+                log.debug("term variants not available: %s", exc)
+                return {}
+            with self._lock:
+                if self._variants_version == version:
+                    self._variants.update(found)
+            known.update(found)
+        return {t: known[t] for t in words if known.get(t)}
 
     def vectors(self) -> VectorIndex:
         version = self.get_meta("index_version")

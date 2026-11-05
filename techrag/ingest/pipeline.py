@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import threading
 import time
@@ -34,7 +35,7 @@ from techrag.geometry import norm_tokens
 from techrag.ingest.chunker import Chunk, chunk_blocks
 from techrag.ingest.cleaning import clean_blocks
 from techrag.ingest.loaders import SUPPORTED_SUFFIXES, TABLE_KIND, Block, LoadedDocument, load_document
-from techrag.ingest.metadata import build_metadata, compute_supersedence, llm_metadata
+from techrag.ingest.metadata import build_metadata, compute_supersedence, llm_metadata, standard_tags
 from techrag.ingest.quality import (FATAL_STAGES, DocQuality, IngestFailure, RetryNotBetter, add_document,
                                     empty_summary, failure_record, failure_stage, scrub)
 from techrag.ingest.sources import PlanItem, plan_changes, scan_root
@@ -42,6 +43,8 @@ from techrag.ingest.structure import SECTION_SEP, assign_sections, section_label
 from techrag.ingest.vlm import PROMPT_VERSION, ExtractedTable, TableExtractor, is_figure_page, page_candidates
 from techrag.llm import LLMClient
 from techrag.store import Store
+
+log = logging.getLogger("techrag.pipeline")
 
 Progress = Callable[[str], None]
 
@@ -124,6 +127,66 @@ class IngestReport:
                 "failed": self.failed, "warnings": self.warnings, "partial": self.partial,
                 "quality": self.run_summary(self.quality["vlm"].get("enabled") is not False), "retry": self.retry,
                 "run_id": self.run_id}
+
+
+TAG_RULES_META = "tag_rules"
+# Collections whose standard definitions changed in this version: re-tagged once in a library that kept no rule
+# fingerprints yet. Later changes of techrag/resources/domains.yaml are found by comparing the fingerprints.
+TAG_RULES_CHANGED = ("displayport",)
+
+
+def tag_rules(registry: DomainRegistry) -> dict[str, str]:
+    """A fingerprint of each collection's standard definitions (ids and patterns); collections without standards
+    (made from a folder name) have none."""
+    out = {}
+    for key, d in registry.domains.items():
+        if d.entities:
+            spec = [(e.id, [p.pattern for p in e.patterns]) for e in d.entities]
+            out[key] = hashlib.sha1(json.dumps(spec).encode()).hexdigest()[:12]
+    return out
+
+
+def refresh_standard_tags(store: Store, registry: DomainRegistry, progress: Progress = lambda m: None) -> dict:
+    """Bring the standard tags of indexed documents up to date when the standard definitions changed (e.g. every
+    DisplayPort version is its own standard since 0.15.0) - without indexing again and without any model call.
+
+    Only documents of the collections whose definitions changed are looked at (by collection, by tag, or by a
+    file name / title / front page that names that collection); every other document keeps its tags exactly.
+    The tags are recomputed from what was stored when the document was indexed: file name, PDF title, the model's
+    reading of the front page and the front matter. Revision precedence ("older revision") is recomputed after.
+    Nothing is deleted; a read-only library is left as it is (the person who writes it does this once)."""
+    if store.read_only:
+        return {"changed": 0, "collections": []}
+    current = tag_rules(registry)
+    try:
+        stored = json.loads(store.get_meta(TAG_RULES_META) or "null")
+    except ValueError:
+        stored = None
+    if stored is None:
+        changed = {k for k in TAG_RULES_CHANGED if k in current}
+    else:
+        changed = {k for k, h in current.items() if stored.get(k) != h}
+    updates: list[tuple[int, list]] = []
+    if changed:
+        for d in store.documents():
+            llm = (d.metadata or {}).get("llm") or {}
+            title = str((d.metadata or {}).get("title", "") or "")
+            name = Path(d.rel_path or d.path).stem
+            identity = " ".join([name.replace("_", " "), title, d.title, llm.get("standard", ""), llm.get("title", "")])
+            if not (d.domain in changed or any(registry.entity_domain(e) in changed for e in d.entities)
+                    or set(registry.detect(identity)) & changed):
+                continue
+            tags = standard_tags(registry, d.domain, name, title, store.front_text(d.id), llm)
+            if list(tags) != list(d.entities):
+                updates.append((d.id, tags))
+                progress(f"standard tags of '{d.title}': {', '.join(d.entities) or '-'} -> {', '.join(tags) or '-'}")
+        if updates:
+            store.set_standard_tags(updates)
+            store.set_superseded(compute_supersedence([d for d in store.documents() if not d.missing]))
+            log.info("standard tags updated for %d document(s) (%s)", len(updates), ", ".join(sorted(changed)))
+    if stored != current:
+        store.set_meta(TAG_RULES_META, json.dumps(current, sort_keys=True))
+    return {"changed": len(updates), "collections": sorted(changed)}
 
 
 def ingest_fingerprint(cfg: Config, vision_model: Optional[str]) -> str:
@@ -390,6 +453,13 @@ class Ingestor:
     def _begin_run(self, report: IngestReport) -> None:
         """One quality-report run per top-level call (a rescan of several folders is one run)."""
         if self._run_id is None:
+            try:
+                with self.gate.write():
+                    refresh_standard_tags(self.store, self.domains, self.progress)
+            except IngestStopped:
+                raise
+            except Exception as exc:   # tags are refreshed again next time; indexing goes on
+                log.warning("standard tags could not be refreshed: %s", exc)
             with self.gate.write():
                 self._run_id = self.store.start_ingest_run(self.run_kind)
         report.run_id = self._run_id
@@ -703,7 +773,9 @@ class Ingestor:
         cfg = self.cfg
         known: dict[tuple, np.ndarray] = {}
         old = self.store.document_by_path(rel)
-        if old is not None and old.title == title and list(old.entities) == list(entities):
+        # the standard names the stored vectors were made with (re-tagging changes the tags, not the vectors)
+        embedded = (old.metadata or {}).get("embedded_entities", old.entities) if old is not None else None
+        if old is not None and old.title == title and list(embedded) == list(entities):
             known = self.store.chunk_embeddings(old.id)
         out: list[Optional[np.ndarray]] = []
         todo: list[int] = []
