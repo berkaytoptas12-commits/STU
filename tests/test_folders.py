@@ -1,6 +1,7 @@
 """Document folders: buckets, incremental rescans, missing/unreachable sources, rate limits, publishing.
 (Synthetic files and a fake model server; API cost is counted as requests to the fake server.)"""
 
+import json
 import os
 import shutil
 from pathlib import Path
@@ -259,6 +260,69 @@ def test_publish_copies_folder_documents(tree, lib, cfg, tmp_path):
     d5 = next(d for d in ro.documents() if d.rel_path == "DDR/DDR5/Specification.pdf")
     assert ro.source_path(d5, dest / "sources").is_file() and d5.bucket == "DDR"
     assert store.last_publish["copied"] == 8
+
+
+def test_publish_keeps_the_quality_report(tree, lib, cfg, tmp_path):
+    """The quality records of folder documents follow them into the package (they used to stay under the folder
+    key, and the published library's report said "no quality info" for every document)."""
+    from techrag.store import Store
+
+    store, ingestor, _ = lib
+    root_id = store.add_root(str(tree))
+    ingestor().sync_root(root_id)
+    live = store.quality()
+    assert f"@{root_id}/Ethernet/bozuk.pdf" in live and live[f"@{root_id}/Ethernet/bozuk.pdf"]["status"] == "failed"
+    status = {d.rel_path: live[d.path]["status"] for d in store.documents()}
+    assert len(status) == 8
+    dest = tmp_path / "paylaşım"
+    store.publish(dest, cfg.sources_dir, cfg.vlm_cache_dir)
+    ro = Store(dest / "index.sqlite", read_only=True)
+    q = ro.quality()
+    assert {d.rel_path: q[d.path]["status"] for d in ro.documents() if d.path in q} == status
+    assert not [p for p in q if p.startswith("@")], "the failed folder file is not in the package: no record"
+    assert store.quality() == live, "the library itself is untouched"
+
+
+def test_an_already_published_library_gets_its_quality_report_back(tree, lib, cfg, tmp_path):
+    """A package published by an older version: its records are linked to their documents when it is opened
+    writable - only where the match is certain; nothing is deleted."""
+    import sqlite3
+
+    from techrag.store import Store
+
+    store, ingestor, _ = lib
+    root_id = store.add_root(str(tree))
+    ingestor().sync_root(root_id)
+    live = store.quality()
+    dest = tmp_path / "eski-paket"
+    store.publish(dest, cfg.sources_dir, cfg.vlm_cache_dir)
+    db = dest / "index.sqlite"
+    con = sqlite3.connect(str(db))   # as an older version left it: records under the folder keys
+    for path in list(live):
+        rel = path.split("/", 1)[1]
+        con.execute("DELETE FROM doc_quality WHERE path=?", (rel,))
+        con.execute("INSERT OR REPLACE INTO doc_quality(path, run_id, status, stage, processed_at, last_ok_at, index_kept,"
+                    " needs_reprocess, data) VALUES(?,?,?,?,?,?,?,?,?)",
+                    (path, live[path]["run_id"], live[path]["status"], live[path]["stage"],
+                     live[path]["processed_at"], live[path]["last_ok_at"], 0, 0,
+                     json.dumps(live[path]["data"], ensure_ascii=False)))
+    # one record whose title is not the document's: not linked (not certain)
+    con.execute("UPDATE doc_quality SET data=json_set(data, '$.title', 'başka belge') WHERE path=?",
+                (f"@{root_id}/PCIe/CEM.pdf",))
+    con.commit()
+    con.close()
+    before = Store(db, read_only=True)
+    assert not any(d.path in before.quality() for d in before.documents()), "the report said: no quality info"
+    n_records = len(before.quality())
+    opened = Store(db)               # the admin opens it writable
+    q = opened.quality()
+    linked = {d.rel_path for d in opened.documents() if d.path in q}
+    assert linked == {d.rel_path for d in opened.documents()} - {"PCIe/CEM.pdf"}
+    assert len(q) == n_records, "nothing deleted"
+    assert f"@{root_id}/PCIe/CEM.pdf" in q and f"@{root_id}/Ethernet/bozuk.pdf" in q
+    d5 = next(d for d in opened.documents() if d.rel_path == "DDR/DDR5/Specification.pdf")
+    assert q[d5.path]["data"] == live[f"@{root_id}/DDR/DDR5/Specification.pdf"]["data"]
+    assert Store(db).quality() == q, "opening again changes nothing"
 
 
 def test_v3_index_gets_buckets_on_open(cfg, sources, lib):

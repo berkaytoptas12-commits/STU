@@ -293,7 +293,12 @@ değildir.
   Başarısız bir belgenin önceki indeksi varsa "önceki indeks korunuyor ve cevaplarda kullanılıyor" yazar.
 * Doğrulanmamış tablo satırları raporda görünse de **cevaplarda kullanılmaz** (kurallar değişmedi).
 * Bu sürümden önce indekslenmiş belgeler için "kalite bilgisi mevcut değil" yazar; tahmin yapılmaz. Bilgi, belge
-  bir sonraki işlenişinde oluşur.
+  bir sonraki işlenişinde oluşur. "Tümünü yeniden tara" değişmemiş belgeleri yeniden işlemez; bu belgelerin kaydı
+  ancak **Tamamen yeniden oluştur** ile (veya belge değişince) oluşur.
+* **Yayımlanan kütüphane:** klasörden eklenmiş belgelerin kalite kayıtları pakete belgelerle birlikte taşınır.
+  0.13.2'den önce yayımlanmış bir pakette bu kayıtlar eski klasör anahtarında kalıyordu ve rapor bu belgeler için
+  "kalite bilgisi yok" diyordu; paket Admin'de **yazılabilir** açılınca kayıtlar belgelerine yeniden bağlanır
+  (yalnızca eşleşmenin kesin olduğu yerde: aynı göreli yol, aynı başlık ve sayfa sayısı; hiçbir kayıt silinmez).
 * Rapora API anahtarı, sunucu adresi, IP veya erişim anahtarı yazılmaz: hata ayrıntılarından bunlar silinir.
 
 **Başarısız işlemleri yeniden dene:** önce kapsamı gösterir, sonra uygular.
@@ -354,7 +359,8 @@ yayımlamalıdır.
 **Paylaşım:** kütüphaneyi hazırlayan kişi **Admin › Ortak kütüphane → Yayımla** ile temiz bir kopya üretir (tek dosya
 indeks + kaynaklar + VLM önbelleği). Belge klasörlerinden okunan dosyalar pakete **açıkça kopyalanır**
 (`sources\<bucket>\<alt yol>\...`) ve kopyadaki indeks bunları gösterir; böylece paket başka bilgisayarda da
-çalışır. Kaynak dosyalar yalnızca okunur. Diğer kullanıcılar bu klasörü (ağ paylaşımı dahil, `\\sunucu\paylaşım\...`)
+çalışır. Belgelerin kalite kayıtları da yeni yollarına taşınır (pakete girmeyen, işlenememiş klasör dosyalarının
+kayıtları pakete alınmaz). Kaynak dosyalar yalnızca okunur. Diğer kullanıcılar bu klasörü (ağ paylaşımı dahil, `\\sunucu\paylaşım\...`)
 **salt-okunur** açar: kilit kullanmaz, ağ paylaşımında güvenlidir. Güncellemeyi yeni bir klasöre yayımlayıp
 kullanıcıların onu açması önerilir (açıkken üzerine yazmayın).
 

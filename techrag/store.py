@@ -381,6 +381,7 @@ class Store:
                     con.execute("INSERT INTO meta VALUES('schema_version', ?)", (SCHEMA_VERSION,))
                 # a run still 'running' when the library is opened was cut off (the app was closed meanwhile)
                 con.execute("UPDATE ingest_runs SET status='interrupted' WHERE status='running'")
+                self._relink_published_quality(con)
         with self.connect() as con:
             self.columns = {t: {r[1] for r in con.execute(f"PRAGMA table_info({t})")}
                             for t in ("chunks", "tables", "parameters", "pages", "documents", "roots", "excluded")}
@@ -640,6 +641,51 @@ class Store:
         return doc_id
 
     # ------------------------------------------------------------ indexing quality
+    @staticmethod
+    def _relink_published_quality(con: sqlite3.Connection) -> int:
+        """A library published before 0.13.2 kept the quality records of folder documents under their old key
+        ("@<folder id>/<path>") while the documents got their path inside the package: the report then said
+        "no quality info" for every such document. The records are linked to their documents again - only when
+        it is certain: the record's folder no longer exists, exactly one record and exactly one document without
+        a record have that relative path, and the record's title (and page count) are the document's. Nothing is
+        deleted; a record that cannot be matched stays as it is."""
+        if not con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='doc_quality'").fetchone():
+            return 0
+        doc_paths = {r[0] for r in con.execute("SELECT path FROM documents")}
+        orphans = [r for r in con.execute("SELECT path, data FROM doc_quality WHERE path LIKE '@%'").fetchall()
+                   if r[0] not in doc_paths]
+        if not orphans:
+            return 0
+        roots = {r[0] for r in con.execute("SELECT id FROM roots")}
+        by_rel: dict[str, list] = {}
+        for path, data in orphans:
+            m = re.match(r"@(\d+)/(.+)$", path)
+            if m and int(m.group(1)) not in roots:
+                by_rel.setdefault(m.group(2), []).append((path, data))
+        have = {r[0] for r in con.execute("SELECT path FROM doc_quality")}
+        free: dict[str, list] = {}
+        for path, rel, title, n_pages in con.execute(
+                "SELECT path, rel_path, title, n_pages FROM documents WHERE root_id IS NULL").fetchall():
+            if path not in have:
+                free.setdefault(rel or path, []).append((path, title, n_pages))
+        moved = 0
+        for rel, recs in by_rel.items():
+            cands = free.get(rel, [])
+            if len(recs) != 1 or len(cands) != 1:
+                continue
+            (old, data), (new, title, n_pages) = recs[0], cands[0]
+            try:
+                d = json.loads(data or "{}")
+            except ValueError:
+                continue
+            src_rel = (d.get("source") or {}).get("rel_path")
+            if d.get("title") != title or (src_rel and src_rel != rel) or \
+                    (d.get("n_pages") and n_pages and int(d["n_pages"]) != int(n_pages)):
+                continue
+            con.execute("UPDATE doc_quality SET path=? WHERE path=?", (new, old))
+            moved += 1
+        return moved
+
     @staticmethod
     def _has_quality(con: sqlite3.Connection) -> bool:
         return con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='doc_quality'").fetchone() \
@@ -1246,12 +1292,15 @@ class Store:
         try:
             con.execute("PRAGMA journal_mode=DELETE")
             has_roots = bool(con.execute("SELECT name FROM sqlite_master WHERE name='roots'").fetchone())
+            has_quality = self._has_quality(con)
             roots = dict(con.execute("SELECT id, path FROM roots").fetchall()) if has_roots else {}
             used = {r[0] for r in con.execute("SELECT path FROM documents WHERE root_id IS NULL"
                                               if has_roots else "SELECT path FROM documents")}
-            rows = con.execute("SELECT id, root_id, rel_path FROM documents WHERE root_id IS NOT NULL").fetchall() \
-                if has_roots else []
-            for doc_id, root_id, rel in rows:
+            if has_quality:   # a file of the library's own sources that failed keeps its (failure) record
+                used |= {r[0] for r in con.execute("SELECT path FROM doc_quality WHERE path NOT LIKE '@%'")}
+            rows = con.execute("SELECT id, root_id, rel_path, path FROM documents WHERE root_id IS NOT NULL"
+                               ).fetchall() if has_roots else []
+            for doc_id, root_id, rel, old_path in rows:
                 src = Path(roots.get(root_id, "")) / rel
                 new = rel
                 n = 2
@@ -1268,7 +1317,12 @@ class Store:
                 out.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, out)
                 con.execute("UPDATE documents SET path=?, rel_path=?, root_id=NULL WHERE id=?", (new, new, doc_id))
+                if has_quality:   # the quality record follows its document (it is keyed by the document's path)
+                    con.execute("UPDATE doc_quality SET path=? WHERE path=?", (new, old_path))
                 report["copied"] += 1
+            if has_quality:
+                # failure-only records of folder files: those files are not in the package (nothing to retry there)
+                con.execute("DELETE FROM doc_quality WHERE path LIKE '@%' AND path NOT IN (SELECT path FROM documents)")
             if has_roots:
                 con.execute("DELETE FROM roots")
             con.commit()

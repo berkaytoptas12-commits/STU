@@ -1,5 +1,22 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.13.2 — yayımlanan kütüphanede kalite raporu
+- **Düzeltme:** **Admin › Ortak kütüphane → Yayımla** ile üretilen pakette, belge klasörlerinden eklenmiş belgelerin
+  kalite kayıtları eski klasör anahtarında kalıyordu (belgeler paket içindeki yeni yollarını alırken). Bu yüzden
+  yayımlanan kütüphanenin **İndeksleme kalite raporu** bu belgelerin hepsi için "kalite bilgisi yok" diyordu. Artık
+  kayıtlar belgelerle birlikte taşınır.
+- **Önceden yayımlanmış paketler:** paket Admin'de yazılabilir açılınca kayıtlar belgelerine kendiliğinden yeniden
+  bağlanır. Yalnızca eşleşmenin kesin olduğu yerde bağlanır (kaydın klasörü pakette yok, aynı göreli yolda tek kayıt
+  ve kaydı olmayan tek belge, aynı başlık ve sayfa sayısı). Hiçbir kayıt silinmez; eşleşmeyen kayıt olduğu gibi
+  kalır. Yeniden indeksleme veya model çağrısı gerekmez.
+- Pakete girmeyen (işlenememiş) klasör dosyalarının hata kayıtları artık yeni pakete alınmaz; bu dosyalar
+  kütüphanenin kendi raporunda görünmeye devam eder.
+- Not: 0.6.0'dan önce indekslenmiş belgelerin kalite kaydı hiç yoktur. "Tümünü yeniden tara" değişmemiş belgeleri
+  yeniden işlemediği için bu kaydı oluşturmaz; kayıt **Tamamen yeniden oluştur** ile oluşur.
+- Doğrulanan: testler (yayımlanan pakette her belgenin kaydının olması; eski bir paketin yazılabilir açılınca
+  kayıtlarını geri alması, kesin olmayan eşleşmenin bağlanmaması, hiçbir kaydın silinmemesi). Kullanıcının gerçek
+  paketinde denenmedi.
+
 ### 0.13.1 — yeni bilgisayarda ilk soru "aranıyor"da takılmıyor
 - **Düzeltme:** yeni bir bilgisayarda, ortak kütüphanenin yerel kopyası henüz alınmamışken uygulama açılışta vektörleri
   ve arama dizinini ağdan sayfa sayfa okumaya başlıyordu; ilk soru "Soru çözümleniyor ve kaynaklar aranıyor…"
