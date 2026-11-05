@@ -167,10 +167,11 @@ anahtarlar ilk kayıtta ortak anahtara taşınır (sohbet modelininki esas alın
 * Doğrulanamayan iddialar: **Kaldır** (varsayılan) veya **İşaretle**.
 * **Bildirim:** pencere küçültülmüş, simgenin arkasına gizlenmiş veya başka pencerelerin arkasındayken cevap
   hazır olunca Windows bildirimi (varsayılan açık; Windows'un odak yardımı / sessiz saatleri geçerlidir).
+* **Bağımsız denetçi açık/kapalı** (Cevaplama bölümünde): kapalıyken ifadeler yalnızca sayı/birim ve atıf
+  kontrolünden geçer, anlamsal olarak denetlenmez; ayarın altında bu uyarı, cevabın doğrulama kutusunda "bağımsız
+  denetçi kapalı" yazar.
 * **Gelişmiş:** model bağlam uzunluğu (token; sunucunun bildirdiği değer yanında gösterilir, küçük olan
-  kullanılır), **bağımsız denetçi açık/kapalı** (kapalıyken ifadeler yalnızca sayı/birim ve atıf kontrolünden geçer,
-  anlamsal olarak denetlenmez; ayarın altında bu uyarı, cevabın doğrulama kutusunda "bağımsız denetçi kapalı" yazar),
-  denetçinin bir istekte göreceği en fazla ifade, **top k** ayarları (modele verilen en fazla pasaj, varsayılan 8,
+  kullanılır), denetçinin bir istekte göreceği en fazla ifade (denetçi kapalıyken devre dışı), **top k** ayarları (modele verilen en fazla pasaj, varsayılan 8,
   1–30; rerank'e giden aday sayısı, varsayılan 40; anahtar kelime ve vektör aramasının aday sayıları, varsayılan 50;
   pasajlar bağlam bütçesine — bağlam uzunluğunun %60'ı — sığdığı kadar verilir, rerank aday sayısı top k'den küçük
   olamaz), yanlış atıf düzeltmesi (açık/kapalı), "bulunamadı"

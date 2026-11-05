@@ -1133,7 +1133,10 @@ def test_advanced_settings_have_top_k_and_the_judge_switch(ui, cfg):
     _admin(ui, "adm-settings")
     ui.wait_for_function("() => document.querySelectorAll('#adm-svc-grid .svc').length === 3")
     adv = ui.locator("#adv-box")
-    assert adv.locator("#set-judge").count() == 1 and adv.locator("#set-top-k").count() == 1, "both under Gelişmiş"
+    assert adv.locator("#set-top-k").count() == 1, "top k under Gelişmiş"
+    answering = ui.locator("#adm-settings fieldset").first
+    assert answering.locator("#set-judge").count() == 1 and answering.locator("#judge-off-hint").count() == 1, \
+        "the judge switch stays under Cevaplama"
     assert "Modele verilen pasaj sayısı (top k)" in adv.inner_text()
     assert [ui.input_value(s) for s in ("#set-top-k", "#set-rerank-cand", "#set-bm25-k", "#set-dense-k")] == \
         ["8", "40", "50", "50"]

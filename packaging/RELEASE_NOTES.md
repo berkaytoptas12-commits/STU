@@ -1,14 +1,14 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
-### 0.14.1 — top k ve denetçi anahtarı Admin › Ayarlar › Gelişmiş'te
+### 0.14.1 — top k ayarları Admin › Ayarlar › Gelişmiş'te; denetçi kapatma uyarısı
 - **Top k ayarları:** Admin › Ayarlar › Gelişmiş'te "Modele verilen pasaj sayısı (top k)" (varsayılan 8, 1–30),
   "Rerank'e giden aday sayısı" (40), "Anahtar kelime araması aday sayısı (BM25 top k)" (50) ve "Vektör araması aday
   sayısı (dense top k)" (50). Pasajlar bağlam bütçesine (bağlam uzunluğunun %60'ı) sığdığı kadar verilir. Rerank aday
   sayısı top k'den küçük girilirse kaydedilmez ve nedeni Türkçe yazılır. Değerler kurum ayarlarına da yazılır.
-- **Bağımsız denetçi açık/kapalı** artık aynı bölümde (Cevaplama bölümünden taşındı). Kapatılınca altında ne anlama
-  geldiği yazar: ifadeler yalnızca sayı/birim ve atıf kontrolünden geçer, anlamsal olarak denetlenmez; cevaplar daha
-  hızlı gelir ama kaynakla desteklenmeyen bir ifade yakalanmayabilir. Cevabın doğrulama kutusu da "bağımsız denetçi
-  kapalı" der. Denetçi kapalıyken "bir istekte en fazla ifade" alanı devre dışıdır.
+- **Bağımsız denetçi açık/kapalı** (Admin › Ayarlar › Cevaplama): kapatılınca altında ne anlama geldiği yazar:
+  ifadeler yalnızca sayı/birim ve atıf kontrolünden geçer, anlamsal olarak denetlenmez; cevaplar daha hızlı gelir ama
+  kaynakla desteklenmeyen bir ifade yakalanmayabilir. Cevabın doğrulama kutusu da "bağımsız denetçi kapalı" der.
+  Denetçi kapalıyken Gelişmiş'teki "bir istekte en fazla ifade" alanı devre dışıdır.
 - Doğrulanan: testler (aralık ve rerank ≥ top k denetimi; top k'nin modele verilen pasaj sayısını sınırlaması;
   ayarların kaydı; denetçi uyarısının görünmesi).
 
