@@ -15,8 +15,8 @@ const I18N = {
     addDocs: "Doküman ekle", collection: "Koleksiyon (klasör)", chooseFiles: "Dosya seç…", reindex: "Yeniden indeksle",
     emptyTitle: "Standartlara sorun", emptyText: "Cevaplar yalnızca yüklü dokümanlardan üretilir; her ifade [n] atfıyla kaynağına bağlanır, sayılar ve iddialar cevaptan önce kaynaklara karşı denetlenir.",
     ask: "Sor", tabSource: "Kaynak", viewerEmpty: "Bir [n] atfına veya bir dokümana tıklayın.",
-    answering: "Cevaplama", thinking: "Düşünme modu",
-    thinkingControl: "Düşünme kontrolü", tools: "Araç kullanımı (tool calling)", judge: "Bağımsız denetçi (her iddia için ayrı LLM kontrolü)",
+    answering: "Cevaplama", thinking: "Kapsamlı model: düşünme modu",
+    thinkingControl: "Kapsamlı model: düşünme kontrolü", tools: "Araç kullanımı (tool calling)", judge: "Bağımsız denetçi (her iddia için ayrı LLM kontrolü)",
     regenerate: "Doğrulanamayan ifadeleri bir kez düzelttir (yalnızca o cümleler yeniden yazılır)", failedClaims: "Doğrulanamayan iddialar", strip: "Kaldır", flag: "İşaretle",
     visionEnabled: "VLM ile tablo çıkarımı ve sayfa görüntüleri", cancel: "Vazgeç", save: "Kaydet", close: "Kapat",
     currentLibrary: "Açık kütüphane", libraryHint: "Kütüphane klasörü: sources/<koleksiyon>/*.pdf + index.sqlite + cache/. Bir kişi indeksler, diğerleri kopyasını veya ağ paylaşımındaki yayımlanmış sürümü salt-okunur açar.",
@@ -208,7 +208,7 @@ const I18N = {
     apiKeyHint: "Tek anahtar: sohbet (vLLM), görsel model, embedding ve reranker sunucularının hepsine bu anahtar gönderilir.",
     svc_llm: "Sohbet modeli — Kapsamlı", svc_llm_fast: "Sohbet modeli — Hızlı", svc_vision: "Görsel model (VLM)", svc_embedding: "Embedding", svc_reranker: "Reranker",
     fastHint: "Sohbette “Hızlı” seçilince bu model kullanılır: soru çözümleme, cevap, denetçi ve atıf düzeltme. Model boşsa sohbette seçim gösterilmez. Sunucu boşsa kapsamlı modelin sunucusu kullanılır.",
-    fastSameServer: "(boş: kapsamlı modelin sunucusu)", fastThinking: "Düşünme",
+    fastSameServer: "(boş: kapsamlı modelin sunucusu)", fastThinking: "Hızlı model: düşünme modu",
     fastThinkingControl: "Hızlı model: düşünme kontrolü", sameAsDeep: "Kapsamlı modelle aynı",
     modeDeep: "Kapsamlı", modeFast: "Hızlı", modeTitle: "Bu soruyu cevaplayacak model: {0}", tModel: "Model", evalMode: "Cevaplayan model",
     enabled: "etkin", notOnServer: "(sunucuda yok)", savedSettings: "Ayarlar kaydedildi.", noModels: "Model listesi alınamadı",
@@ -311,7 +311,7 @@ const I18N = {
     addDocs: "Add documents", collection: "Collection (folder)", chooseFiles: "Choose files…", reindex: "Re-index",
     emptyTitle: "Ask the standards", emptyText: "Answers come only from the loaded documents; every statement is tied to its source with an [n] citation, and numbers and claims are checked against the sources before you see the answer.",
     ask: "Ask", tabSource: "Source", viewerEmpty: "Click an [n] citation or a document.",
-    answering: "Answering", thinking: "Thinking mode",
+    answering: "Answering", thinking: "Thorough model: thinking mode",
     thinkingControl: "Thinking control", tools: "Tool calling", judge: "Independent judge (separate LLM check per claim)",
     regenerate: "Correct failed statements once (only those sentences are rewritten)", failedClaims: "Unverifiable claims", strip: "Remove", flag: "Flag",
     visionEnabled: "VLM table extraction and page images", cancel: "Cancel", save: "Save", close: "Close",
@@ -504,7 +504,7 @@ const I18N = {
     apiKeyHint: "One key: it is sent to every model server (chat/vLLM, vision, embedding and reranker).",
     svc_llm: "Chat model — Thorough", svc_llm_fast: "Chat model — Fast", svc_vision: "Vision model (VLM)", svc_embedding: "Embedding", svc_reranker: "Reranker",
     fastHint: "Used when “Fast” is chosen in the chat: planning the question, the answer, the judge and citation repair. No model: the chat offers no choice. No server: the thorough model's server.",
-    fastSameServer: "(empty: the thorough model's server)", fastThinking: "Thinking",
+    fastSameServer: "(empty: the thorough model's server)", fastThinking: "Fast model: thinking mode",
     fastThinkingControl: "Fast model: thinking control", sameAsDeep: "Same as the thorough model",
     modeDeep: "Thorough", modeFast: "Fast", modeTitle: "Model answering this question: {0}", tModel: "Model", evalMode: "Answering model",
     enabled: "enabled", notOnServer: "(not on server)", savedSettings: "Settings saved.", noModels: "Could not load models",
@@ -2135,12 +2135,10 @@ function svcCard(svc) {
   const extra = svc === "vision" ? `<label><input type="checkbox" class="same"> ${t("sameAsChat")}</label>`
     : svc === "reranker" ? `<label><input type="checkbox" class="enabled"> ${t("enabled")}</label>`
     : fast ? `<p class="hint">${esc(t("fastHint"))}</p>` : "";
-  const thinkingSel = fast ? `<label>${t("fastThinking")}<select class="thinking">${["off", "auto", "on"].map((v) =>
-    `<option value="${v}" ${(s.thinking || "off") === v ? "selected" : ""}>${v}</option>`).join("")}</select></label>` : "";
   div.innerHTML = `<h3>${t("svc_" + svc)}</h3>${extra}
     <label>${t("baseUrl")}<input class="url" value="${esc(s.base_url)}" placeholder="${fast ? esc(t("fastSameServer")) : "http://server:8000/v1"}"></label>
     <label>${t("model")}<div class="row"><select class="model"></select><button type="button" class="ghost load">${t("modelsLoad")}</button><button type="button" class="ghost test">${t("test")}</button></div></label>
-    <label class="insecure-row"><input type="checkbox" class="insecure"> ${t("insecure")}</label>${thinkingSel}
+    <label class="insecure-row"><input type="checkbox" class="insecure"> ${t("insecure")}</label>
     <div class="result"></div>`;
   $(".insecure", div).checked = s.verify_ssl === false;
   const same = $(".same", div);
@@ -2496,8 +2494,6 @@ function cardPatch(card) {
   const out = { base_url: $(".url", card).value.trim(), model: $(".model", card).value, verify_ssl: !$(".insecure", card).checked };
   const en = $(".enabled", card);
   if (en) out.enabled = en.checked;
-  const th = $(".thinking", card);
-  if (th) out.thinking = th.value;
   return out;
 }
 async function saveSettings(e) {
@@ -2521,6 +2517,7 @@ async function loadAdminSettings() {
   for (const svc of SERVICES.filter((x) => x !== "llm")) grid.append(svcCard(svc));
   $("#set-thinking").value = SETTINGS.llm.thinking;
   $("#set-thinking-control").value = SETTINGS.llm.thinking_control;
+  $("#set-fast-thinking").value = (SETTINGS.llm_fast || {}).thinking || "on";
   $("#set-fast-thinking-control").value = (SETTINGS.llm_fast || {}).thinking_control || "";
   $("#set-tools").value = SETTINGS.llm.tools;
   $("#set-judge").checked = SETTINGS.answer.judge;
@@ -2616,7 +2613,7 @@ async function saveAdminSettings() {
   const patch = { answer: { judge: $("#set-judge").checked, regenerate: $("#set-regenerate").checked, failed_claims: $("#set-failed").value } };
   for (const card of $$("#adm-svc-grid .svc")) patch[card.dataset.svc] = cardPatch(card);
   patch.llm = { thinking: $("#set-thinking").value, thinking_control: $("#set-thinking-control").value, tools: $("#set-tools").value };
-  patch.llm_fast = { thinking_control: $("#set-fast-thinking-control").value };
+  patch.llm_fast = { thinking: $("#set-fast-thinking").value, thinking_control: $("#set-fast-thinking-control").value };
   patch.vision = Object.assign(patch.vision || {}, { enabled: $("#set-vision-enabled").checked });
   const num = (id, int) => { const v = int ? parseInt($(id).value, 10) : parseFloat($(id).value); return Number.isFinite(v) ? v : undefined; };
   const adv = { llm: { context_tokens: num("#set-context", true), max_tool_rounds: num("#set-tool-rounds", true) }, answer: { judge_batch: num("#set-judge-batch", true),

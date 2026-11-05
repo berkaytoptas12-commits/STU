@@ -3,8 +3,12 @@
 ### 0.14.0 — iki sohbet modeli: Kapsamlı ve Hızlı
 - **Ayarlar**'da iki sohbet modeli seçilir: **Sohbet modeli — Kapsamlı** (önceki sohbet modeli) ve **Sohbet modeli —
   Hızlı**. Her birinin kendi API adresi ve modeli vardır; hızlı modelin adresi boşsa kapsamlı modelin sunucusu
-  kullanılır. Hızlı modelin düşünme ayarı kendi kartında (varsayılan kapalı), düşünme kontrolü yöntemi Admin ›
-  Ayarlar'dadır (varsayılan: kapsamlı modelle aynı).
+  kullanılır.
+- **Düşünme ayarları Admin › Ayarlar'da yan yana:** "Kapsamlı model: düşünme modu / düşünme kontrolü" ve "Hızlı model:
+  düşünme modu / düşünme kontrolü". **Düşünme modu iki model için de varsayılan olarak `on`** (önceden kapsamlı
+  modelde `auto`). Hızlı modelin düşünme kontrolü varsayılan olarak kapsamlı modelle aynıdır. Kendi ayarlarında
+  veya kurum dosyasında düşünme modu kayıtlı olan kullanıcılarda o değer geçerli kalır; herkeste `on` olması için
+  Admin › Ayarlar'da `on` seçip kaydedin ve **Kurum ayarlarını kaydet**'e basın.
 - **Sohbette seçim:** hızlı model ayarlıysa soru kutusunun solunda **Kapsamlı | Hızlı** seçimi çıkar; seçim bu
   bilgisayarda hatırlanır. Hızlı seçilince sohbet modelinin kullanıldığı her yerde o soru için hızlı model kullanılır:
   soru çözümleme, cevap, bağımsız denetçi ve atıf düzeltme. Arama, rerank, sayı/birim kontrolü ve doğrulama
@@ -19,7 +23,7 @@
 - Doğrulanan: testler (hızlı soruda soru çözümleme, cevap ve denetçi isteklerinin hepsinin hızlı modele gitmesi; şekil
   sayfasının görsel modele gitmesi; kapsamlı modelin değişmemesi; hızlı modelin kendi düşünme ayarı; sohbet
   seçiminin görünmesi, hatırlanması ve cevapta yazması; kullanım günlüğü; değerlendirme; ayarların kaydı ve kurum
-  dosyası). Gerçek iki modelli bir vLLM kurulumunda denenmedi.
+  dosyası; iki düşünme ayarının Admin'de varsayılan `on` olması). Gerçek iki modelli bir vLLM kurulumunda denenmedi.
 
 ### 0.13.2 — kurum ayarlarında en yeni karar geçerli; yayımlanan kütüphanede kalite raporu
 - **Kurum ayarları, en yeni karar geçerli:** önceden bir kullanıcının kendi değeri (ör. ortak kütüphane klasörü) kurum

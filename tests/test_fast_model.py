@@ -43,12 +43,13 @@ def fast(cfg, engine, fake):
 
 def test_the_fast_model_settings():
     c = Config()
-    c.llm.base_url, c.llm.model, c.llm.thinking, c.llm.thinking_control = "http://gpu01:8000/v1", "big", "on", \
+    assert c.llm.thinking == "on" and c.llm_fast.thinking == "on", "both models think by default"
+    c.llm.base_url, c.llm.model, c.llm.thinking, c.llm.thinking_control = "http://gpu01:8000/v1", "big", "auto", \
         "reasoning_effort"
     assert c.chat_config("fast") is c.llm, "no fast model set: the chat model answers"
     c.llm_fast.model = "small"
     f = c.chat_config("fast")
-    assert (f.base_url, f.model, f.thinking, f.thinking_control) == ("http://gpu01:8000/v1", "small", "off",
+    assert (f.base_url, f.model, f.thinking, f.thinking_control) == ("http://gpu01:8000/v1", "small", "on",
                                                                      "reasoning_effort")
     assert f.tools == c.llm.tools and f.context_tokens == c.llm.context_tokens, "the other chat settings are shared"
     c.llm_fast.base_url, c.llm_fast.thinking_control, c.llm_fast.verify_ssl = "http://gpu02:8000/v1", "none", False
@@ -78,7 +79,7 @@ def test_a_fast_question_uses_the_fast_model_everywhere(fast, fake, cfg):
 
 
 def test_the_fast_model_thinks_by_its_own_setting(fast, fake, cfg):
-    cfg.llm.thinking = "on"                      # the chat model always thinks; the fast one: off (default)
+    cfg.llm.thinking, cfg.llm_fast.thinking = "on", "off"   # the thorough model thinks, the fast one does not
     n = len(fake.calls)
     fast.for_mode("fast").ask(QUESTION)
     answer_calls = [c["body"] for c in fake.calls[n:] if c["path"].endswith("/chat/completions")

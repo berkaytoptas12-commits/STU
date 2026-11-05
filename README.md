@@ -146,10 +146,11 @@ anahtarlar ilk kayıtta ortak anahtara taşınır (sohbet modelininki esas alın
   kuralları iki modda da aynıdır; görsel model (VLM) de değişmez.
   * Hızlı modelin **API adresi** boş bırakılırsa kapsamlı modelin sunucusu kullanılır (aynı vLLM sunucusunda iki
     model varsa). Model boşsa sohbette seçim gösterilmez ve her şey eskisi gibi çalışır.
-  * Hızlı modelin **Düşünme** ayarı kendi kartındadır (varsayılan `off`); düşünme kontrolü yöntemi Admin › Ayarlar'da
-    "Hızlı model: düşünme kontrolü" (varsayılan: kapsamlı modelle aynı; farklı aileden bir model için ör. Qwen →
-    `chat_template`, Gemma 4 → `reasoning_effort`). Araç kullanımı, bağlam bütçesi ve diğer cevaplama ayarları iki
-    model için ortaktır.
+  * İki modelin düşünme ayarları **Admin › Ayarlar**'da yan yanadır: "Kapsamlı model: düşünme modu / düşünme
+    kontrolü" ve "Hızlı model: düşünme modu / düşünme kontrolü". Düşünme modu iki model için de varsayılan olarak
+    `on`; hızlı modelin düşünme kontrolü varsayılan olarak kapsamlı modelle aynıdır (farklı aileden bir model için
+    ör. Qwen → `chat_template`, Gemma 4 → `reasoning_effort`). Araç kullanımı, bağlam bütçesi ve diğer cevaplama
+    ayarları iki model için ortaktır.
   * Cevabın altındaki süre düğmesi hızlı modelle cevaplanan sorularda "· Hızlı" der; ayrıntıda cevaplayan modelin
     adı yazar. Kullanım günlüğü cevaplayan modeli kaydeder. **Admin › Değerlendirme**'de soru setini hangi modelle
     çalıştıracağınız seçilir (iki modelin doğruluğunu karşılaştırmak için); raporda model yazar.
@@ -158,7 +159,7 @@ anahtarlar ilk kayıtta ortak anahtara taşınır (sohbet modelininki esas alın
   * Hızlı model kurum ayarlarına da yazılır.
 * Görsel model: "Sohbet modeliyle aynı" (çok kipli Qwen: şekil sayfaları cevap modeline görüntü olarak gider)
   veya ayrı bir VLM (sohbet modeli yalnızca metin alıyorsa sayfa görüntüleri VLM tarafından metne dökülür).
-* Düşünme modu: `auto` (karşılaştırma / çok parçalı sorularda açık), `on`, `off`; kontrol yöntemi
+* Düşünme modu: `on` (varsayılan), `auto` (karşılaştırma / çok parçalı sorularda açık), `off`; kontrol yöntemi
   `chat_template` (Qwen `enable_thinking`) veya `reasoning_effort` (ör. vLLM'de Gemma 4). `reasoning_effort`
   düşünmeyi yalnızca açabildiği için düşünmemesi gereken çağrılar (denetçi, soru çözümleme, düzeltme) ayrıca
   `chat_template_kwargs: {"enable_thinking": false}` gönderir; sunucu bunu reddederse bir kez günlüğe yazılır ve

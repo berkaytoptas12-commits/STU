@@ -1108,18 +1108,22 @@ def test_settings_have_a_thorough_and_a_fast_chat_model(ui, cfg):
     assert "Sohbet modeli — Hızlı" in card.inner_text() and "“Hızlı” seçilince" in card.inner_text()
     assert "Sohbet modeli — Kapsamlı" in ui.inner_text('#svc-grid .svc[data-svc="llm"]')
     assert card.locator(".url").get_attribute("placeholder").startswith("(boş")
-    assert card.locator(".model").input_value() == "fast-test" and card.locator(".thinking").input_value() == "off"
-    card.locator(".thinking").select_option("auto")
+    assert card.locator(".model").input_value() == "fast-test" and card.locator(".thinking").count() == 0
     ui.click("#btn-save-settings")
     ui.wait_for_function("() => !document.querySelector('#dlg-settings').open")
     s = ui.evaluate("async () => (await (await fetch('/api/settings')).json())")
-    assert s["llm_fast"]["model"] == "fast-test" and s["llm_fast"]["thinking"] == "auto"
-    assert s["llm"]["model"] == "qwen-test", "the thorough model is kept"
+    assert s["llm_fast"]["model"] == "fast-test" and s["llm"]["model"] == "qwen-test", "a model for each"
+    # thinking of both models: Admin › Ayarlar, on by default
     _admin(ui, "adm-settings")
     ui.wait_for_function("() => document.querySelectorAll('#adm-svc-grid .svc').length === 3")
+    assert ui.input_value("#set-thinking") == "on" and ui.input_value("#set-fast-thinking") == "on"
     assert ui.input_value("#set-fast-thinking-control") == ""
+    text = ui.inner_text("#adm-settings")
+    assert "Kapsamlı model: düşünme modu" in text and "Hızlı model: düşünme modu" in text
+    ui.select_option("#set-fast-thinking", "off")
     ui.select_option("#set-fast-thinking-control", "reasoning_effort")
     ui.click("#btn-save-admin-settings")
     ui.wait_for_function("() => document.querySelector('#adm-settings-status').textContent.length > 0")
     s = ui.evaluate("async () => (await (await fetch('/api/settings')).json())")
-    assert s["llm_fast"]["thinking_control"] == "reasoning_effort" and s["llm"]["thinking_control"] == "chat_template"
+    assert s["llm_fast"]["thinking"] == "off" and s["llm_fast"]["thinking_control"] == "reasoning_effort"
+    assert s["llm"]["thinking"] == "on" and s["llm"]["thinking_control"] == "chat_template"

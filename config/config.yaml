@@ -21,12 +21,18 @@ llm:                                 # answering model (tool calling + vision ca
   model: ""                          # pick from the server's /v1/models (Settings dialog shows a dropdown)
   temperature: 0.1
   max_tokens: 4096
-  thinking: auto                     # auto: on for multi-part / comparison questions | on | off
+  thinking: on                       # on | auto: on for multi-part / comparison questions | off
   thinking_control: chat_template    # chat_template (Qwen enable_thinking) | reasoning_effort | none
   reasoning_effort: medium
   tools: auto                        # vLLM: --enable-auto-tool-choice --tool-call-parser hermes
   max_tool_rounds: 4
   context_tokens: 16000              # curated source context; keep far below the model maximum
+
+llm_fast:                            # the fast chat model ("Hızlı"), chosen per question in the chat
+  base_url: ""                       # empty: the server of llm
+  model: ""                          # empty: no fast mode
+  thinking: on                       # on | auto | off
+  thinking_control: ""               # empty: as llm
 
 vision:                              # table extraction at ingestion + page images; empty = same as llm
   enabled: true

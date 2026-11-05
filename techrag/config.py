@@ -108,8 +108,9 @@ class LLMConfig(ServiceConfig):
     base_url: str = "http://localhost:8000/v1"
     temperature: float = 0.1
     max_tokens: int = 4096
-    # Thinking for multi-part / comparison questions: auto (planner decides) | on | off
-    thinking: str = "auto"
+    # Thinking while answering: on (default) | auto (the planner decides: multi-part / comparison questions) | off.
+    # The judge, the planner and corrections never think.
+    thinking: str = "on"
     # How thinking is switched: chat_template (Qwen: chat_template_kwargs.enable_thinking)
     # | reasoning_effort (sends reasoning_effort) | none
     thinking_control: str = "chat_template"
@@ -132,7 +133,7 @@ class FastLLMConfig:
     base_url: str = ""
     model: str = ""
     verify_ssl: bool = True
-    thinking: str = "off"            # auto | on | off
+    thinking: str = "on"             # on | auto | off (Admin › Ayarlar, next to the thorough model's)
     thinking_control: str = ""       # "" = as the chat model | chat_template | reasoning_effort | none
 
 
