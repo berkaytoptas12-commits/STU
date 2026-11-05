@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import mimetypes
 import os
 import queue
@@ -31,6 +32,8 @@ from techrag.ingest.loaders import SUPPORTED_SUFFIXES
 from techrag.ingest.pipeline import IngestStopped, WriteGate
 from techrag.settings import MASK, load_user_settings, public_settings, settings_path, update_settings
 from techrag.usage import UsageLog, current_machine, current_user, token_totals
+
+log = logging.getLogger("techrag.server")
 
 WEB_DIR = resource_path("web")
 SERVICES = ("llm", "vision", "embedding", "reranker")

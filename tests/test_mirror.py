@@ -1,7 +1,6 @@
 """The local copy of a read-only network library's index: taken once, searched locally, renewed in the background
 when the library is updated on the network, never used half-written, and still working away from the network."""
 
-import os
 import shutil
 from pathlib import Path
 

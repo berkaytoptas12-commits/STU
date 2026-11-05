@@ -66,3 +66,32 @@ def test_shared_and_personal_together():
     for q, hits in zip(qs, multi.search_many(qs, 20)):
         merged = sorted(a.search(q, 20) + b.search(q, 20), key=lambda h: -h[1])[:20]
         assert _same(hits, merged) and _same(hits, multi.search(q, 20))
+
+
+def test_too_little_memory_at_start_is_only_logged(cfg, engine, tmp_path, monkeypatch, caplog):
+    """Loading the vectors at start may not fit on a computer with little free memory: it is logged and the first
+    question tries again - no app-wide error line, no crash of the warm-up."""
+    import logging
+    import time
+
+    from fastapi.testclient import TestClient
+
+    from techrag.server import create_app
+
+    monkeypatch.setenv("TECHRAG_SETTINGS", str(tmp_path / "settings.json"))
+    calls = []
+
+    def no_memory():
+        calls.append(1)
+        raise MemoryError("Unable to allocate 809. MiB")
+
+    monkeypatch.setattr(engine.shared, "vectors", no_memory)
+    with caplog.at_level(logging.WARNING, logger="techrag.server"):
+        with TestClient(create_app(cfg, engine, warmup=True, desktop=True)) as client:
+            for _ in range(100):
+                if calls:
+                    break
+                time.sleep(0.02)
+            time.sleep(0.1)
+            assert calls and client.get("/api/info").json()["error"] is None
+    assert any("not loaded at start" in r.getMessage() for r in caplog.records)
