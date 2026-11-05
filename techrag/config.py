@@ -16,7 +16,7 @@ import logging
 import os
 import sys
 import threading
-from dataclasses import asdict, dataclass, field, fields, is_dataclass
+from dataclasses import asdict, dataclass, field, fields, is_dataclass, replace
 from pathlib import Path
 from typing import Any, Optional
 
@@ -120,6 +120,23 @@ class LLMConfig(ServiceConfig):
     # Curated context budget (tokens of source text given to the model). Deliberately far below the
     # model's maximum: a small reranked context is more faithful than a dump of raw pages.
     context_tokens: int = 16000
+
+
+@dataclass
+class FastLLMConfig:
+    """The fast chat model ("Hızlı"), chosen per question in the chat. For such a question it does everything the
+    chat model does (planning the question, answering, the judge, citation repair); search, reranking and the
+    vision model stay the same. Empty model: no fast mode (the chat offers no choice). Empty base_url: the chat
+    model's server. The other chat settings (tools, context budget, temperature, reply length, API key) are the
+    chat model's."""
+    base_url: str = ""
+    model: str = ""
+    verify_ssl: bool = True
+    thinking: str = "off"            # auto | on | off
+    thinking_control: str = ""       # "" = as the chat model | chat_template | reasoning_effort | none
+
+
+CHAT_MODES = ("deep", "fast")       # "Kapsamlı" (the chat model) | "Hızlı" (llm_fast)
 
 
 @dataclass
@@ -283,6 +300,7 @@ class Config:
     auth: AuthConfig = field(default_factory=AuthConfig)
     paths: PathsConfig = field(default_factory=PathsConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
+    llm_fast: FastLLMConfig = field(default_factory=FastLLMConfig)
     vision: VisionConfig = field(default_factory=VisionConfig)
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     reranker: RerankerConfig = field(default_factory=RerankerConfig)
@@ -352,6 +370,18 @@ class Config:
             self.auth.api_key = next((s.api_key for s in services if s.api_key), "")
         for s in services:
             s.api_key = self.auth.api_key
+
+    def chat_config(self, mode: str = "") -> LLMConfig:
+        """The chat model settings of a mode: "fast" -> the fast model (on the chat model's server when it has no
+        server of its own; its own thinking settings); anything else, or no fast model set -> the chat model."""
+        f = self.llm_fast
+        if mode != "fast" or not f.model:
+            return self.llm
+        own_server = bool(f.base_url.strip())
+        return replace(self.llm, base_url=f.base_url.strip() if own_server else self.llm.base_url, model=f.model,
+                       verify_ssl=f.verify_ssl if own_server else self.llm.verify_ssl,
+                       thinking=f.thinking or self.llm.thinking,
+                       thinking_control=f.thinking_control or self.llm.thinking_control)
 
     def vision_service(self) -> ServiceConfig:
         """Effective vision endpoint (falls back to the chat LLM)."""

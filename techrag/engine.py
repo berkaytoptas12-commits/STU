@@ -11,6 +11,7 @@ Events from ask_stream():
 
 from __future__ import annotations
 
+import copy
 import logging
 import re
 import threading
@@ -71,8 +72,12 @@ _CLAUSE_REF = re.compile(r"(?:section|clause|§|sec\.)\s*(\d+(?:\.\d+)+)", re.I)
 class RAGEngine:
     def __init__(self, cfg: Config, *, store: Optional[Store] = None, embedder: Optional[Embedder] = None,
                  reranker=_UNSET, llm: Optional[LLMClient] = None, vision: Optional[LLMClient] = _UNSET,
-                 domains: Optional[DomainRegistry] = None, personal: Optional[Store] = None):
+                 domains: Optional[DomainRegistry] = None, personal: Optional[Store] = None,
+                 fast_llm: Optional[LLMClient] = None):
         self.cfg = cfg
+        self.base_cfg = cfg      # the settings with the chat model ("Kapsamlı"); cfg.llm is the one answering
+        self.mode = "deep"       # which chat model answers: deep (the chat model) | fast (see for_mode)
+        self._fast_llm = fast_llm
         # shared: the library (indexing of the shared library writes here); personal: the user's own index, when
         # one exists; store: what answering reads - both of them (techrag.library.LibraryView)
         self.shared = store or Store(cfg.db_path, read_only=cfg.read_only)
@@ -142,10 +147,37 @@ class RAGEngine:
     @property
     def vision(self) -> Optional[LLMClient]:
         with self._lock:
-            if self._vision is _UNSET:
-                svc = self.cfg.vision_service()
-                self._vision = LLMClient(self.cfg.llm, service=svc) if (self.cfg.vision.enabled and svc.model) else None
+            if self._vision is _UNSET:   # "same as the chat model" means the chat model ("Kapsamlı") in every mode
+                c = self.base_cfg
+                svc = c.vision_service()
+                self._vision = LLMClient(c.llm, service=svc) if (c.vision.enabled and svc.model) else None
         return self._vision
+
+    def for_mode(self, mode: str) -> "RAGEngine":
+        """This engine answering one question with the chat model of the mode chosen for it in the chat. "fast": the
+        fast model does everything the chat model does - planning the question, answering, the judge, citation
+        repair - with its own thinking settings; the libraries, search, reranking and the vision model are this
+        engine's. Anything else, or no fast model set: this engine itself."""
+        if mode != "fast" or not self.cfg.llm_fast.model:
+            return self
+        llm_cfg = self.base_cfg.chat_config("fast")
+        _ = (self.embedder, self.reranker, self.vision)   # created once, shared by every question
+        with self._lock:
+            if self._fast_llm is None:
+                self._fast_llm = LLMClient(llm_cfg)
+            client = self._fast_llm
+        view = copy.copy(self)
+        view.cfg = copy.copy(self.cfg)
+        view.cfg.llm = llm_cfg
+        view.mode = "fast"
+        view.llm = client
+        view.planner = QueryPlanner(self.domains, client, self.cfg.retrieval.query_rewrite,
+                                    self.cfg.answer.history_turns)
+        return view
+
+    def model_info(self) -> dict:
+        """Which chat model answered (shown with the answer, written to the usage log)."""
+        return {"mode": self.mode, "name": self.cfg.llm.model}
 
     @property
     def retriever(self) -> Retriever:
@@ -184,9 +216,10 @@ class RAGEngine:
     def chat_sees_images(self) -> bool:
         """True when the chat model itself is the vision model (multimodal Qwen): images go to it directly.
         With a separate VLM, page images are transcribed by the VLM and the chat model gets text."""
-        v = self.cfg.vision
-        return v.enabled and (not v.base_url or v.base_url == self.cfg.llm.base_url) and \
-            (not v.model or v.model == self.cfg.llm.model)
+        if not self.base_cfg.vision.enabled:
+            return False
+        svc = self.base_cfg.vision_service()   # the fast model gets images only when it is the vision model too
+        return svc.base_url == self.cfg.llm.base_url and svc.model == self.cfg.llm.model
 
     def describe_page(self, doc_id: int, page: int) -> Optional[str]:
         """VLM transcription of a page (figures, timing diagrams, pinouts), cached next to the page renders."""
@@ -399,7 +432,7 @@ class RAGEngine:
         v = Verification(enabled=self.cfg.answer.verify, judge_enabled=self.cfg.answer.judge, status=status,
                          not_found=status == "not_found", clarify=status == "clarify")
         return {"type": "final", "answer": answer, "verification": v.summary(), "sources": [], "timings": timings,
-                "cite_claims": [], "scope": scope.to_dict(), **extra}
+                "cite_claims": [], "scope": scope.to_dict(), "model": self.model_info(), **extra}
 
     def ask_stream(self, question: str, history: Optional[Sequence[dict]] = None,
                    domains: Optional[Sequence[str]] = None, doc_ids: Optional[Sequence[int]] = None,
@@ -626,7 +659,7 @@ class RAGEngine:
                "timings": timings, "calls": calls, "thinking": thinking,
                "cite_claims": cite_claims(final, verification.claims), "scope": scope.to_dict(),
                "user_input": user_src.n if user_src else None, "notice": notice,
-               "merged_question": reply.question if reply else None}
+               "merged_question": reply.question if reply else None, "model": self.model_info()}
 
     # ------------------------------------------------------------ verification
     def _verify(self, answer: str, registry: SourceRegistry,
@@ -917,7 +950,8 @@ class RAGEngine:
             elif ev["type"] == "clarify":
                 out["clarify"] = {k: ev[k] for k in ("text", "options", "entities", "questions", "pending")}
             elif ev["type"] == "final":
-                out.update({k: ev[k] for k in ("answer", "verification", "sources", "timings", "cite_claims")})
+                out.update({k: ev[k] for k in ("answer", "verification", "sources", "timings", "cite_claims",
+                                               "model")})
                 out.update({k: ev[k] for k in ("notice", "merged_question") if ev.get(k)})
         return out
 

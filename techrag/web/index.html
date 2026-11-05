@@ -92,6 +92,10 @@
         <button type="button" class="ghost small" id="btn-pending-cancel" data-i18n="pendingCancel"></button>
       </div>
       <form class="composer" id="composer">
+        <div class="mode-pick" id="mode-pick" role="radiogroup" hidden>
+          <button type="button" data-mode="deep" role="radio" data-i18n="modeDeep"></button>
+          <button type="button" data-mode="fast" role="radio" data-i18n="modeFast"></button>
+        </div>
         <textarea id="question" rows="2" required></textarea>
         <button type="submit" id="btn-send" data-i18n="ask"></button>
         <button type="button" id="btn-stop" class="btn-stop" data-i18n="stop" data-i18n-title="stopTitle" hidden></button>
@@ -264,6 +268,8 @@
           <select id="set-thinking"><option value="auto">auto</option><option value="on">on</option><option value="off">off</option></select></label>
         <label><span data-i18n="thinkingControl"></span>
           <select id="set-thinking-control"><option value="chat_template">chat_template (Qwen)</option><option value="reasoning_effort">reasoning_effort</option><option value="none">none</option></select></label>
+        <label><span data-i18n="fastThinkingControl"></span>
+          <select id="set-fast-thinking-control"><option value="" data-i18n="sameAsDeep"></option><option value="chat_template">chat_template (Qwen)</option><option value="reasoning_effort">reasoning_effort</option><option value="none">none</option></select></label>
         <label><span data-i18n="tools"></span>
           <select id="set-tools"><option value="auto">auto</option><option value="on">on</option><option value="off">off</option></select></label>
         <label><input type="checkbox" id="set-judge"> <span data-i18n="judge"></span></label>
@@ -328,6 +334,8 @@
           <input type="file" id="eval-file" accept=".yaml,.yml"></label>
       </div>
       <label class="small"><input type="checkbox" id="eval-retrieval-only"> <span data-i18n="evalRetrievalOnly"></span></label>
+      <label class="small" id="eval-mode-row" hidden><span data-i18n="evalMode"></span>
+        <select id="eval-mode"><option value="deep" data-i18n="modeDeep"></option><option value="fast" data-i18n="modeFast"></option></select></label>
       <div class="row">
         <button type="button" id="btn-eval-run" data-i18n="evalRun"></button>
         <button type="button" class="ghost" id="btn-eval-stop" data-i18n="evalStop" hidden></button>

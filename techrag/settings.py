@@ -21,8 +21,8 @@ from techrag.config import Config, _apply_env, apply_dict, user_config_dir
 log = logging.getLogger("techrag.settings")
 
 SECRET_KEYS = ("api_key",)
-SECTIONS = ("auth", "llm", "vision", "embedding", "reranker", "paths", "ui", "answer", "retrieval", "tls", "usage",
-            "org")
+SECTIONS = ("auth", "llm", "llm_fast", "vision", "embedding", "reranker", "paths", "ui", "answer", "retrieval",
+            "tls", "usage", "org")
 SERVICE_SECTIONS = ("llm", "vision", "embedding", "reranker")   # the chat model's key first (see _migrate_keys)
 MASK = "••••••••"
 # Per own setting the organization could set: the organization's value when the user chose theirs (None: it set

@@ -446,7 +446,8 @@ def list_reports(out_dir: str | Path, limit: int = 30) -> list[dict]:
         except (OSError, ValueError):
             continue
         out.append({"name": p.name, "timestamp": r.get("timestamp", ""), "set": r.get("set", ""),
-                    "retrieval_only": bool(r.get("retrieval_only")), "summary": r.get("summary", {})})
+                    "retrieval_only": bool(r.get("retrieval_only")), "summary": r.get("summary", {}),
+                    "model": r.get("model") or {}})
     return out
 
 

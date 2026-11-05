@@ -131,12 +131,31 @@ Sunucu araç çağrısını desteklemiyorsa uygulama bunu fark eder ve araçsız
 
 **Ayarlar** penceresinde yalnızca her kullanıcının ihtiyaç duyduğu üç şey vardır: **tek bir ortak API anahtarı**
 (sohbet/vLLM, görsel model, embedding ve reranker sunucularının hepsine bu anahtar gönderilir; servis başına ayrı
-anahtar yoktur), **sohbet modeli** ve **bildirim**. Görsel model, embedding ve reranker sunucuları, cevaplama,
+anahtar yoktur), **sohbet modelleri** (Kapsamlı ve Hızlı, aşağıda) ve **bildirim**. Görsel model, embedding ve
+reranker sunucuları, cevaplama,
 gelişmiş ayarlar ve bağlantı güvenliği **Admin › Ayarlar** sekmesindedir (aşağıdaki maddeler orada). Her servis için
 yalnızca **API adresi** (`http://sunucu:8000/v1`) ve **Model** girilir. Eski bir sürümde servis başına girilmiş
 anahtarlar ilk kayıtta ortak anahtara taşınır (sohbet modelininki esas alınır; şifreli hâliyle taşınır). Model listesi sunucunun `/v1/models` ucundan **otomatik çekilir** ve açılır listede gösterilir;
 **Test et** düğmesi bağlantıyı ve modeli dener (embedding boyutu, rerank skoru, LLM cevabı).
 
+* **İki sohbet modeli: Kapsamlı ve Hızlı.** Ayarlar'da **Sohbet modeli — Kapsamlı** (önceki "sohbet modeli") ve
+  **Sohbet modeli — Hızlı** ayrı ayrı seçilir. Hızlı model seçiliyse sohbet kutusunun solunda küçük bir
+  **Kapsamlı | Hızlı** seçimi çıkar; her soru seçili modelle cevaplanır ve seçim bu bilgisayarda hatırlanır
+  (ilk açılışta Kapsamlı). Hızlı seçildiğinde sohbet modelinin yaptığı **her iş** o soru için hızlı modelle yapılır:
+  soru çözümleme, cevap, bağımsız denetçi ve atıf düzeltme. Arama, rerank, sayı/birim kontrolü ve doğrulama
+  kuralları iki modda da aynıdır; görsel model (VLM) de değişmez.
+  * Hızlı modelin **API adresi** boş bırakılırsa kapsamlı modelin sunucusu kullanılır (aynı vLLM sunucusunda iki
+    model varsa). Model boşsa sohbette seçim gösterilmez ve her şey eskisi gibi çalışır.
+  * Hızlı modelin **Düşünme** ayarı kendi kartındadır (varsayılan `off`); düşünme kontrolü yöntemi Admin › Ayarlar'da
+    "Hızlı model: düşünme kontrolü" (varsayılan: kapsamlı modelle aynı; farklı aileden bir model için ör. Qwen →
+    `chat_template`, Gemma 4 → `reasoning_effort`). Araç kullanımı, bağlam bütçesi ve diğer cevaplama ayarları iki
+    model için ortaktır.
+  * Cevabın altındaki süre düğmesi hızlı modelle cevaplanan sorularda "· Hızlı" der; ayrıntıda cevaplayan modelin
+    adı yazar. Kullanım günlüğü cevaplayan modeli kaydeder. **Admin › Değerlendirme**'de soru setini hangi modelle
+    çalıştıracağınız seçilir (iki modelin doğruluğunu karşılaştırmak için); raporda model yazar.
+  * Görsel model "Sohbet modeliyle aynı" ise kapsamlı modeldir: hızlı modelle cevaplanan bir soruda şekil sayfaları
+    kapsamlı model tarafından metne dökülür (hızlı model görüntü okuyamayabilir).
+  * Hızlı model kurum ayarlarına da yazılır.
 * Görsel model: "Sohbet modeliyle aynı" (çok kipli Qwen: şekil sayfaları cevap modeline görüntü olarak gider)
   veya ayrı bir VLM (sohbet modeli yalnızca metin alıyorsa sayfa görüntüleri VLM tarafından metne dökülür).
 * Düşünme modu: `auto` (karşılaştırma / çok parçalı sorularda açık), `on`, `off`; kontrol yöntemi

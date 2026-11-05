@@ -34,6 +34,7 @@ from techrag.usage import UsageLog, current_machine, current_user, token_totals
 
 WEB_DIR = resource_path("web")
 SERVICES = ("llm", "vision", "embedding", "reranker")
+PROBE_SERVICES = SERVICES + ("llm_fast",)   # the fast chat model's card is tested like the chat model's
 
 
 class ChatTurn(BaseModel):
@@ -50,6 +51,7 @@ class AskRequest(BaseModel):
     top_k: Optional[int] = Field(default=None, ge=1, le=30)
     stream: bool = True
     clarification: Optional[dict] = None   # the pending clarifying question this message may answer
+    mode: str = ""                          # which chat model answers: "fast" (Hızlı) | "deep"/"" (Kapsamlı)
 
 
 class RetryRequest(BaseModel):
@@ -123,6 +125,7 @@ class EvalRequest(BaseModel):
     yaml: Optional[str] = Field(default=None, max_length=2_000_000)   # the custom set's file content
     name: str = Field(default="", max_length=200)                      # the custom set's file name
     retrieval_only: bool = False
+    mode: str = ""                    # which chat model answers: "fast" | "deep"/""
 
 
 STOPPED_MESSAGE = "stopped: the application is closing (remaining documents are processed by the next rescan)"
@@ -280,7 +283,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 "legacy_documents": stats.get("legacy_documents", 0),
                 "buckets": e.store.buckets() if e else [], "roots": e.store.roots() if e else [],
                 "missing_documents": sum(b["missing"] for b in e.store.buckets()) if e else 0,
-                "models": {s: getattr(c, s).model for s in SERVICES},
+                "models": {**{s: getattr(c, s).model for s in SERVICES}, "llm_fast": c.llm_fast.model},
                 "stats": stats, "domains": domains, "error": state["error"],
                 "allow_upload": c.server.allow_upload and not c.read_only,
                 "personal": personal_info(), "org": org.public_status(c),
@@ -386,14 +389,18 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         return {"setting": setting, "server": server, "used": min(setting, server) if server else setting}
 
     def _probe_service(p: ServiceProbe) -> ServiceConfig:
-        if p.service not in SERVICES:
+        if p.service not in PROBE_SERVICES:
             raise HTTPException(400, f"unknown service '{p.service}'")
         c: Config = state["cfg"]
-        saved = c.vision_service() if p.service == "vision" else getattr(c, p.service)
+        saved = c.vision_service() if p.service == "vision" else (
+            c.chat_config("fast") if p.service == "llm_fast" else getattr(c, p.service))
         url = p.base_url if p.base_url is not None else saved.base_url
+        if p.service == "llm_fast" and not (url or "").strip():
+            url = c.llm.base_url   # no server of its own: the chat model's
         # The shared key is only reused for the model servers it is configured for - never sent to another URL
         # given in the request.
-        configured = (c.llm.base_url, c.vision_service().base_url, c.embedding.base_url, c.reranker.base_url)
+        configured = (c.llm.base_url, c.chat_config("fast").base_url, c.vision_service().base_url,
+                      c.embedding.base_url, c.reranker.base_url)
         reuse = p.api_key in (None, MASK)
         key = (c.auth.api_key if any(_same_server(url, b) for b in configured) else "") if reuse else p.api_key
         return ServiceConfig(base_url=url, api_key=key or "", model=p.model if p.model is not None else saved.model,
@@ -454,10 +461,10 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         t = time.time()
         try:
             c: Config = state["cfg"]
-            if p.service in ("llm", "vision"):
+            if p.service in ("llm", "llm_fast", "vision"):
                 from techrag.llm import LLMClient
 
-                client = LLMClient(c.llm, service=svc)
+                client = LLMClient(c.chat_config("fast") if p.service == "llm_fast" else c.llm, service=svc)
                 txt = client.chat([{"role": "user", "content": "Reply with the single word OK."}],
                                   max_tokens=16, thinking=False).content
                 result["detail"] = f"reply: {txt[:40]!r}"
@@ -587,7 +594,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             log_ = state["usage"] = UsageLog(c.usage_log_dir, c.user_data_dir / "usage_local")
         return log_
 
-    def record_usage(question: str, ctx: askctx.AskContext, last: dict, stopped: bool) -> None:
+    def record_usage(question: str, ctx: askctx.AskContext, last: dict, stopped: bool, model: str = "") -> None:
         """One line in the user's usage log: how the question ended and the tokens it took (no answer text).
         stopped: the user stopped it (the stream closing after a finished answer also sets ctx.stopped)."""
         log_ = usage_log()
@@ -603,22 +610,23 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         else:
             outcome = "cevaplandi"
         log_.record(question, outcome, v.get("status", ""), time.time() - ctx.started,
-                    token_totals(ctx.summary()), state["cfg"].llm.model)
+                    token_totals(ctx.summary()), model or state["cfg"].llm.model)
 
     @app.post("/api/ask", dependencies=guard)
     def ask(req: AskRequest):
         e = eng()
         history = [t.model_dump() for t in req.history]
+        model = state["cfg"].chat_config(req.mode).model
         if not req.stream:
             ctx = askctx.AskContext()
             res: dict = {}
             try:
                 with askctx.active(ctx):
-                    res = e.ask(req.question, history, req.domains, req.doc_ids, req.top_k, req.buckets,
-                                req.clarification)
+                    res = e.for_mode(req.mode).ask(req.question, history, req.domains, req.doc_ids, req.top_k,
+                                                   req.buckets, req.clarification)
                 return res
             finally:
-                record_usage(req.question, ctx, dict(res, type="final") if res else {}, ctx.stopped)
+                record_usage(req.question, ctx, dict(res, type="final") if res else {}, ctx.stopped, model)
 
         ctx = askctx.AskContext()
         ask_id = uuid.uuid4().hex
@@ -633,8 +641,9 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             with askctx.active(ctx):
                 try:
                     wait_for_first_copy(e, ctx, q.put)
-                    for ev in e.ask_stream(req.question, history, req.domains, req.doc_ids, req.top_k, req.buckets,
-                                           req.clarification):
+                    answering = e.for_mode(req.mode)   # after the wait: it answers from the copy then in use
+                    for ev in answering.ask_stream(req.question, history, req.domains, req.doc_ids, req.top_k,
+                                                   req.buckets, req.clarification):
                         if ev.get("type") == "final":
                             last = ev
                         q.put(ev)
@@ -652,7 +661,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                     q.put(None)
                     asks.pop(ask_id, None)
                     try:
-                        record_usage(req.question, ctx, last, stopped)
+                        record_usage(req.question, ctx, last, stopped, model)
                     except Exception:  # the log never breaks an answer
                         pass
             hook = getattr(app.state, "on_answer", None)
@@ -1340,7 +1349,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             raise HTTPException(400, str(exc))
         if not items:
             raise HTTPException(400, "the question set is empty")
-        e = eng()
+        e = eng().for_mode(req.mode)
         job = jobs.create("eval")
         job["cancel"] = False
         job["progress"] = {"done": 0, "total": len(items)}
@@ -1352,9 +1361,9 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                                progress=lambda m: job["messages"].append(m),
                                should_stop=lambda: job["cancel"] or jobs.gate.stop.is_set(),
                                on_item=lambda n, total: job["progress"].update(done=n, total=total))
-                rep.update(set=label, retrieval_only=req.retrieval_only)
+                rep.update(set=label, retrieval_only=req.retrieval_only, model=e.model_info())
                 path = save_report(rep, eval_dir())
-                job["report"] = {"name": path.name, "summary": rep["summary"], "set": label}
+                job["report"] = {"name": path.name, "summary": rep["summary"], "set": label, "model": rep["model"]}
                 job["status"] = "done"
             except EvalStopped as exc:
                 job["messages"].append(str(exc))

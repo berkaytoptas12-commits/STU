@@ -31,7 +31,7 @@ const I18N = {
     thinkingOn: "düşünme açık", searchAs: "arama",
     stop: "Durdur", stopTitle: "Cevabı durdur (modele giden istek de kesilir)", stopping: "Durduruluyor…",
     stoppedNote: "Durduruldu. Taslak doğrulanmadığı için cevap olarak kullanılmaz.", elapsed: "Geçen süre: {0}",
-    durSec: "{0} sn", durMin: "{0} dk {1} sn", timingShow: "Süre: {0}", timingTitle: "Sürenin nereye gittiğini göster",
+    durSec: "{0} sn", durMin: "{0} dk {1} sn", timingShow: "Süre: {0}", timingTitle: "Sürenin nereye gittiğini göster", timingFast: " · Hızlı",
     tPlan: "Soru çözümleme (planlayıcı)", tSearch: "Arama (anahtar kelime, anlamsal, yeniden sıralama)",
     tFigures: "Şekil sayfaları (görsel model)", tGenerate: "Cevap yazma ({0} model çağrısı)", tGenerateThink: "Cevap yazma ({0} model çağrısı, düşünme açık)",
     tTools: "— bunun {0} araç çağrısı", tVerify: "Doğrulama (bağımsız denetçi)", tRegenerate: "Hatalı ifadeleri düzeltme",
@@ -206,7 +206,11 @@ const I18N = {
     readOnly: "salt-okunur", docs: "doküman", params: "parametre", modelsLoad: "Modelleri getir", test: "Test et",
     sameAsChat: "Sohbet modeliyle aynı", baseUrl: "API adresi (…/v1)", apiKey: "Ortak API anahtarı", model: "Model",
     apiKeyHint: "Tek anahtar: sohbet (vLLM), görsel model, embedding ve reranker sunucularının hepsine bu anahtar gönderilir.",
-    svc_llm: "Sohbet modeli (LLM)", svc_vision: "Görsel model (VLM)", svc_embedding: "Embedding", svc_reranker: "Reranker",
+    svc_llm: "Sohbet modeli — Kapsamlı", svc_llm_fast: "Sohbet modeli — Hızlı", svc_vision: "Görsel model (VLM)", svc_embedding: "Embedding", svc_reranker: "Reranker",
+    fastHint: "Sohbette “Hızlı” seçilince bu model kullanılır: soru çözümleme, cevap, denetçi ve atıf düzeltme. Model boşsa sohbette seçim gösterilmez. Sunucu boşsa kapsamlı modelin sunucusu kullanılır.",
+    fastSameServer: "(boş: kapsamlı modelin sunucusu)", fastThinking: "Düşünme",
+    fastThinkingControl: "Hızlı model: düşünme kontrolü", sameAsDeep: "Kapsamlı modelle aynı",
+    modeDeep: "Kapsamlı", modeFast: "Hızlı", modeTitle: "Bu soruyu cevaplayacak model: {0}", tModel: "Model", evalMode: "Cevaplayan model",
     enabled: "etkin", notOnServer: "(sunucuda yok)", savedSettings: "Ayarlar kaydedildi.", noModels: "Model listesi alınamadı",
     errorPrefix: "Hata", needToken: "Bu sunucu bir API anahtarı istiyor:",
     newChatStarted: "Yeni sohbet başladı.", calc: "hesap", parameter: "parametre", table: "tablo", pageKind: "sayfa", unverified: "doğrulanmamış çıkarım",
@@ -323,7 +327,7 @@ const I18N = {
     thinkingOn: "thinking on", searchAs: "search",
     stop: "Stop", stopTitle: "Stop the answer (the request to the model is cancelled too)", stopping: "Stopping…",
     stoppedNote: "Stopped. The draft was not verified and is not used as an answer.", elapsed: "Elapsed: {0}",
-    durSec: "{0} s", durMin: "{0} min {1} s", timingShow: "Time: {0}", timingTitle: "Show where the time went",
+    durSec: "{0} s", durMin: "{0} min {1} s", timingShow: "Time: {0}", timingTitle: "Show where the time went", timingFast: " · Fast",
     tPlan: "Question analysis (planner)", tSearch: "Search (keyword, semantic, reranking)",
     tFigures: "Figure pages (vision model)", tGenerate: "Writing the answer ({0} model calls)", tGenerateThink: "Writing the answer ({0} model calls, thinking on)",
     tTools: "— of which {0} tool calls", tVerify: "Verification (independent judge)", tRegenerate: "Correcting failed statements",
@@ -498,7 +502,11 @@ const I18N = {
     readOnly: "read-only", docs: "documents", params: "parameters", modelsLoad: "Load models", test: "Test",
     sameAsChat: "Same as chat model", baseUrl: "API base URL (…/v1)", apiKey: "Shared API key", model: "Model",
     apiKeyHint: "One key: it is sent to every model server (chat/vLLM, vision, embedding and reranker).",
-    svc_llm: "Chat model (LLM)", svc_vision: "Vision model (VLM)", svc_embedding: "Embedding", svc_reranker: "Reranker",
+    svc_llm: "Chat model — Thorough", svc_llm_fast: "Chat model — Fast", svc_vision: "Vision model (VLM)", svc_embedding: "Embedding", svc_reranker: "Reranker",
+    fastHint: "Used when “Fast” is chosen in the chat: planning the question, the answer, the judge and citation repair. No model: the chat offers no choice. No server: the thorough model's server.",
+    fastSameServer: "(empty: the thorough model's server)", fastThinking: "Thinking",
+    fastThinkingControl: "Fast model: thinking control", sameAsDeep: "Same as the thorough model",
+    modeDeep: "Thorough", modeFast: "Fast", modeTitle: "Model answering this question: {0}", tModel: "Model", evalMode: "Answering model",
     enabled: "enabled", notOnServer: "(not on server)", savedSettings: "Settings saved.", noModels: "Could not load models",
     errorPrefix: "Error", needToken: "This server requires an API token:",
     newChatStarted: "New chat started.", calc: "calculation", parameter: "parameter", table: "table", pageKind: "page", unverified: "unverified extraction",
@@ -776,9 +784,28 @@ async function loadInfo() {
   const ids = new Set((state.info.buckets || []).map((b) => b.id));
   for (const id of [...state.selectedBuckets]) if (!ids.has(id)) state.selectedBuckets.delete(id);
 }
+// Which chat model answers ("Kapsamlı" / "Hızlı"): offered only when a fast model is set; the last choice is
+// remembered on this computer.
+function chatMode() {
+  const i = state.info || {};
+  return i.models && i.models.llm_fast && safeGet("techrag.mode") === "fast" ? "fast" : "deep";
+}
+function renderModePick() {
+  const i = state.info || {};
+  const box = $("#mode-pick");
+  const models = i.models || {};
+  box.hidden = !models.llm_fast;
+  const mode = chatMode();
+  $$("button", box).forEach((b) => {
+    b.setAttribute("aria-checked", String(b.dataset.mode === mode));
+    b.title = t("modeTitle", b.dataset.mode === "fast" ? models.llm_fast || "" : models.llm || "");
+  });
+  $("#eval-mode-row").hidden = !models.llm_fast;
+}
 function renderInfo() {
   const i = state.info;
   if (!i) return;
+  renderModePick();
   const ro = i.read_only ? ` · ${t("readOnly")}` : "";
   $("#lib-info").textContent = `${i.library} · ${i.stats.documents} ${t("docs")} · ${i.stats.parameters || 0} ${t("params")}${ro}`;
   $("#add-box").hidden = !i.allow_upload;
@@ -1435,7 +1462,9 @@ function timingDetailHtml(ev) {
     [t("tRegenerate"), tm.regenerate],
     [t("tLocate"), tm.locate],
   ].filter(([label, v]) => label && v != null);
-  let html = `<table>${rows.map(([label, v]) => `<tr><td>${esc(label)}</td><td class="num">${esc(fmtDuration(v))}</td></tr>`).join("")}`;
+  const m = ev.model;
+  let html = m && m.name ? `<div class="small muted">${esc(t("tModel"))}: ${esc(t(m.mode === "fast" ? "modeFast" : "modeDeep"))} — ${esc(m.name)}</div>` : "";
+  html += `<table>${rows.map(([label, v]) => `<tr><td>${esc(label)}</td><td class="num">${esc(fmtDuration(v))}</td></tr>`).join("")}`;
   html += `<tr><td><b>${esc(t("tTotal"))}</b></td><td class="num"><b>${esc(fmtDuration(tm.total))}</b></td></tr></table>`;
   const calls = ev.calls || {};
   const order = ["plan", "figure", "answer", "tools", "judge", "regenerate", "other"];
@@ -1573,7 +1602,7 @@ function renderFinal(el, ev, opts = {}) {
     const tb = $(".timing", acts);
     const detail = $(".timing-detail", el);
     tb.hidden = false;
-    tb.textContent = t("timingShow", fmtDuration(ev.timings.total));
+    tb.textContent = t("timingShow", fmtDuration(ev.timings.total)) + (ev.model && ev.model.mode === "fast" ? t("timingFast") : "");
     tb.title = t("timingTitle");
     tb.addEventListener("click", () => {
       if (detail.hidden) detail.innerHTML = timingDetailHtml(ev);
@@ -1802,7 +1831,7 @@ async function ask(question, reply) {
   try {
     const res = await api("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
       body: JSON.stringify(Object.assign({ question, history: state.history.slice(-6), stream: true,
-        clarification: pendingClarify }, scope())) });
+        clarification: pendingClarify, mode: chatMode() }, scope())) });
     const reader = res.body.getReader();
     const dec = new TextDecoder();
     let buf = "";
@@ -2102,12 +2131,16 @@ function svcCard(svc) {
   div.className = "svc";
   div.dataset.svc = svc;
   const s = SETTINGS[svc];
+  const fast = svc === "llm_fast";
   const extra = svc === "vision" ? `<label><input type="checkbox" class="same"> ${t("sameAsChat")}</label>`
-    : svc === "reranker" ? `<label><input type="checkbox" class="enabled"> ${t("enabled")}</label>` : "";
+    : svc === "reranker" ? `<label><input type="checkbox" class="enabled"> ${t("enabled")}</label>`
+    : fast ? `<p class="hint">${esc(t("fastHint"))}</p>` : "";
+  const thinkingSel = fast ? `<label>${t("fastThinking")}<select class="thinking">${["off", "auto", "on"].map((v) =>
+    `<option value="${v}" ${(s.thinking || "off") === v ? "selected" : ""}>${v}</option>`).join("")}</select></label>` : "";
   div.innerHTML = `<h3>${t("svc_" + svc)}</h3>${extra}
-    <label>${t("baseUrl")}<input class="url" value="${esc(s.base_url)}" placeholder="http://server:8000/v1"></label>
+    <label>${t("baseUrl")}<input class="url" value="${esc(s.base_url)}" placeholder="${fast ? esc(t("fastSameServer")) : "http://server:8000/v1"}"></label>
     <label>${t("model")}<div class="row"><select class="model"></select><button type="button" class="ghost load">${t("modelsLoad")}</button><button type="button" class="ghost test">${t("test")}</button></div></label>
-    <label class="insecure-row"><input type="checkbox" class="insecure"> ${t("insecure")}</label>
+    <label class="insecure-row"><input type="checkbox" class="insecure"> ${t("insecure")}</label>${thinkingSel}
     <div class="result"></div>`;
   $(".insecure", div).checked = s.verify_ssl === false;
   const same = $(".same", div);
@@ -2192,7 +2225,7 @@ function svcCard(svc) {
     if (r.ok) { res.className = "result ok"; res.textContent = `✓ ${r.detail || ""}${r.latency_ms ? ` (${r.latency_ms} ms)` : ""}`; }
     else showError(res, r, r.error || r.detail);
   });
-  if (s.base_url && !(same && same.checked)) load();
+  if ((s.base_url || (fast && s.model)) && !(same && same.checked)) load();
   return div;
 }
 // ------------------------------------------------------------------ answer feedback
@@ -2309,6 +2342,10 @@ function pct(v) {
   const n = (100 * v).toFixed(1).replace(/\.0$/, "");
   return LANG === "tr" ? `%${n.replace(".", ",")}` : `${n}%`;
 }
+// " · Hızlı — model" / " · Kapsamlı — model" for a report or an answer (nothing for reports made before)
+function modeLabel(m) {
+  return m && m.name ? ` · ${esc(t(m.mode === "fast" ? "modeFast" : "modeDeep"))} — ${esc(m.name)}` : "";
+}
 function evalSummaryHtml(s, meta = {}) {
   const c = s.counts || {};
   const row = (label, name) => {
@@ -2318,7 +2355,7 @@ function evalSummaryHtml(s, meta = {}) {
     const frac = den != null ? `${num}/${den}` : "";
     return `<tr><td>${esc(label)}</td><td class="num">${val}</td><td class="num muted">${frac}</td></tr>`;
   };
-  let h = `<p>${esc(t("evalHead", s.n, s.answerable, s.unanswerable, s.errors, s.expert_verified_items))}${meta.retrieval_only ? ` · ${esc(t("evalRetrievalNote"))}` : ""}</p>`;
+  let h = `<p>${esc(t("evalHead", s.n, s.answerable, s.unanswerable, s.errors, s.expert_verified_items))}${meta.retrieval_only ? ` · ${esc(t("evalRetrievalNote"))}` : ""}${modeLabel(meta.model)}</p>`;
   h += `<p class="${s.benchmark ? "small" : "note small"}">${esc(t(s.benchmark ? "evalBenchmark" : "evalNotBenchmark"))}</p><table>`;
   for (const k of [1, 3, 5, 8]) h += row(t("m_recall", k), `recall@${k}`);
   if (s.mrr != null) h += `<tr><td>${esc(t("m_mrr"))}</td><td class="num">${s.mrr}</td><td></td></tr>`;
@@ -2336,7 +2373,7 @@ async function loadEvalInfo() {
   const box = $("#eval-reports");
   if (!info.reports.length) box.innerHTML = `<p class="small muted">${esc(t("evalNoReports"))}</p>`;
   else {
-    box.innerHTML = `<ul>${info.reports.map((r) => `<li><a data-name="${esc(r.name)}">${esc(fmtTime(r.timestamp))}</a> — ${esc(r.set)} — ${r.summary.n}${r.retrieval_only ? ` · ${esc(t("evalRetrievalNote"))}` : ""}${r.summary["recall@5"] != null ? ` · recall@5 ${esc(pct(r.summary["recall@5"]))}` : ""}${r.summary.fact_accuracy_of_answered != null ? ` · ${esc(t("m_fact_accuracy_of_answered"))} ${esc(pct(r.summary.fact_accuracy_of_answered))}` : ""}</li>`).join("")}</ul>`;
+    box.innerHTML = `<ul>${info.reports.map((r) => `<li><a data-name="${esc(r.name)}">${esc(fmtTime(r.timestamp))}</a> — ${esc(r.set)} — ${r.summary.n}${r.retrieval_only ? ` · ${esc(t("evalRetrievalNote"))}` : ""}${modeLabel(r.model)}${r.summary["recall@5"] != null ? ` · recall@5 ${esc(pct(r.summary["recall@5"]))}` : ""}${r.summary.fact_accuracy_of_answered != null ? ` · ${esc(t("m_fact_accuracy_of_answered"))} ${esc(pct(r.summary.fact_accuracy_of_answered))}` : ""}</li>`).join("")}</ul>`;
     $$("a", box).forEach((a) => a.addEventListener("click", async () => {
       showEvalReport(await getJSON(`/api/eval/reports/${encodeURIComponent(a.dataset.name)}`));
     }));
@@ -2372,7 +2409,8 @@ async function loadEvalPage() {
 }
 async function runEval() {
   const set = ($("input[name=eval-set]:checked") || {}).value || "bundled";
-  const body = { set, retrieval_only: $("#eval-retrieval-only").checked };
+  const body = { set, retrieval_only: $("#eval-retrieval-only").checked,
+    mode: $("#eval-mode-row").hidden ? "deep" : $("#eval-mode").value };
   if (set === "custom") {
     const f = $("#eval-file").files[0];
     if (!f) { $("#eval-status").textContent = t("evalNoFile"); return; }
@@ -2400,7 +2438,7 @@ async function pollEval(id) {
       try {
         showEvalReport(await getJSON(`/api/eval/reports/${encodeURIComponent(job.report.name)}`));
       } catch (e) {
-        $("#eval-result").innerHTML = evalSummaryHtml(job.report.summary, { retrieval_only: $("#eval-retrieval-only").checked });
+        $("#eval-result").innerHTML = evalSummaryHtml(job.report.summary, { retrieval_only: $("#eval-retrieval-only").checked, model: job.report.model });
       }
       $("#eval-status").textContent = t("evalDone");   // after the report is drawn
       loadEvalInfo();
@@ -2446,7 +2484,7 @@ async function openSettings() {
   k.onchange = () => $$("#svc-grid .load").forEach((b) => { if (!b.disabled) b.click(); });
   const grid = $("#svc-grid");
   grid.innerHTML = "";
-  grid.append(svcCard("llm"));
+  grid.append(svcCard("llm"), svcCard("llm_fast"));
   $("#set-notify").checked = !SETTINGS.ui || SETTINGS.ui.notify !== false;
   $("#settings-status").textContent = "";
   $$("#dlg-settings [data-i18n]").forEach((x) => { x.textContent = t(x.dataset.i18n); });
@@ -2458,11 +2496,14 @@ function cardPatch(card) {
   const out = { base_url: $(".url", card).value.trim(), model: $(".model", card).value, verify_ssl: !$(".insecure", card).checked };
   const en = $(".enabled", card);
   if (en) out.enabled = en.checked;
+  const th = $(".thinking", card);
+  if (th) out.thinking = th.value;
   return out;
 }
 async function saveSettings(e) {
   e.preventDefault();
-  const patch = { auth: { api_key: $("#set-api-key").value }, llm: cardPatch($("#svc-grid .svc")), ui: { notify: $("#set-notify").checked } };
+  const patch = { auth: { api_key: $("#set-api-key").value }, llm: cardPatch($('#svc-grid .svc[data-svc="llm"]')),
+    llm_fast: cardPatch($('#svc-grid .svc[data-svc="llm_fast"]')), ui: { notify: $("#set-notify").checked } };
   try {
     const r = await postJSON("/api/settings", patch, "PUT");
     $("#settings-status").textContent = r.error ? `${t("errorPrefix")}: ${r.error}` : t("savedSettings");
@@ -2480,6 +2521,7 @@ async function loadAdminSettings() {
   for (const svc of SERVICES.filter((x) => x !== "llm")) grid.append(svcCard(svc));
   $("#set-thinking").value = SETTINGS.llm.thinking;
   $("#set-thinking-control").value = SETTINGS.llm.thinking_control;
+  $("#set-fast-thinking-control").value = (SETTINGS.llm_fast || {}).thinking_control || "";
   $("#set-tools").value = SETTINGS.llm.tools;
   $("#set-judge").checked = SETTINGS.answer.judge;
   $("#set-regenerate").checked = SETTINGS.answer.regenerate;
@@ -2574,6 +2616,7 @@ async function saveAdminSettings() {
   const patch = { answer: { judge: $("#set-judge").checked, regenerate: $("#set-regenerate").checked, failed_claims: $("#set-failed").value } };
   for (const card of $$("#adm-svc-grid .svc")) patch[card.dataset.svc] = cardPatch(card);
   patch.llm = { thinking: $("#set-thinking").value, thinking_control: $("#set-thinking-control").value, tools: $("#set-tools").value };
+  patch.llm_fast = { thinking_control: $("#set-fast-thinking-control").value };
   patch.vision = Object.assign(patch.vision || {}, { enabled: $("#set-vision-enabled").checked });
   const num = (id, int) => { const v = int ? parseInt($(id).value, 10) : parseFloat($(id).value); return Number.isFinite(v) ? v : undefined; };
   const adv = { llm: { context_tokens: num("#set-context", true), max_tool_rounds: num("#set-tool-rounds", true) }, answer: { judge_batch: num("#set-judge-batch", true),
@@ -3018,6 +3061,11 @@ function bind() {
     postJSON("/api/settings", { ui: { language: LANG } }, "PUT").catch(() => {});
   }));
   $("#btn-settings").addEventListener("click", () => openSettings().catch((e) => alert(e.message)));
+  $$("#mode-pick button").forEach((b) => b.addEventListener("click", () => {
+    safeSet("techrag.mode", b.dataset.mode);
+    renderModePick();
+    $("#question").focus();
+  }));
   $("#btn-save-settings").addEventListener("click", saveSettings);
   $("#btn-save-admin-settings").addEventListener("click", saveAdminSettings);
   ["#set-tls-system", "#set-tls-proxy", "#set-tls-ca"].forEach((id) => $(id).addEventListener("change", applyTls));

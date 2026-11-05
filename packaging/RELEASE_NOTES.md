@@ -1,5 +1,26 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.14.0 — iki sohbet modeli: Kapsamlı ve Hızlı
+- **Ayarlar**'da iki sohbet modeli seçilir: **Sohbet modeli — Kapsamlı** (önceki sohbet modeli) ve **Sohbet modeli —
+  Hızlı**. Her birinin kendi API adresi ve modeli vardır; hızlı modelin adresi boşsa kapsamlı modelin sunucusu
+  kullanılır. Hızlı modelin düşünme ayarı kendi kartında (varsayılan kapalı), düşünme kontrolü yöntemi Admin ›
+  Ayarlar'dadır (varsayılan: kapsamlı modelle aynı).
+- **Sohbette seçim:** hızlı model ayarlıysa soru kutusunun solunda **Kapsamlı | Hızlı** seçimi çıkar; seçim bu
+  bilgisayarda hatırlanır. Hızlı seçilince sohbet modelinin kullanıldığı her yerde o soru için hızlı model kullanılır:
+  soru çözümleme, cevap, bağımsız denetçi ve atıf düzeltme. Arama, rerank, sayı/birim kontrolü ve doğrulama
+  kuralları değişmez; görsel model (VLM) de aynı kalır.
+- Cevabın süre düğmesi hızlı modelle cevaplanan sorularda "· Hızlı" der, ayrıntıda model adı yazar; kullanım günlüğü
+  cevaplayan modeli kaydeder.
+- **Admin › Değerlendirme**'de soru seti hangi modelle çalıştırılacağı seçilebilir; rapor ve rapor geçmişi modeli
+  gösterir (iki modelin doğruluğunu karşılaştırmak için).
+- Hızlı model kurum ayarlarına da yazılır.
+- Not: hızlı modelde denetçi de hızlı modeldir; doğrulama kuralları aynı kalır, ama desteklenmeyen ifadeleri yakalama
+  gücü o modele bağlıdır. Hızlı modeli kullanmadan önce Admin › Değerlendirme ile iki modeli karşılaştırmanız önerilir.
+- Doğrulanan: testler (hızlı soruda soru çözümleme, cevap ve denetçi isteklerinin hepsinin hızlı modele gitmesi; şekil
+  sayfasının görsel modele gitmesi; kapsamlı modelin değişmemesi; hızlı modelin kendi düşünme ayarı; sohbet
+  seçiminin görünmesi, hatırlanması ve cevapta yazması; kullanım günlüğü; değerlendirme; ayarların kaydı ve kurum
+  dosyası). Gerçek iki modelli bir vLLM kurulumunda denenmedi.
+
 ### 0.13.2 — kurum ayarlarında en yeni karar geçerli; yayımlanan kütüphanede kalite raporu
 - **Kurum ayarları, en yeni karar geçerli:** önceden bir kullanıcının kendi değeri (ör. ortak kütüphane klasörü) kurum
   ayarını her zaman eziyordu; kurum dosyasında o ayarı değiştirseniz bile o kullanıcıda eski değer kalıyordu. Artık

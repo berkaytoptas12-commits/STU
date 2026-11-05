@@ -532,7 +532,7 @@ def test_advanced_settings_are_shown_and_saved(ui):
     assert ui.is_visible("#set-api-key") and ui.locator(".svc input[type=password]").count() == 0, \
         "one shared API key, none per service"
     cards = ui.evaluate("() => [...document.querySelectorAll('#dlg-settings .svc')].map((c) => c.dataset.svc)")
-    assert cards == ["llm"], "only the chat model in Settings"
+    assert cards == ["llm", "llm_fast"], "only the two chat models (thorough, fast) in Settings"
     assert ui.locator("#dlg-settings #set-context, #dlg-settings #set-tls-ca, #dlg-settings #set-thinking").count() == 0
     assert ui.is_checked("#set-notify")
     ui.uncheck("#set-notify")
@@ -1068,3 +1068,58 @@ def test_a_changed_library_folder_is_not_dropped(ui, tmp_path, cfg):
     ui.wait_for_function("(p) => state.info && state.info.library === p", arg=str(new_lib.resolve()))
     _admin(ui, "adm-library")
     assert ui.input_value("#lib-new-path") == str(new_lib.resolve()) and ui.is_hidden("#lib-pending")
+
+
+def test_the_chat_offers_the_fast_model_when_one_is_set(ui, cfg, engine, fake):
+    from techrag.llm import LLMClient
+
+    assert ui.is_hidden("#mode-pick"), "no fast model set: no choice"
+    cfg.llm_fast.model = "fast-test"
+    engine._fast_llm = LLMClient(cfg.chat_config("fast"), transport=fake.transport())
+    ui.evaluate("() => loadInfo()")
+    ui.wait_for_selector("#mode-pick:not([hidden])")
+    assert ui.get_attribute("#mode-pick [data-mode=deep]", "aria-checked") == "true", "Kapsamlı by default"
+    assert ui.inner_text("#mode-pick").split() == ["Kapsamlı", "Hızlı"]
+    assert "fast-test" in ui.get_attribute("#mode-pick [data-mode=fast]", "title")
+    ui.click("#mode-pick [data-mode=fast]")
+    assert ui.get_attribute("#mode-pick [data-mode=fast]", "aria-checked") == "true"
+    n = len(fake.calls)
+    _ask(ui, "DDR5 tRFC değeri nedir?")
+    asked = [c["body"] for c in fake.calls[n:] if c["path"].endswith("/chat/completions")
+             and not any(isinstance(m.get("content"), list) for m in c["body"].get("messages", []))]
+    assert asked and {b["model"] for b in asked} == {"fast-test"}
+    timing = ui.locator(".msg.assistant >> nth=-1 >> .timing")
+    assert "Hızlı" in timing.inner_text()
+    timing.click()
+    assert "Model: Hızlı — fast-test" in ui.inner_text(".msg.assistant >> nth=-1 >> .timing-detail")
+    ui.reload()
+    ui.wait_for_selector("#mode-pick:not([hidden])")
+    assert ui.get_attribute("#mode-pick [data-mode=fast]", "aria-checked") == "true", "the choice is remembered"
+    ui.click("#mode-pick [data-mode=deep]")
+    _ask(ui, "DDR5 tRFC değeri nedir?")
+    assert "Hızlı" not in ui.inner_text(".msg.assistant >> nth=-1 >> .timing")
+
+
+def test_settings_have_a_thorough_and_a_fast_chat_model(ui, cfg):
+    cfg.llm_fast.model = "fast-test"
+    ui.click("#btn-settings")
+    ui.wait_for_selector("#dlg-settings[open]")
+    card = ui.locator('#svc-grid .svc[data-svc="llm_fast"]')
+    assert "Sohbet modeli — Hızlı" in card.inner_text() and "“Hızlı” seçilince" in card.inner_text()
+    assert "Sohbet modeli — Kapsamlı" in ui.inner_text('#svc-grid .svc[data-svc="llm"]')
+    assert card.locator(".url").get_attribute("placeholder").startswith("(boş")
+    assert card.locator(".model").input_value() == "fast-test" and card.locator(".thinking").input_value() == "off"
+    card.locator(".thinking").select_option("auto")
+    ui.click("#btn-save-settings")
+    ui.wait_for_function("() => !document.querySelector('#dlg-settings').open")
+    s = ui.evaluate("async () => (await (await fetch('/api/settings')).json())")
+    assert s["llm_fast"]["model"] == "fast-test" and s["llm_fast"]["thinking"] == "auto"
+    assert s["llm"]["model"] == "qwen-test", "the thorough model is kept"
+    _admin(ui, "adm-settings")
+    ui.wait_for_function("() => document.querySelectorAll('#adm-svc-grid .svc').length === 3")
+    assert ui.input_value("#set-fast-thinking-control") == ""
+    ui.select_option("#set-fast-thinking-control", "reasoning_effort")
+    ui.click("#btn-save-admin-settings")
+    ui.wait_for_function("() => document.querySelector('#adm-settings-status').textContent.length > 0")
+    s = ui.evaluate("async () => (await (await fetch('/api/settings')).json())")
+    assert s["llm_fast"]["thinking_control"] == "reasoning_effort" and s["llm"]["thinking_control"] == "chat_template"

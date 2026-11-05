@@ -40,8 +40,8 @@ POINTER_FILE = "SayisalTasarimUzmani.kurum.txt"
 CACHE_FILE = "kurum-ayarlari.cache.yaml"
 
 # What the organization file holds: whole sections, minus the keys listed (secrets and per-user paths).
-EXPORT = {"llm": ("api_key",), "vision": ("api_key",), "embedding": ("api_key",), "reranker": ("api_key",),
-          "answer": (), "retrieval": (), "tls": (), "usage": ()}
+EXPORT = {"llm": ("api_key",), "llm_fast": (), "vision": ("api_key",), "embedding": ("api_key",),
+          "reranker": ("api_key",), "answer": (), "retrieval": (), "tls": (), "usage": ()}
 EXPORT_PATHS = ("library_dir",)
 
 STATUS: dict = {"path": "", "source": "", "loaded": False, "cached": False, "error": "", "values": {},

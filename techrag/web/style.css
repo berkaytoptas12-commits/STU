@@ -239,6 +239,12 @@ button.cite { background: var(--accent-soft); color: var(--accent); border: 0; p
 
 .composer { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--border); }
 .composer textarea { flex: 1; resize: vertical; min-height: 44px; max-height: 240px; }
+/* Which chat model answers: two small stacked buttons left of the question box */
+.mode-pick { display: flex; flex-direction: column; gap: 2px; align-self: stretch; justify-content: center; }
+.mode-pick button { padding: 2px 8px; font-size: 12px; min-width: 76px; background: transparent; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 6px; }
+.mode-pick button:hover { border-color: var(--accent); }
+.mode-pick button[aria-checked="true"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 
 .viewer-head { margin-bottom: 10px; }
 .badge { font-size: 11px; color: var(--muted); }
