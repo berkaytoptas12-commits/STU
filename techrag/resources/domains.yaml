@@ -163,15 +163,9 @@ domains:
       - '\bdpcd\b'
       - '\bmst\b'
     standards:
-      # Every version is its own standard. Written as "DisplayPort 1.2", "display port 1.2", "DP v1.2", "DP1.2",
-      # "DisplayPort (DP) Standard Version 1.4"; VESA's "Version 1, Revision 2" titles are read as 1.2 when the
-      # document is indexed (techrag.ingest.metadata).
-      - {id: "DisplayPort 1.0", patterns: ['\b(?:dp|display\s?port)(?:\s*\(dp\))?(?:\s+standard)?\s*,?\s*(?:v(?:er(?:sion)?)?\.?\s*)?1\.0\b']}
-      - {id: "DisplayPort 1.1", patterns: ['\b(?:dp|display\s?port)(?:\s*\(dp\))?(?:\s+standard)?\s*,?\s*(?:v(?:er(?:sion)?)?\.?\s*)?1\.1a?\b']}
-      - {id: "DisplayPort 1.2", patterns: ['\b(?:dp|display\s?port)(?:\s*\(dp\))?(?:\s+standard)?\s*,?\s*(?:v(?:er(?:sion)?)?\.?\s*)?1\.2a?\b']}
-      - {id: "DisplayPort 1.3", patterns: ['\b(?:dp|display\s?port)(?:\s*\(dp\))?(?:\s+standard)?\s*,?\s*(?:v(?:er(?:sion)?)?\.?\s*)?1\.3\b']}
-      - {id: "DisplayPort 1.4", patterns: ['\b(?:dp|display\s?port)(?:\s*\(dp\))?(?:\s+standard)?\s*,?\s*(?:v(?:er(?:sion)?)?\.?\s*)?1\.4a?\b']}
-      - {id: "DisplayPort 2.x", patterns: ['\b(?:dp|display\s?port)(?:\s*\(dp\))?(?:\s+standard)?\s*,?\s*(?:v(?:er(?:sion)?)?\.?\s*)?2\.\d\b', '\buhbr\s?\d']}
+      - {id: "DisplayPort 1.2", patterns: ['\b(?:dp|displayport)\s*(?:v(?:ersion)?\s*)?1\.2a?\b']}
+      - {id: "DisplayPort 1.4", patterns: ['\b(?:dp|displayport)\s*(?:v(?:ersion)?\s*)?1\.4a?\b']}
+      - {id: "DisplayPort 2.x", patterns: ['\b(?:dp|displayport)\s*(?:v(?:ersion)?\s*)?2\.\d\b', '\buhbr\s?\d']}
       - {id: "eDP", patterns: ['\bedp\b', 'embedded displayport']}
     glossary:
       DPCD: DisplayPort Configuration Data

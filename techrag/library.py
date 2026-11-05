@@ -229,14 +229,6 @@ class LibraryView:
         return rows
 
     # ------------------------------------------------------------------ search
-    def term_variants(self, terms, limit: int = 8) -> dict[str, list[str]]:
-        """Versioned forms of family names as either library writes them (see Store.term_variants)."""
-        out = {t: list(v) for t, v in self.shared.term_variants(terms, limit).items()}
-        if self.personal is not None:
-            for t, v in self.personal.term_variants(terms, limit).items():
-                out[t] = list(dict.fromkeys(out.get(t, []) + v))[:limit]
-        return out
-
     def search_bm25(self, query: str, k: int, domains: Optional[Sequence[str]] = None,
                     doc_ids: Optional[Sequence[int]] = None) -> list[tuple[int, float]]:
         shared, personal = _split(doc_ids)

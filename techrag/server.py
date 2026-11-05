@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import mimetypes
 import os
 import queue
@@ -32,8 +31,6 @@ from techrag.ingest.loaders import SUPPORTED_SUFFIXES
 from techrag.ingest.pipeline import IngestStopped, WriteGate
 from techrag.settings import MASK, load_user_settings, public_settings, settings_path, update_settings
 from techrag.usage import UsageLog, current_machine, current_user, token_totals
-
-log = logging.getLogger("techrag.server")
 
 WEB_DIR = resource_path("web")
 SERVICES = ("llm", "vision", "embedding", "reranker")
@@ -199,30 +196,11 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         except Exception as exc:
             state["engine"] = None
             state["error"] = f"{exc.__class__.__name__}: {exc}"
-            return
-        refresh_tags(state["engine"])
-
-    def refresh_tags(e: RAGEngine) -> None:
-        """Standard tags of a writable library (and the personal one) brought up to date when the standard
-        definitions changed - only the documents concerned, no indexing, no model call (refresh_standard_tags)."""
-        from techrag.ingest.pipeline import IngestStopped, refresh_standard_tags
-
-        for store in (e.shared, e.personal):
-            if store is None or store.read_only:
-                continue
-            try:
-                with jobs.gate.write():
-                    refresh_standard_tags(store, e.domains)
-            except IngestStopped:      # the app is closing
-                return
-            except Exception as exc:   # tried again at the next start or scan
-                log.warning("standard tags could not be refreshed: %s", exc)
 
     if engine is None:
         build_engine(cfg)
     else:
         mirrors.configure(cfg)
-        refresh_tags(engine)
 
     def eng() -> RAGEngine:
         e = state["engine"]

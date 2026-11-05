@@ -277,9 +277,7 @@ def plan_changes(scan: ScanResult, docs: list, fingerprint: str, root_id: Option
             items.append(it)
             continue
         if it.action in ("unchanged", "touched") and not _fp_ok(d, fingerprint):
-            it.action, it.reason = "settings", ("standard tags corrected: its search vectors are made again"
-                                                if str(getattr(d, "ingest_fp", "")).startswith("retag")
-                                                else "parsing / table-extraction settings changed")
+            it.action, it.reason = "settings", "parsing / table-extraction settings changed"
         elif it.action == "unchanged" and d.missing:
             it.action = "restored"
         items.append(it)

@@ -13,7 +13,6 @@ expand:  small-to-big: a hit grows to its whole section when the section is shor
 
 from __future__ import annotations
 
-import logging
 import re
 import threading
 import time
@@ -31,8 +30,6 @@ from techrag.store import ChunkRow, DocumentRow, ParameterRow, Store
 
 _FIGURE_REF = re.compile(r"\b(figure|fig\.|şekil|timing diagram|waveform|eye diagram|pin ?out|pinout|"
                          r"block diagram|state diagram)\b", re.I)
-
-log = logging.getLogger("techrag.retrieval")
 
 
 # "Table 4-12", "see Section 3.2", "clause 5.4.1", "§ 4.5" in a passage's text
@@ -113,15 +110,6 @@ class RetrievalResult:
     confidence: Optional[float] = None
     candidates: int = 0
     timings: dict = field(default_factory=dict)
-
-
-def with_variants(query: str, variants: dict[str, list[str]]) -> str:
-    """The keyword query with the versioned forms written right after the family name (so that the query's term
-    limit never drops them): 'LPDDR nedir' -> 'LPDDR lpddr4 lpddr4x lpddr5 nedir'."""
-    for term, forms in (variants or {}).items():
-        query = re.sub(rf"(?<![\w.]){re.escape(term)}(?![\w.])", lambda m: f"{m.group(0)} {' '.join(forms)}",
-                       query, count=1, flags=re.I)
-    return query
 
 
 def rrf_fuse(ranked_lists: Sequence[Sequence[tuple[int, float]]], k: int = 60) -> list[tuple[int, float]]:
@@ -353,9 +341,8 @@ class Retriever:
         rc = self.cfg.retrieval
         lists: list[list[tuple[int, float]]] = []
         t = time.time()
-        variants = self._variants(plan)
         for q in plan.bm25_queries():
-            lists.append(self.store.search_bm25(with_variants(q, variants), rc.bm25_top_k, None, scope.doc_ids))
+            lists.append(self.store.search_bm25(q, rc.bm25_top_k, None, scope.doc_ids))
         timings["bm25"] = round(timings.get("bm25", 0) + time.time() - t, 3)
         t = time.time()
         index = self.store.vectors()
@@ -369,24 +356,6 @@ class Retriever:
                 lists.append(index.search(row, rc.dense_top_k, mask))
         timings["dense"] = round(timings.get("dense", 0) + time.time() - t, 3)
         return rrf_fuse(lists, rc.rrf_k)
-
-    def _variants(self, plan: QueryPlan) -> dict[str, list[str]]:
-        """Versioned forms of the family names in the question that the library writes only with a version
-        ("LPDDR" -> LPDDR4, LPDDR4X, LPDDR5 ...). Added to the keyword search as alternatives: nothing is filtered
-        or removed, and a question without such a name searches exactly as before."""
-        fn = getattr(self.store, "term_variants", None)
-        if fn is None:
-            return {}
-        text = " ".join(x for x in (plan.question, plan.standalone, plan.english) if x)
-        words = re.findall(r"(?<![\w.])[^\W\d_]{3,10}(?![\w.])", text)
-        try:
-            found = fn(words)
-        except Exception as exc:   # an optimisation: never fail a question because of it
-            log.debug("term variants failed: %s", exc)
-            return {}
-        if found:
-            log.info("keyword search also looks for: %s", {t: v for t, v in found.items()})
-        return found
 
     def _rank(self, plan: QueryPlan, scope: Scope, timings: dict) -> tuple[list[tuple[ChunkRow, float]], Optional[float]]:
         rc = self.cfg.retrieval
