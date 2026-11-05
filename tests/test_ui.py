@@ -1159,3 +1159,23 @@ def test_advanced_settings_have_top_k_and_the_judge_switch(ui, cfg):
     assert s["reranker"]["candidates"] == 60 and s["retrieval"]["bm25_top_k"] == 80 and s["retrieval"]["dense_top_k"] == 50
     ui.check("#set-judge")
     assert ui.is_hidden("#judge-off-hint") and not ui.is_disabled("#set-judge-batch")
+
+
+def test_a_line_at_the_top_shows_the_local_copy_progress(ui):
+    """While the local copy of the shared library is taken, the top line says how far it is; it goes away when
+    the copy is in use (the page asks again every two seconds meanwhile)."""
+    text = ui.evaluate("""() => {
+        state.info.mirror = {enabled: true, read_only: true, state: "copying", progress: 0.4, synced_at: ""};
+        renderInfo();
+        return document.querySelector('#banner').hidden ? '' : document.querySelector('#banner').textContent; }""")
+    assert "%40" in text and "ilk açılış" in text and "ağdaki kütüphaneden cevaplanır" in text
+    text = ui.evaluate("""() => {
+        state.info.mirror = {enabled: true, read_only: true, state: "copying", progress: 0.9, synced_at: "2026-11-05T10:00:00"};
+        renderInfo();
+        return document.querySelector('#banner').textContent; }""")
+    assert "%90" in text and "önceki kopya kullanılır" in text
+    hidden = ui.evaluate("""() => {
+        state.info.mirror = {enabled: true, read_only: true, state: "ready", progress: 1, synced_at: "2026-11-05T10:00:00"};
+        renderInfo();
+        return document.querySelector('#banner').hidden; }""")
+    assert hidden, "gone when the copy is in use"

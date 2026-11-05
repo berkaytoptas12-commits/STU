@@ -332,6 +332,12 @@ def fts_query(text: str, max_terms: int = 48) -> str:
 
 
 class VectorIndex:
+    """The search vectors of a library, kept as the index stores them: 16-bit floats, half the memory of 32-bit
+    ones (a library of 50 000 passages with 4096-dimensional vectors: ~400 MB instead of ~800 MB). They are scored
+    in 32-bit, a block of rows at a time; 16 -> 32 bit is exact, so the scores are those of a 32-bit matrix."""
+
+    BLOCK = 1024   # rows converted at a time (1024 x 4096 dims: 16 MB of 32-bit floats)
+
     def __init__(self, ids: np.ndarray, matrix: np.ndarray, domains: np.ndarray, doc_ids: np.ndarray):
         self.ids, self.matrix, self.domains, self.doc_ids = ids, matrix, domains, doc_ids
 
@@ -348,16 +354,33 @@ class VectorIndex:
             m = dm if m is None else (m & dm)
         return m
 
+    def scores(self, queries: np.ndarray) -> np.ndarray:
+        """Similarity of every vector to each query (queries x vectors), one pass over the matrix for all of
+        them: each block is converted to 32-bit once."""
+        qt = np.ascontiguousarray(np.atleast_2d(queries).astype(np.float32).T)
+        out = np.empty((self.size, qt.shape[1]), dtype=np.float32)
+        for start in range(0, self.size, self.BLOCK):
+            np.matmul(self.matrix[start:start + self.BLOCK].astype(np.float32), qt, out=out[start:start + self.BLOCK])
+        return out.T
+
     def search(self, query: np.ndarray, k: int, mask: Optional[np.ndarray] = None) -> list[tuple[int, float]]:
+        return self.search_many(np.atleast_2d(query), k, mask)[0]
+
+    def search_many(self, queries: np.ndarray, k: int,
+                    mask: Optional[np.ndarray] = None) -> list[list[tuple[int, float]]]:
+        """The k nearest vectors to each query (one list per query)."""
+        queries = np.atleast_2d(queries)
         if self.size == 0:
-            return []
-        scores = self.matrix @ query.astype(np.float32)
-        if mask is not None:
-            scores = np.where(mask, scores, -np.inf)
+            return [[] for _ in range(queries.shape[0])]
+        out = []
         k = min(k, self.size)
-        top = np.argpartition(-scores, k - 1)[:k]
-        top = top[np.argsort(-scores[top])]
-        return [(int(self.ids[i]), float(scores[i])) for i in top if np.isfinite(scores[i])]
+        for scores in self.scores(queries):
+            if mask is not None:
+                scores = np.where(mask, scores, -np.inf)
+            top = np.argpartition(-scores, k - 1)[:k]
+            top = top[np.argsort(-scores[top])]
+            out.append([(int(self.ids[i]), float(scores[i])) for i in top if np.isfinite(scores[i])])
+        return out
 
 
 class Store:
@@ -1251,18 +1274,37 @@ class Store:
             return self._vectors
 
     def _load_vectors(self) -> VectorIndex:
+        """The vectors read row by row straight into their matrix (16-bit, as stored): no list of every row in
+        memory beside it while loading."""
         dim = int(self.get_meta("embedding_dim") or 0)
+        empty = VectorIndex(np.zeros(0, np.int64), np.zeros((0, max(dim, 1)), np.float16),
+                            np.zeros(0, object), np.zeros(0, np.int64))
+        if not dim:
+            return empty
         with self.connect() as con:
-            rows = con.execute("SELECT id, domain, doc_id, embedding FROM chunks ORDER BY id").fetchall()
-        if not rows or not dim:
-            return VectorIndex(np.zeros(0, np.int64), np.zeros((0, max(dim, 1)), np.float32),
-                               np.zeros(0, object), np.zeros(0, np.int64))
-        matrix = np.empty((len(rows), dim), dtype=np.float32)
-        for i, r in enumerate(rows):
-            matrix[i] = np.frombuffer(r["embedding"], dtype=np.float16)
-        return VectorIndex(np.array([r["id"] for r in rows], dtype=np.int64), matrix,
-                           np.array([r["domain"] for r in rows], dtype=object),
-                           np.array([r["doc_id"] for r in rows], dtype=np.int64))
+            con.execute("BEGIN")   # the count and the rows from one snapshot of the library
+            n = con.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
+            if not n:
+                return empty
+            matrix = np.empty((n, dim), dtype=np.float16)
+            ids = np.empty(n, dtype=np.int64)
+            doc_ids = np.empty(n, dtype=np.int64)
+            domains = np.empty(n, dtype=object)
+            i = 0
+            for cid, domain, doc_id, emb in con.execute(
+                    "SELECT id, domain, doc_id, embedding FROM chunks ORDER BY id"):
+                matrix[i] = np.frombuffer(emb, dtype=np.float16)
+                ids[i], domains[i], doc_ids[i] = cid, domain, doc_id
+                i += 1
+        if i < n:
+            matrix, ids, domains, doc_ids = matrix[:i], ids[:i], domains[:i], doc_ids[:i]
+        return VectorIndex(ids, matrix, domains, doc_ids)
+
+    def release_vectors(self) -> None:
+        """Let go of the vectors held for searching (another copy of the library answers from now on)."""
+        with self._lock:
+            self._vectors = None
+            self._vectors_version = None
 
     # --------------------------------------------------------------- publish
     def publish(self, dest_dir: str | Path, sources_dir: Path, vlm_cache_dir: Optional[Path] = None) -> Path:

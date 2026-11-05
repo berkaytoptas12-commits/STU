@@ -1,5 +1,26 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.14.2 — yerel kopya ve bellek
+- **Düzeltme:** belleği az bir bilgisayarda, ortak kütüphanenin yerel kopyası alınırken soru sorulunca "Hata:
+  MemoryError: Unable to allocate … MiB" çıkıyordu. Soru, kopyayı en fazla 15 dakika bekleyip ağdaki kütüphaneyle devam
+  ediyor ve onun arama vektörlerini belleğe yüklüyordu; kopya bitince uygulama kopyanın vektörlerini, ağdakileri
+  bırakmadan yüklüyordu: bellekte aynı verinin iki takımı. Artık:
+  - Yeni kopyaya geçilirken önceki kütüphanenin vektörleri önce bırakılır, sonra yenisininki yüklenir; geçiş süren
+    bir sorunun bitmesini bekler. Bellekte hiçbir zaman iki takım bulunmaz.
+  - İlk kopya alınırken sorular **beklemez**, hemen ağdaki kütüphaneden cevaplanır; kopya hazır olunca uygulama
+    kendiliğinden kopyaya geçer.
+  - Ekranın üstünde kopyanın ilerlemesi gösterilir: "Ortak kütüphanenin yerel kopyası alınıyor: %40 (ilk açılış,
+    bir kez)"; bitince kaybolur.
+- **Arama vektörleri yarı bellekle:** vektörler bellekte indekste saklandıkları gibi 16 bit tutulur (51 749 parça ×
+  4096 boyut: ~800 MB yerine ~400 MB); yükleme anındaki ayrı satır listesi kaldırıldı (tepe kullanım ~1,2 GB'tan
+  ~0,45 GB'a). Benzerlik 32 bitle, bloklar hâlinde hesaplanır; çevirme kayıpsız olduğu için bulunan kaynaklar ve
+  sıraları aynıdır. Bedeli: soru başına yaklaşık 0,4–0,5 sn hesaplama (test makinesinde ölçülen; bir sorunun tüm arama
+  sorguları tek geçişte hesaplanır).
+- Açılıştaki vektör yüklemesi bellek yetmezse uygulamanın genel hata şeridini açmaz; ilk soru yeniden dener.
+- Doğrulanan: testler (eski 32 bit hesapla aynı kaynaklar ve sıra; vektör belleğinin yarıya inmesi; geçişte önceki
+  vektörlerin bırakılması ve süren sorunun beklenmesi; kopya alınırken sorunun hemen cevaplanıp sonra kopyaya
+  geçilmesi; ilerleme şeridi). Gerçek bir ağ paylaşımında ve belleği az bir bilgisayarda denenmedi.
+
 ### 0.14.1 — top k ayarları Admin › Ayarlar › Gelişmiş'te; denetçi kapatma uyarısı
 - **Top k ayarları:** Admin › Ayarlar › Gelişmiş'te "Modele verilen pasaj sayısı (top k)" (varsayılan 8, 1–30),
   "Rerank'e giden aday sayısı" (40), "Anahtar kelime araması aday sayısı (BM25 top k)" (50) ve "Vektör araması aday

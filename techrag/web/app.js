@@ -24,7 +24,6 @@ const I18N = {
     publishTo: "Yayımlanacak hedef klasör (ör. ağ paylaşımı)", publish: "Yayımla", rebuild: "Tamamen yeniden oluştur",
     reasoning: "Model düşünmesi", copy: "Kopyala", copied: "Kopyalandı ✓",
     placeholder: "Sorunuzu yazın (Türkçe veya İngilizce)… Enter: gönder, Shift+Enter: yeni satır",
-    stMirror: "Ortak kütüphanenin yerel kopyası alınıyor (ilk açılış, bir kez): %{0}…",
     stPlanning: "Soru çözümleniyor ve kaynaklar aranıyor…", stAnswering: "Cevap yazılıyor…", stVerifying: "İfadeler kaynaklara karşı doğrulanıyor…",
     stRegenerating: "{0} ifade doğrulanamadı, düzeltiliyor…", stNoTools: "Sunucu araç çağrısını desteklemiyor; araçsız devam ediliyor.",
     scopeEntity: "kapsam: {0} (soruda geçen standart)", scopeUser: "kapsam: seçili bucket / dokümanlar", scopeDomain: "koleksiyon: {0}", scopeAll: "kapsam: tüm kütüphane",
@@ -263,6 +262,8 @@ const I18N = {
     mirrorUse: "Ağdaki ortak kütüphanenin yerel kopyasını kullan (arama hızlanır)", mirrorSync: "Şimdi denetle",
     mirrorReady: "Yerel kopya güncel ({0}; son eşitleme {1}). Ağdaki kütüphane uygulama açılırken denetlenir; güncellendiyse yeni kopya kendiliğinden alınır. Hemen almak için “Şimdi denetle”.",
     mirrorCopying: "Ortak kütüphanenin yerel kopyası alınıyor: %{0}. Bu sırada önceki kopya ya da ağdaki kütüphane kullanılıyor.",
+    mirrorBannerFirst: "Ortak kütüphanenin yerel kopyası alınıyor: %{0} (ilk açılış, bir kez). Bu sırada sorular ağdaki kütüphaneden cevaplanır; bitince kopyaya kendiliğinden geçilir.",
+    mirrorBannerRenew: "Ortak kütüphanenin güncel kopyası alınıyor: %{0}. Bu sırada önceki kopya kullanılır; bitince yenisine kendiliğinden geçilir.",
     mirrorNetwork: "Yerel kopya hazırlanıyor; şimdilik ağdaki kütüphane kullanılıyor.",
     mirrorStale: "Kütüphanenin yeni sürümü alınamadı ({0}); önceki kopya kullanılıyor, kısa süre sonra yeniden denenecek.",
     mirrorOffline: "Ağdaki ortak kütüphaneye ulaşılamıyor; yerel kopya kullanılıyor (son eşitleme {0}). Belge sayfaları ağa bağlanınca görüntülenebilir.",
@@ -325,7 +326,6 @@ const I18N = {
     publishTo: "Publish to folder (e.g. a network share)", publish: "Publish", rebuild: "Full rebuild",
     reasoning: "Model reasoning", copy: "Copy", copied: "Copied ✓",
     placeholder: "Type your question (English or Turkish)… Enter: send, Shift+Enter: new line",
-    stMirror: "Taking the local copy of the shared library (first start, once): {0}%…",
     stPlanning: "Analysing the question and searching…", stAnswering: "Writing the answer…", stVerifying: "Checking statements against the sources…",
     stRegenerating: "{0} statement(s) failed verification, correcting…", stNoTools: "The server does not support tool calls; continuing without tools.",
     scopeEntity: "scope: {0} (named in the question)", scopeUser: "scope: selected buckets / documents", scopeDomain: "collection: {0}", scopeAll: "scope: whole library",
@@ -564,6 +564,8 @@ const I18N = {
     mirrorUse: "Use a local copy of the shared library on the network (faster search)", mirrorSync: "Check now",
     mirrorReady: "Local copy up to date ({0}; last synced {1}). The network library is checked when the app starts; a new copy is taken when it changed. To take it at once: “Check now”.",
     mirrorCopying: "Taking the local copy of the shared library: {0}%. Meanwhile the previous copy or the network library is used.",
+    mirrorBannerFirst: "Taking the local copy of the shared library: {0}% (first start, once). Meanwhile questions are answered from the network library; the app switches to the copy when it is done.",
+    mirrorBannerRenew: "Taking the current copy of the shared library: {0}%. Meanwhile the previous copy is used; the app switches to the new one when it is done.",
     mirrorNetwork: "The local copy is being prepared; the network library is used for now.",
     mirrorStale: "The library's new version could not be taken ({0}); the previous copy is used and it is tried again shortly.",
     mirrorOffline: "The shared library on the network cannot be reached; the local copy is used (last synced {0}). Document pages show when the network is back.",
@@ -812,9 +814,22 @@ function renderModePick() {
   });
   $("#eval-mode-row").hidden = !models.llm_fast;
 }
+// While the local copy of the shared library is taken, a line at the top says how far it is (questions are
+// answered meanwhile, from the network library or the previous copy); it goes away when the copy is in use.
+let bannerPoll = null;
+const mirrorCopying = (i) => !!(i && i.mirror && i.mirror.enabled && i.mirror.state === "copying");
+function mirrorBannerText(m) {
+  const pct = Math.round((m.progress || 0) * 100);
+  return t(m.synced_at ? "mirrorBannerRenew" : "mirrorBannerFirst", pct);
+}
+function pollWhileCopying(i) {
+  clearTimeout(bannerPoll);
+  if (mirrorCopying(i)) bannerPoll = setTimeout(() => loadInfo().catch(() => {}), 2000);
+}
 function renderInfo() {
   const i = state.info;
   if (!i) return;
+  pollWhileCopying(i);
   renderModePick();
   const ro = i.read_only ? ` · ${t("readOnly")}` : "";
   $("#lib-info").textContent = `${i.library} · ${i.stats.documents} ${t("docs")} · ${i.stats.parameters || 0} ${t("params")}${ro}`;
@@ -827,6 +842,7 @@ function renderInfo() {
   const missing = SERVICES.filter((s) => s !== "vision" && !i.models[s]);
   if (i.error) { banner.hidden = false; banner.textContent = `${t("errorPrefix")}: ${i.error}`; }
   else if (i.legacy_documents && !i.read_only) { banner.hidden = false; banner.textContent = `${t("legacyNotice", i.legacy_documents)} → ${t("admin")} › ${t("admShared")} › ${t("migrate")}`; }
+  else if (mirrorCopying(i)) { banner.hidden = false; banner.textContent = mirrorBannerText(i.mirror); }
   else if (i.org && i.org.path && (i.org.cached || !i.org.loaded)) { banner.hidden = false; banner.textContent = orgLine(i.org); }
   else if (i.mirror && i.mirror.enabled && i.mirror.state === "offline") { banner.hidden = false; banner.textContent = mirrorText(i.mirror); }
   else if (missing.length) { banner.hidden = false; banner.textContent = `${t("settings")}: ${missing.map((s) => t("svc_" + s)).join(", ")} — ${t("model")}?`; }
@@ -1493,7 +1509,7 @@ function timingDetailHtml(ev) {
 function stageText(ev) {
   return { planning: t("stPlanning"), answering: t("stAnswering"), verifying: t("stVerifying"),
     regenerating: t("stRegenerating", ev.failed || ""), tools_unsupported: t("stNoTools"),
-    searching_more: t("stSearchingMore"), mirror: t("stMirror", Math.round((ev.progress || 0) * 100)) }[ev.stage] || "";
+    searching_more: t("stSearchingMore") }[ev.stage] || "";
 }
 
 // A clarifying question waits for the user's reply: the next message is merged into the question it belongs to

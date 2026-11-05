@@ -178,18 +178,20 @@ def test_the_network_library_is_looked_at_on_start_and_on_request_only(shared, e
         mgr.stop()
 
 
-def test_a_question_waits_for_the_first_copy_instead_of_reading_the_network(shared, engine, tmp_path, monkeypatch):
-    """On a new computer the first question used to read the network index page by page (minutes, "stuck at
-    searching"); it now waits for the copy, says so, and answers from it."""
+def test_a_question_during_the_first_copy_is_answered_at_once(shared, engine, tmp_path, monkeypatch):
+    """A question asked while the first copy is taken is answered from the network library right away (it used to
+    wait for the copy, up to 15 minutes); the app switches to the copy afterwards."""
     import json
+    import threading
     import time
 
     monkeypatch.setenv("TECHRAG_SETTINGS", str(tmp_path / "settings.json"))
     real_sync = mirror.Mirror.sync
+    release = threading.Event()
 
     def slow_sync(self, progress=None):
         self.status.update(state="copying", progress=0.0)
-        time.sleep(1.0)                 # a network that takes a while
+        release.wait(10)                # the copy is still running while the question is answered
         return real_sync(self, progress)
 
     monkeypatch.setattr(mirror.Mirror, "sync", slow_sync)
@@ -197,12 +199,54 @@ def test_a_question_waits_for_the_first_copy_instead_of_reading_the_network(shar
         mgr = client.app.state.mirrors
         mgr.start()
         try:
+            t = time.time()
             with client.stream("POST", "/api/ask", json={"question": "DDR5 tRFC değeri nedir?"}) as r:
                 events = [json.loads(line[5:]) for line in r.iter_lines() if line.startswith("data:")]
+            assert time.time() - t < 8, "not waiting for the copy"
+            assert "295" in next(e for e in events if e["type"] == "final")["answer"]
+            assert not any(e.get("stage") == "mirror" for e in events if e["type"] == "status")
+            assert Path(engine.shared.db_path) == shared.db_path, "answered from the network library"
+            release.set()
+            for _ in range(200):
+                if Path(engine.shared.db_path) == (mgr.mirror.current() or Path("-")):
+                    break
+                time.sleep(0.05)
+            assert Path(engine.shared.db_path) == mgr.mirror.current(), "then switched to the copy"
         finally:
+            release.set()
             mgr.stop()
-        stages = [e.get("stage") for e in events if e["type"] == "status"]
-        assert "mirror" in stages and stages.index("mirror") < stages.index("planning"), stages
-        final = next(e for e in events if e["type"] == "final")
-        assert "295" in final["answer"]
-        assert Path(engine.shared.db_path) == mgr.mirror.current(), "answered from the local copy"
+
+
+def test_the_switch_never_holds_two_sets_of_vectors(shared, engine):
+    """Switching to a new copy lets go of the previous library's search vectors before loading the new ones, and
+    waits for a running question (which holds them) to finish: two sets never in memory together."""
+    import threading
+    import time
+
+    network = engine.shared
+    engine.retrieve("DDR5 tRFC")                 # a question loaded the network library's vectors
+    assert network._vectors is not None
+    mgr, swaps = _manager(engine)
+    mgr.configure(shared)
+    held = threading.Event()
+    done = threading.Event()
+
+    def question():
+        with engine.activity.running():         # a question still running on the network library
+            held.set()
+            done.wait(5)
+
+    q = threading.Thread(target=question)
+    q.start()
+    held.wait(5)
+    switch = threading.Thread(target=mgr.check)
+    switch.start()
+    time.sleep(0.5)
+    assert Path(engine.shared.db_path) == shared.db_path and network._vectors is not None, "waits for it"
+    done.set()
+    q.join(5)
+    switch.join(10)
+    assert Path(engine.shared.db_path) == swaps[0]
+    assert network._vectors is None, "the network library's vectors were let go"
+    assert engine.shared._vectors is not None, "the copy's are loaded, ready for the next question"
+    assert engine.retrieve("DDR5 tRFC").passages

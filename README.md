@@ -248,8 +248,13 @@ Belgeler (PDF'ler) ağda kalır; bir sayfa yalnızca görüntülenirken okunur.
   kütüphane Admin'den yeniden açıldığında ve **Şimdi denetle** ile de). Kütüphane ağda güncellendiyse (indeksleme,
   kaldırma, geri alma…) yeni kopya arka planda alınır ve uygulama ona geçer; o sırada önceki kopya cevap vermeye devam
   eder, süren bir soru başladığı kopyayla biter. Eski kopya silinir. Uygulama açıkken düzenli denetim yapılmaz.
-* **İlk açılış:** kopya hazır olana kadar ağdaki kütüphane kullanılır; sonraki açılışlarda kopya hemen kullanılır ve
-  arkadan denetlenir.
+* **İlk açılış:** kopya hazır olana kadar sorular ağdaki kütüphaneden cevaplanır (beklemez); ekranın üstündeki şerit
+  kopyanın ilerlemesini gösterir ("Ortak kütüphanenin yerel kopyası alınıyor: %40 (ilk açılış, bir kez)") ve kopya
+  devreye girince kaybolur. Sonraki açılışlarda kopya hemen kullanılır ve arkadan denetlenir.
+* **Kopyaya geçiş ve bellek:** yeni kopyaya geçilirken önceki kütüphanenin arama vektörleri önce bellekten bırakılır,
+  sonra yenisininki yüklenir; geçiş, süren bir soru varsa onun bitmesini bekler, geçiş sırasında sorulan soru birkaç
+  saniye bekler. Böylece bellekte hiçbir zaman iki takım vektör bulunmaz (belleği az bir bilgisayarda kopya bitmeden
+  soru sorulunca "MemoryError" veriyordu).
 * **Ağ yokken:** kopya çalışmaya devam eder (üst şeritte belirtilir); belge sayfaları ağa bağlanınca görüntülenir.
 * **Admin › Ortak kütüphane:** kopyanın durumu (güncel / alınıyor / alınamadı, boyut, son eşitleme), **Şimdi denetle**
   ve kopyayı kapatma. Kütüphaneye yazan kişi (salt-okunur olmayan açış) her zaman ağdaki dosyayı kullanır.
@@ -257,6 +262,10 @@ Belgeler (PDF'ler) ağda kalır; bir sayfa yalnızca görüntülenirken okunur.
   güncellendikten sonra, kullanıcı uygulamayı yeniden açana (veya **Şimdi denetle**'ye basana) kadar önceki sürüm
   aranır.
 * Ayar: `paths.mirror` = `auto` (ağ klasörleri; varsayılan) | `on` | `off`.
+* **Arama vektörlerinin belleği:** vektörler bellekte indekste saklandıkları gibi 16 bit tutulur (ör. 51 749 parça ×
+  4096 boyut: ~400 MB; önceden 32 bite çevrilip ~800 MB) ve yükleme anında ayrıca bütün satırların bir listesi
+  tutulmaz. Benzerlik 32 bitle, bloklar hâlinde hesaplanır; 16→32 bit çevirme kayıpsız olduğu için bulunan kaynaklar
+  ve sıraları aynıdır. Bedeli: soru başına birkaç yüz milisaniye hesaplama.
 * Elle düzenlenmiş bir kurum dosyası API anahtarı, sunucu erişim anahtarı veya kişisel klasör yolu **koyamaz**; bu
   alanlar okunurken atılır.
 
@@ -799,7 +808,7 @@ girerek açıyorsa model sunucuları için **"Sistem proxy ayarlarını kullan"*
 techrag/
   desktop.py       exe giriş noktası: tek örnek, süreç içi FastAPI, gizli açılan pywebview sohbet penceresi,
                    gizle/göster, güvenli çıkış; argümanla CLI
-  mirror.py        ağdaki salt-okunur kütüphanenin indeksinin yerel kopyası, dakikada bir güncellik denetimi
+  mirror.py        ağdaki salt-okunur kütüphanenin indeksinin yerel kopyası, açılışta güncellik denetimi
   org.py           kurum ayarları: ortak klasördeki kurum-ayarlari.yaml, exe'nin yanındaki işaretçi, yerel kopya
   icon.py          uygulamanın dosya simgesi: launcher'ın mikroçip çizimi, derlemede .ico olarak yazılır
   launcher.py      mikroçip simgesi (Win32 katmanlı pencere, DPI/çoklu monitör, sağ tık menüsü, aç/gizle için

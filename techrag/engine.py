@@ -15,6 +15,7 @@ import copy
 import logging
 import re
 import threading
+from contextlib import contextmanager
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -69,6 +70,41 @@ class JudgeCutOff(RuntimeError):
 _CLAUSE_REF = re.compile(r"(?:section|clause|§|sec\.)\s*(\d+(?:\.\d+)+)", re.I)
 
 
+class _Activity:
+    """Questions and searches running on an engine and its views (for_mode). A new copy of the library is switched
+    to only when none runs, and those that start meanwhile wait for the switch: two copies' search vectors are
+    never in memory together."""
+
+    def __init__(self):
+        self._n = 0
+        self._switching = False
+        self._cv = threading.Condition()
+
+    @contextmanager
+    def running(self) -> Iterator[None]:
+        with self._cv:
+            self._cv.wait_for(lambda: not self._switching)
+            self._n += 1
+        try:
+            yield
+        finally:
+            with self._cv:
+                self._n -= 1
+                self._cv.notify_all()
+
+    @contextmanager
+    def exclusive(self) -> Iterator[None]:
+        with self._cv:
+            self._cv.wait_for(lambda: self._n == 0 and not self._switching)
+            self._switching = True
+        try:
+            yield
+        finally:
+            with self._cv:
+                self._switching = False
+                self._cv.notify_all()
+
+
 class RAGEngine:
     def __init__(self, cfg: Config, *, store: Optional[Store] = None, embedder: Optional[Embedder] = None,
                  reranker=_UNSET, llm: Optional[LLMClient] = None, vision: Optional[LLMClient] = _UNSET,
@@ -88,6 +124,7 @@ class RAGEngine:
         self._embedder = embedder
         self._reranker = reranker
         self._lock = threading.Lock()
+        self.activity = _Activity()   # shared with the views of for_mode (a shallow copy)
         self._set_view()
         self.planner = QueryPlanner(self.domains, self.llm, cfg.retrieval.query_rewrite, cfg.answer.history_turns)
 
@@ -109,12 +146,21 @@ class RAGEngine:
 
     def replace_shared(self, store: Store) -> None:
         """Answer from another copy of the shared library's index from now on (the local copy of a network library
-        was taken or renewed). Its vectors are loaded first, so the switch costs a question nothing; a question
-        already running finishes on the copy it started with."""
-        store.vectors()
-        with self._lock:
-            self.shared = store
-            self._set_view()
+        was taken or renewed). Two copies' search vectors are never in memory together (on a computer with little
+        free memory that failed with MemoryError): the switch waits until no question or search is running, lets
+        go of the previous copy's vectors, switches, and loads the new copy's - a question asked meanwhile waits
+        those few seconds instead of loading another set."""
+        with self.activity.exclusive():
+            with self._lock:
+                old = self.shared
+                self.shared = store
+                self._set_view()
+            if old is not store:
+                old.release_vectors()
+            try:
+                store.vectors()
+            except MemoryError as exc:   # the next question loads them again, and says so if it cannot
+                log.warning("the search vectors of the new library copy could not be loaded now: %s", exc)
 
     def ensure_personal(self) -> tuple[Store, int]:
         """The personal library, created on first use: (its store, the id of the personal folder as its document
@@ -251,6 +297,12 @@ class RAGEngine:
     def retrieve(self, question: str, history: Optional[Sequence[dict]] = None,
                  domains: Optional[Sequence[str]] = None, doc_ids: Optional[Sequence[int]] = None,
                  top_k: Optional[int] = None, buckets: Optional[Sequence[str]] = None) -> RetrievalResult:
+        with self.activity.running():
+            return self._retrieve(question, history, domains, doc_ids, top_k, buckets)
+
+    def _retrieve(self, question: str, history: Optional[Sequence[dict]] = None,
+                  domains: Optional[Sequence[str]] = None, doc_ids: Optional[Sequence[int]] = None,
+                  top_k: Optional[int] = None, buckets: Optional[Sequence[str]] = None) -> RetrievalResult:
         t = time.time()
         log.info("question: planning")
         with askctx.stage("plan"):
@@ -440,6 +492,13 @@ class RAGEngine:
                    clarification: Optional[dict] = None) -> Iterator[dict]:
         """``clarification``: the pending clarifying question the user's message may answer (sent back by the
         UI). A short reply is merged into that question; a new question drops it."""
+        with self.activity.running():
+            yield from self._ask_stream(question, history, domains, doc_ids, top_k, buckets, clarification)
+
+    def _ask_stream(self, question: str, history: Optional[Sequence[dict]] = None,
+                    domains: Optional[Sequence[str]] = None, doc_ids: Optional[Sequence[int]] = None,
+                    top_k: Optional[int] = None, buckets: Optional[Sequence[str]] = None,
+                    clarification: Optional[dict] = None) -> Iterator[dict]:
         t0 = time.time()
         history = list(history or [])
         reply = clarify.merge_reply(question, clarification)

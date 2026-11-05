@@ -19,6 +19,8 @@ import time
 from dataclasses import asdict, dataclass, field
 from typing import Optional, Sequence
 
+import numpy as np
+
 from techrag.config import Config
 from techrag.embeddings import Embedder
 from techrag.ingest.chunker import estimate_tokens
@@ -352,8 +354,8 @@ class Retriever:
         if index.size:
             qvecs = self.embedder.embed_queries(plan.dense_queries())
             mask = index.mask(None, scope.doc_ids)
-            for row in qvecs:
-                lists.append(index.search(row, rc.dense_top_k, mask))
+            if len(qvecs):
+                lists += index.search_many(np.asarray(qvecs), rc.dense_top_k, mask)
         timings["dense"] = round(timings.get("dense", 0) + time.time() - t, 3)
         return rrf_fuse(lists, rc.rrf_k)
 

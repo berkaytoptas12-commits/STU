@@ -215,7 +215,10 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         if mirrors.mirror is not None and mirrors.mirror.current() is None:
             return   # the first local copy is being taken: its vectors are loaded from it, not over the network
         try:
-            e.store.vectors()
+            with e.activity.running():   # a copy switch never overlaps it (one set of vectors at a time)
+                e.store.vectors()
+        except MemoryError as exc:   # the first question tries again and says so if it cannot
+            log.warning("search vectors not loaded at start: %s", exc)
         except Exception as exc:
             state["error"] = str(exc)
 
@@ -640,8 +643,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             stopped = False
             with askctx.active(ctx):
                 try:
-                    wait_for_first_copy(e, ctx, q.put)
-                    answering = e.for_mode(req.mode)   # after the wait: it answers from the copy then in use
+                    answering = e.for_mode(req.mode)
                     for ev in answering.ask_stream(req.question, history, req.domains, req.doc_ids, req.top_k,
                                                    req.buckets, req.clarification):
                         if ev.get("type") == "final":
@@ -701,31 +703,6 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             return {"ok": False, "reason": "not running"}
         ctx.stop()
         return {"ok": True}
-
-    def wait_for_first_copy(e: RAGEngine, ctx: askctx.AskContext, emit) -> None:
-        """A read-only network library is searched from its local copy (techrag/mirror.py). Before the first copy is
-        in use, the network index would be read page by page - minutes for a new question, which looked like a
-        question stuck at "searching". The question waits for the copy instead (one sequential read, much shorter)
-        and says how far it is. When the copy fails, or after 15 minutes, it goes on with the network index."""
-        m = mirrors.mirror
-        if m is None or not mirrors.running():
-            return
-        deadline = time.time() + 900
-        last = None
-
-        def on_copy() -> bool:
-            cur = m.current()
-            return cur is not None and Path(e.shared.db_path) == cur
-
-        while not on_copy() and m.status.get("state") in ("network", "copying", "ready") and time.time() < deadline:
-            if m is not mirrors.mirror:
-                return
-            ctx.check()
-            p = round(float(m.status.get("progress") or 0), 2)
-            if p != last:
-                emit({"type": "status", "stage": "mirror", "progress": p})
-                last = p
-            time.sleep(0.25)
 
     # ------------------------------------------------------------- ingestion
     def start_job(kind: str, target: Optional[Path] = None, rebuild: bool = False, root_id: Optional[int] = None,

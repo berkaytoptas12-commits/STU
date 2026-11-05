@@ -57,14 +57,18 @@ class MultiVectorIndex:
         return [ix.mask(domains, personal if off else shared) for ix, off in self.parts]
 
     def search(self, query: np.ndarray, k: int, mask: Optional[list] = None) -> list[tuple[int, float]]:
-        hits: list[tuple[int, float]] = []
+        return self.search_many(np.atleast_2d(query), k, mask)[0]
+
+    def search_many(self, queries: np.ndarray, k: int, mask: Optional[list] = None) -> list[list[tuple[int, float]]]:
+        queries = np.atleast_2d(queries)
+        hits: list[list[tuple[int, float]]] = [[] for _ in range(queries.shape[0])]
         for n, (ix, off) in enumerate(self.parts):
-            if ix.matrix.shape[1] != query.shape[0]:
+            if ix.matrix.shape[1] != queries.shape[1]:
                 continue  # indexed with another embedding model: only its text search is used
             m = mask[n] if mask is not None else None
-            hits += [(cid + off, s) for cid, s in ix.search(query, k, m)]
-        hits.sort(key=lambda h: -h[1])
-        return hits[:k]
+            for q, found in enumerate(ix.search_many(queries, k, m)):
+                hits[q] += [(cid + off, s) for cid, s in found]
+        return [sorted(h, key=lambda x: -x[1])[:k] for h in hits]
 
 
 class LibraryView:
