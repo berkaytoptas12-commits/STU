@@ -65,3 +65,27 @@ def test_unknown_environment_variables_do_not_break_start_up(monkeypatch, tmp_pa
     monkeypatch.setenv("TECHRAG_PATHS__LIBRARY_DIR", str(tmp_path / "lib"))
     cfg = load_config()
     assert cfg.paths.library_dir == str(tmp_path / "lib")
+
+
+def test_top_k_settings_are_checked_and_used(tmp_path, monkeypatch, cfg, engine):
+    """Admin › Ayarlar › Gelişmiş: top k (passages given to the model) and the candidate counts of the search."""
+    import pytest
+
+    monkeypatch.setenv("TECHRAG_SETTINGS", str(tmp_path / "s.json"))
+    c = S.update_settings(cfg, {"retrieval": {"final_top_k": 3, "bm25_top_k": 20, "dense_top_k": 25},
+                                "reranker": {"candidates": 10}})
+    assert (c.retrieval.final_top_k, c.retrieval.bm25_top_k, c.retrieval.dense_top_k, c.reranker.candidates) == \
+        (3, 20, 25, 10)
+    stored = json.loads((tmp_path / "s.json").read_text(encoding="utf-8"))
+    assert stored["retrieval"]["final_top_k"] == 3 and stored["reranker"]["candidates"] == 10
+    for bad in ({"retrieval": {"final_top_k": 0}}, {"retrieval": {"final_top_k": 31}},
+                {"retrieval": {"bm25_top_k": 4}}, {"reranker": {"candidates": 1000}}):
+        with pytest.raises(ValueError):
+            S.update_settings(c, bad)
+    with pytest.raises(ValueError, match="must not be smaller"):
+        S.update_settings(c, {"retrieval": {"final_top_k": 12}})      # more passages than reranker candidates
+    # the engine gives the model at most top k passages (passages a table/section reference adds come on top)
+    for k in (1, 3):
+        cfg.retrieval.final_top_k = k
+        res = engine.retrieve("DDR5 refresh tRFC")
+        assert 0 < len([p for p in res.passages if not p.referenced_as]) <= k

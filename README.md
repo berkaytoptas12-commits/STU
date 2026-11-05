@@ -168,7 +168,12 @@ anahtarlar ilk kayıtta ortak anahtara taşınır (sohbet modelininki esas alın
 * **Bildirim:** pencere küçültülmüş, simgenin arkasına gizlenmiş veya başka pencerelerin arkasındayken cevap
   hazır olunca Windows bildirimi (varsayılan açık; Windows'un odak yardımı / sessiz saatleri geçerlidir).
 * **Gelişmiş:** model bağlam uzunluğu (token; sunucunun bildirdiği değer yanında gösterilir, küçük olan
-  kullanılır), denetçinin bir istekte göreceği en fazla ifade, yanlış atıf düzeltmesi (açık/kapalı), "bulunamadı"
+  kullanılır), **bağımsız denetçi açık/kapalı** (kapalıyken ifadeler yalnızca sayı/birim ve atıf kontrolünden geçer,
+  anlamsal olarak denetlenmez; ayarın altında bu uyarı, cevabın doğrulama kutusunda "bağımsız denetçi kapalı" yazar),
+  denetçinin bir istekte göreceği en fazla ifade, **top k** ayarları (modele verilen en fazla pasaj, varsayılan 8,
+  1–30; rerank'e giden aday sayısı, varsayılan 40; anahtar kelime ve vektör aramasının aday sayıları, varsayılan 50;
+  pasajlar bağlam bütçesine — bağlam uzunluğunun %60'ı — sığdığı kadar verilir, rerank aday sayısı top k'den küçük
+  olamaz), yanlış atıf düzeltmesi (açık/kapalı), "bulunamadı"
   demeden önce ilgili gereksinimi bir kez daha aratma (açık/kapalı), en fazla araç turu (0–10, varsayılan 4;
   her tur ayrı bir model çağrısıdır), izlenecek
   tablo/bölüm başvurusu sayısı (0 = kapalı), VLM tablo sayfası eşiği ve belge başına VLM sayfa sınırı. Değerler

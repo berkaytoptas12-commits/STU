@@ -127,6 +127,11 @@ const I18N = {
     advJudgeBatch: "Denetleyici: bir istekte en fazla ifade", advRepair: "Yanlış atıfı düzelt (değer, verilen başka bir kaynakta geçiyorsa)",
     advSearchMore: "\"Bulunamadı\" demeden önce modele ilgili gereksinimi bir kez daha arat",
     advRefs: "İzlenecek tablo / bölüm başvurusu (0 = kapalı)", advPageScore: "VLM tablo sayfası eşiği", advMaxPages: "Belge başına en fazla VLM sayfası",
+    advTopK: "Modele verilen pasaj sayısı (top k)", advRerankCand: "Rerank'e giden aday sayısı",
+    advBm25K: "Anahtar kelime araması aday sayısı (BM25 top k)", advDenseK: "Vektör araması aday sayısı (dense top k)",
+    advTopKHint: "Top k: her soruda modele verilen en fazla pasaj (varsayılan 8, 1–30). Pasajlar bağlam bütçesine (bağlam uzunluğunun %60'ı) sığdığı kadar verilir; bütçe dolunca kalanlar eklenmez. Aday sayıları (varsayılan BM25 50, vektör 50, rerank 40) aramanın ne kadar geniş bakacağını belirler: büyütmek aramayı ve rerank'i yavaşlatır. Rerank aday sayısı top k'den küçük olamaz.",
+    topKCandErr: "Rerank'e giden aday sayısı ({0}), modele verilen pasaj sayısından (top k = {1}) küçük olamaz.",
+    judgeOffHint: "Denetçi kapalı: ifadeler yalnızca sayı/birim ve atıf kontrolünden geçer, anlamsal olarak denetlenmez. Cevaplar daha hızlı gelir ama kaynakla desteklenmeyen bir ifade yakalanmayabilir; cevabın doğrulama kutusunda bu belirtilir.",
     advHint: "Bağlam uzunluğu sunucunun bildirdiğinden büyük girilirse sunucunun değeri kullanılır. VLM eşiği veya sayfa sınırı değişirse belgeler bir sonraki taramada yeniden işlenir (daha önce okunan sayfalar önbellekten gelir).",
     fbUp: "Doğru / faydalı", fbDown: "Yanlış veya eksik — düzeltme ekle", fbSaved: "geri bildirim kaydedildi",
     fbTitle: "Cevap hakkında geri bildirim",
@@ -423,6 +428,11 @@ const I18N = {
     advJudgeBatch: "Checker: statements per request (max)", advRepair: "Repair wrong citations (value found in another given source)",
     advSearchMore: "Before a \"not found\" answer, let the model search once more for the governing requirement",
     advRefs: "Table / section references to follow (0 = off)", advPageScore: "VLM table page threshold", advMaxPages: "Max VLM pages per document",
+    advTopK: "Passages given to the model (top k)", advRerankCand: "Candidates sent to the reranker",
+    advBm25K: "Keyword search candidates (BM25 top k)", advDenseK: "Vector search candidates (dense top k)",
+    advTopKHint: "Top k: the most passages given to the model per question (default 8, 1–30). Passages are given as far as they fit the context budget (60% of the context length); the rest are left out. The candidate counts (default BM25 50, vector 50, reranker 40) set how widely the search looks: larger is slower. The reranker candidates cannot be fewer than top k.",
+    topKCandErr: "The reranker candidates ({0}) cannot be fewer than the passages given to the model (top k = {1}).",
+    judgeOffHint: "Judge off: statements pass only the number/unit and citation checks and are not checked for meaning. Answers come faster, but a statement the sources do not support may go unnoticed; the answer's verification box says so.",
     advHint: "A context length larger than the server reports is capped at the server's value. Changing the VLM threshold or page limit re-processes documents on the next scan (pages read before come from the cache).",
     fbUp: "Correct / helpful", fbDown: "Wrong or incomplete — add a correction", fbSaved: "feedback saved",
     fbTitle: "Feedback on the answer",
@@ -2521,12 +2531,17 @@ async function loadAdminSettings() {
   $("#set-fast-thinking-control").value = (SETTINGS.llm_fast || {}).thinking_control || "";
   $("#set-tools").value = SETTINGS.llm.tools;
   $("#set-judge").checked = SETTINGS.answer.judge;
+  syncJudge();
   $("#set-regenerate").checked = SETTINGS.answer.regenerate;
   $("#set-failed").value = SETTINGS.answer.failed_claims;
   $("#set-vision-enabled").checked = SETTINGS.vision.enabled;
   $("#set-tool-rounds").value = SETTINGS.llm.max_tool_rounds ?? 4;
   $("#set-context").value = SETTINGS.llm.context_tokens;
   $("#set-judge-batch").value = SETTINGS.answer.judge_batch;
+  $("#set-top-k").value = SETTINGS.retrieval.final_top_k;
+  $("#set-rerank-cand").value = SETTINGS.reranker.candidates;
+  $("#set-bm25-k").value = SETTINGS.retrieval.bm25_top_k;
+  $("#set-dense-k").value = SETTINGS.retrieval.dense_top_k;
   $("#set-repair-cites").checked = SETTINGS.answer.repair_citations !== false;
   $("#set-search-more").checked = SETTINGS.answer.search_before_not_found !== false;
   $("#set-follow-refs").value = SETTINGS.retrieval.follow_references ?? 3;
@@ -2609,6 +2624,12 @@ async function useOrg(path) {
     if (path) await checkOrgOnStart();
   } catch (e) { st.textContent = /no organization settings file/.test(e.message) ? t("orgAskBad") : `${t("errorPrefix")}: ${e.message}`; }
 }
+// The judge switch: what turning it off means is said under it; its batch size only matters while it is on.
+function syncJudge() {
+  const on = $("#set-judge").checked;
+  $("#judge-off-hint").hidden = on;
+  $("#set-judge-batch").disabled = !on;
+}
 async function saveAdminSettings() {
   const patch = { answer: { judge: $("#set-judge").checked, regenerate: $("#set-regenerate").checked, failed_claims: $("#set-failed").value } };
   for (const card of $$("#adm-svc-grid .svc")) patch[card.dataset.svc] = cardPatch(card);
@@ -2617,12 +2638,20 @@ async function saveAdminSettings() {
   patch.vision = Object.assign(patch.vision || {}, { enabled: $("#set-vision-enabled").checked });
   const num = (id, int) => { const v = int ? parseInt($(id).value, 10) : parseFloat($(id).value); return Number.isFinite(v) ? v : undefined; };
   const adv = { llm: { context_tokens: num("#set-context", true), max_tool_rounds: num("#set-tool-rounds", true) }, answer: { judge_batch: num("#set-judge-batch", true),
-    repair_citations: $("#set-repair-cites").checked, search_before_not_found: $("#set-search-more").checked }, retrieval: { follow_references: num("#set-follow-refs", true) },
+    repair_citations: $("#set-repair-cites").checked, search_before_not_found: $("#set-search-more").checked },
+    retrieval: { follow_references: num("#set-follow-refs", true), final_top_k: num("#set-top-k", true),
+      bm25_top_k: num("#set-bm25-k", true), dense_top_k: num("#set-dense-k", true) },
+    reranker: { candidates: num("#set-rerank-cand", true) },
     vision: { min_page_score: num("#set-page-score"), max_pages_per_doc: num("#set-max-pages", true) } };
   for (const [sec, vals] of Object.entries(adv)) {
     for (const [k, v] of Object.entries(vals)) if (v !== undefined) (patch[sec] = patch[sec] || {})[k] = v;
   }
   patch.tls = tlsPatch();
+  const k = (patch.retrieval || {}).final_top_k, cand = (patch.reranker || {}).candidates;
+  if (k !== undefined && cand !== undefined && cand < k) {
+    $("#adm-settings-status").textContent = `${t("errorPrefix")}: ${t("topKCandErr", cand, k)}`;
+    return;
+  }
   try {
     const r = await postJSON("/api/settings", patch, "PUT");
     $("#adm-settings-status").textContent = r.error ? `${t("errorPrefix")}: ${r.error}` : t("savedSettings");
@@ -3058,6 +3087,7 @@ function bind() {
     postJSON("/api/settings", { ui: { language: LANG } }, "PUT").catch(() => {});
   }));
   $("#btn-settings").addEventListener("click", () => openSettings().catch((e) => alert(e.message)));
+  $("#set-judge").addEventListener("change", syncJudge);
   $$("#mode-pick button").forEach((b) => b.addEventListener("click", () => {
     safeSet("techrag.mode", b.dataset.mode);
     renderModePick();

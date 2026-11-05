@@ -274,7 +274,6 @@
           <select id="set-fast-thinking-control"><option value="" data-i18n="sameAsDeep"></option><option value="chat_template">chat_template (Qwen)</option><option value="reasoning_effort">reasoning_effort</option><option value="none">none</option></select></label>
         <label><span data-i18n="tools"></span>
           <select id="set-tools"><option value="auto">auto</option><option value="on">on</option><option value="off">off</option></select></label>
-        <label><input type="checkbox" id="set-judge"> <span data-i18n="judge"></span></label>
         <label><input type="checkbox" id="set-regenerate"> <span data-i18n="regenerate"></span></label>
         <label><span data-i18n="failedClaims"></span>
           <select id="set-failed"><option value="strip" data-i18n="strip"></option><option value="flag" data-i18n="flag"></option></select></label>
@@ -285,8 +284,19 @@
         <label><span data-i18n="advContext"></span>
           <input type="number" id="set-context" min="2048" max="1048576" step="1024">
           <span class="small muted" id="ctx-info"></span></label>
+        <label><input type="checkbox" id="set-judge"> <span data-i18n="judge"></span></label>
         <label><span data-i18n="advJudgeBatch"></span>
           <input type="number" id="set-judge-batch" min="1" max="32" step="1"></label>
+        <p class="hint wide warn-text" id="judge-off-hint" data-i18n="judgeOffHint" hidden></p>
+        <label><span data-i18n="advTopK"></span>
+          <input type="number" id="set-top-k" min="1" max="30" step="1"></label>
+        <label><span data-i18n="advRerankCand"></span>
+          <input type="number" id="set-rerank-cand" min="5" max="300" step="5"></label>
+        <label><span data-i18n="advBm25K"></span>
+          <input type="number" id="set-bm25-k" min="5" max="500" step="5"></label>
+        <label><span data-i18n="advDenseK"></span>
+          <input type="number" id="set-dense-k" min="5" max="500" step="5"></label>
+        <p class="hint wide" data-i18n="advTopKHint"></p>
         <label><input type="checkbox" id="set-repair-cites"> <span data-i18n="advRepair"></span></label>
         <label><input type="checkbox" id="set-search-more"> <span data-i18n="advSearchMore"></span></label>
         <label><span data-i18n="advToolRounds"></span>

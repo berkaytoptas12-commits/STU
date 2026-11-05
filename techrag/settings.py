@@ -315,7 +315,9 @@ def follow_org(user: dict, persist: bool = True) -> dict:
 RANGES = {("llm", "context_tokens"): (2048, 1_048_576), ("vision", "min_page_score"): (0.0, 50.0),
           ("vision", "max_pages_per_doc"): (0, 100_000), ("answer", "judge_batch"): (1, 32),
           ("retrieval", "follow_references"): (0, 10), ("retrieval", "reference_tokens"): (100, 8000),
-          ("llm", "max_tool_rounds"): (0, 10)}
+          ("llm", "max_tool_rounds"): (0, 10), ("retrieval", "final_top_k"): (1, 30),
+          ("retrieval", "bm25_top_k"): (5, 500), ("retrieval", "dense_top_k"): (5, 500),
+          ("reranker", "candidates"): (5, 300)}
 
 
 def check_ranges(cfg: Config, changed: dict) -> None:
@@ -327,3 +329,8 @@ def check_ranges(cfg: Config, changed: dict) -> None:
         v = getattr(getattr(cfg, section), key)
         if not lo <= v <= hi:
             raise ValueError(f"{section}.{key} must be between {lo} and {hi} (got {v})")
+    # the reranker orders only its candidates: fewer of them than passages given to the model would cap top k
+    if ("candidates" in (changed.get("reranker") or {}) or "final_top_k" in (changed.get("retrieval") or {})) \
+            and cfg.reranker.candidates < cfg.retrieval.final_top_k:
+        raise ValueError(f"reranker.candidates ({cfg.reranker.candidates}) must not be smaller than "
+                         f"retrieval.final_top_k ({cfg.retrieval.final_top_k})")

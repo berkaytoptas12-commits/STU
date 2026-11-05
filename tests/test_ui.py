@@ -1127,3 +1127,32 @@ def test_settings_have_a_thorough_and_a_fast_chat_model(ui, cfg):
     s = ui.evaluate("async () => (await (await fetch('/api/settings')).json())")
     assert s["llm_fast"]["thinking"] == "off" and s["llm_fast"]["thinking_control"] == "reasoning_effort"
     assert s["llm"]["thinking"] == "on" and s["llm"]["thinking_control"] == "chat_template"
+
+
+def test_advanced_settings_have_top_k_and_the_judge_switch(ui, cfg):
+    _admin(ui, "adm-settings")
+    ui.wait_for_function("() => document.querySelectorAll('#adm-svc-grid .svc').length === 3")
+    adv = ui.locator("#adv-box")
+    assert adv.locator("#set-judge").count() == 1 and adv.locator("#set-top-k").count() == 1, "both under Gelişmiş"
+    assert "Modele verilen pasaj sayısı (top k)" in adv.inner_text()
+    assert [ui.input_value(s) for s in ("#set-top-k", "#set-rerank-cand", "#set-bm25-k", "#set-dense-k")] == \
+        ["8", "40", "50", "50"]
+    assert ui.is_checked("#set-judge") and ui.is_hidden("#judge-off-hint")
+    ui.uncheck("#set-judge")
+    assert ui.is_visible("#judge-off-hint") and ui.is_disabled("#set-judge-batch")
+    assert "anlamsal olarak denetlenmez" in ui.inner_text("#judge-off-hint")
+    ui.fill("#set-top-k", "12")
+    ui.fill("#set-rerank-cand", "10")
+    ui.click("#btn-save-admin-settings")
+    ui.wait_for_function("() => document.querySelector('#adm-settings-status').textContent.includes('küçük olamaz')")
+    s = ui.evaluate("async () => (await (await fetch('/api/settings')).json())")
+    assert s["retrieval"]["final_top_k"] == 8 and s["answer"]["judge"] is True, "nothing saved"
+    ui.fill("#set-rerank-cand", "60")
+    ui.fill("#set-bm25-k", "80")
+    ui.click("#btn-save-admin-settings")
+    ui.wait_for_function("() => /Kaydedildi|kaydedildi/.test(document.querySelector('#adm-settings-status').textContent)")
+    s = ui.evaluate("async () => (await (await fetch('/api/settings')).json())")
+    assert s["answer"]["judge"] is False and s["retrieval"]["final_top_k"] == 12
+    assert s["reranker"]["candidates"] == 60 and s["retrieval"]["bm25_top_k"] == 80 and s["retrieval"]["dense_top_k"] == 50
+    ui.check("#set-judge")
+    assert ui.is_hidden("#judge-off-hint") and not ui.is_disabled("#set-judge-batch")
