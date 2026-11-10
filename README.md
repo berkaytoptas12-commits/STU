@@ -111,6 +111,9 @@ GitHub Actions her push'ta Windows derlemesi yapar (**Actions → Build Windows 
 `v*` etiketi atılırsa (ör. `git tag v1.0.0 && git push --tags`) dosyalar GitHub Release'e de eklenir.
 Derleme, dondurulmuş exe üzerinde `SayisalTasarimUzmani.exe selftest` çalıştırarak PDF ayrıştırma, indeksleme, arama,
 gömülü arayüz ve pywebview'in pakete girdiğini doğrular. Exe'yi kapalı ağa normal dosya olarak taşıyın.
+Derleme, kütüphanelerin `packaging/constraints.txt` dosyasında sabitlenmiş sürümleriyle yapılır (v0.14.2'nin
+derlendiği ve test edildiği sürümler): bir kütüphanenin yeni sürümü exe'yi depoda hiçbir şey değişmeden değiştiremez.
+Bir kütüphaneyi güncellemek için o satır bilerek değiştirilir; testler ve exe öz denetimi yeniden çalışır.
 
 **Gereksinim:** Microsoft Edge **WebView2 Runtime** (Windows 11'de hazır; Windows 10'da yoksa Microsoft'un
 "Evergreen Standalone Installer" çevrimdışı kurulumunu bir kez çalıştırın).
@@ -167,6 +170,11 @@ anahtarlar ilk kayıtta ortak anahtara taşınır (sohbet modelininki esas alın
 * Doğrulanamayan iddialar: **Kaldır** (varsayılan) veya **İşaretle**.
 * **Bildirim:** pencere küçültülmüş, simgenin arkasına gizlenmiş veya başka pencerelerin arkasındayken cevap
   hazır olunca Windows bildirimi (varsayılan açık; Windows'un odak yardımı / sessiz saatleri geçerlidir).
+* **Tema:** uygulama **koyu** temayla açılır; Ayarlar › Genel › **Tema: Koyu | Açık** ile değiştirilir. Seçim hemen
+  uygulanır ve kullanıcının kendi ayarıdır (kurum ayarlarına yazılmaz). Sayfa sunucudan seçili temayla gelir, pencere
+  açılırken diğer tema bir an bile görünmez.
+* **Kişisel dosyaların indeksleme durumu** (Ayarlar'ın altında): kişisel klasördeki ve bağlı klasörlerdeki her
+  belgenin durumu (bkz. 3.5).
 * **Bağımsız denetçi açık/kapalı** (Cevaplama bölümünde): kapalıyken ifadeler yalnızca sayı/birim ve atıf
   kontrolünden geçer, anlamsal olarak denetlenmez; ayarın altında bu uyarı, cevabın doğrulama kutusunda "bağımsız
   denetçi kapalı" yazar.
@@ -254,7 +262,9 @@ Belgeler (PDF'ler) ağda kalır; bir sayfa yalnızca görüntülenirken okunur.
 * **Kopyaya geçiş ve bellek:** yeni kopyaya geçilirken önceki kütüphanenin arama vektörleri önce bellekten bırakılır,
   sonra yenisininki yüklenir; geçiş, süren bir soru varsa onun bitmesini bekler, geçiş sırasında sorulan soru birkaç
   saniye bekler. Böylece bellekte hiçbir zaman iki takım vektör bulunmaz (belleği az bir bilgisayarda kopya bitmeden
-  soru sorulunca "MemoryError" veriyordu).
+  soru sorulunca "MemoryError" veriyordu). Bu, Hızlı modelle süren bir soru veya değerlendirme için de geçerlidir:
+  geçişten sonra o da yeni kopyadan cevaplar. Kütüphane güncellendiğinde (indeksleme, kaldırma) arama verisi yeniden
+  yüklenirken de eskisi önce bırakılır.
 * **Ağ yokken:** kopya çalışmaya devam eder (üst şeritte belirtilir); belge sayfaları ağa bağlanınca görüntülenir.
 * **Admin › Ortak kütüphane:** kopyanın durumu (güncel / alınıyor / alınamadı, boyut, son eşitleme), **Şimdi denetle**
   ve kopyayı kapatma. Kütüphaneye yazan kişi (salt-okunur olmayan açış) her zaman ağdaki dosyayı kullanır.
@@ -423,7 +433,22 @@ ortak kütüphane salt-okunur açılmış olsa da çalışır.
   `%USERPROFILE%\SayisalTasarimUzmani\Kisisel`; "değiştir" ile istediğiniz klasörü seçin) ve o klasörün içindeki
   ayrı bir kişisel indekste (`<kişisel klasör>\_indeks`) indekslenir. Doğrudan klasördeki dosyalar **Kişisel**
   bucket'ında, klasöre elle açtığınız alt klasörler kendi kişisel bucket'larında görünür; klasöre elle
-  kopyaladığınız veya sildiğiniz dosyalar **⟳** ile işlenir.
+  kopyaladığınız veya sildiğiniz dosyalar **Yeniden indeksle** ile işlenir.
+* **Yeniden indeksle** (Kaynaklar › Kişisel başlığının yanında): kişisel klasördeki ve bağlı klasörlerdeki **yeni ve
+  değişmiş** dosyaları indeksler, değişmeyenleri atlar (kaldırılan dosyalar "dosya yok" olarak işaretlenir). Bir
+  dosyanın güncellenmiş sürümünü aynı adla klasörüne koyduysanız (veya bağlı klasörde dosyayı güncellediyseniz) bu düğme
+  yeni hâlini indeksler. "Dosya seç…" ile aynı adlı ama farklı içerikli bir dosya seçilirse eskisinin üzerine
+  yazılmaz, `Ad (2).pdf` olarak eklenir ve iki sürüm de aranır.
+* **İndeksleme durumu** (Ayarlar › Kişisel dosyaların indeksleme durumu): her belge için
+  * durum: **İndekslendi**, **Kısmen** (indekslendi ama bazı adımlar, ör. bir tablo sayfası, tamamlanamadı),
+    **Beklemede** (yeni dosya ya da indekslendikten sonra değişmiş; "Yeniden indeksle" ile işlenir), **Hata**
+    (indekslenemedi; önceki indeksi varsa o kullanılır) veya **Dosya yok** (dosyası klasöründe yok; cevaplarda
+    kullanılmaz);
+  * indekslendiği tarih; içerik özeti (sayfa, parça, tablo ve doğrulanan parametre sayıları, standart etiketi);
+  * **Ayrıntı:** sorunlar (aşama, sayfa, önerilen işlem) ve belgenin bölündüğü **parçalar** (sıra, sayfa, bölüm, yaklaşık
+    token sayısı ve metnin başı; yalnızca aramada kullanılan, PDF metniyle eşleşmeyen tablo okumaları işaretli).
+  Panel yalnızca okur: klasörler listelenir (boyut ve tarih; hiçbir dosya açılmaz), sonuç indeksle karşılaştırılır.
+  İndeksleme sürerken liste kendiliğinden yenilenir.
 * Soru sorulunca ortak ve kişisel kütüphane **birlikte** aranır; bir kişisel bucket'ı işaretleyip aramayı yalnızca
   ona sınırlayabilirsiniz. Kaynak, PDF görüntüsü ve kanıt vurgusu kişisel belgelerde de aynı şekilde çalışır.
 * Kişisel indeks aynı embedding modelini kullanır. Başka bir klasöre geçmek başka bir kişisel kütüphaneye geçmektir
@@ -436,7 +461,7 @@ ortak kütüphane salt-okunur açılmış olsa da çalışır.
 * **Klasör ekle…:** bilgisayarınızdaki bir klasörü seçersiniz; klasör **tek bir kişisel bucket** olur (adı klasörün
   adı, 🔗 işaretli, üzerine gelince yolu görünür) ve içindeki bütün desteklenen belgeler (PDF, DOCX, MD, TXT, HTML;
   alt klasörler dahil) **yerinde** indekslenir: hiçbir şey kopyalanmaz, klasöre bir şey yazılmaz. Klasöre sonradan
-  eklenen veya değişen dosyalar **⟳** ile işlenir. Aynı adlı iki farklı klasör iki ayrı bucket'tır. Kişisel klasörün
+  eklenen veya değişen dosyalar **Yeniden indeksle** ile işlenir. Aynı adlı iki farklı klasör iki ayrı bucket'tır. Kişisel klasörün
   içindeki veya onu içeren bir klasör seçilemez (zaten taranıyor). Bucket satırındaki **✕** klasörü kişisel
   kaynaklardan çıkarır: belgeleri kişisel indeksten kaldırılır, klasöre ve dosyalara dokunulmaz. Böyle bir
   klasördeki tek bir belgenin **🗑** düğmesi onu yalnızca indeksten çıkarır; dosya yerinde kalır ve sonraki
@@ -717,6 +742,8 @@ doğrulama, hücre eşleştirme, konum, geçiş) sınar, gerçek bir modelin do�
 | Bir belge "kısmen işlendi" / "başarısız" | Admin › Ortak kütüphane › Kalite raporunda aşama, sayfa ve önerilen işlem yazar; "Başarısız işlemleri yeniden dene" mevcut indeksi silmeden yeniden dener. |
 | Soru yanlış standarda gidiyor / "yüklü değil" | `SayisalTasarimUzmani.exe docs` ile doküman etiketlerini kontrol edin; etiketsiz dokümanlar adı geçen standarda dahil edilmez. Dosya adına standart/sürüm yazın veya `domains.yaml` desenlerini genişletin |
 | `SSL: CERTIFICATE_VERIFY_FAILED` | Aşağıdaki "HTTPS sertifika hataları" bölümü |
+| Cevap yerine "yeterli boş bellek yok" | Kütüphanenin arama verisi belleğe sığmadı (ör. ~52 bin parça: ~400 MB). Açık programları kapatıp yeniden sorun; sürerse uygulamadan çıkıp yeniden açın. "Teknik ayrıntı"da asıl hata yazar. |
+| Cevap yerine "model sunucusuna bağlanılamadı" / "zamanında cevap vermedi" / "isteği reddetti" | Sırasıyla: ağ ve Ayarlar'daki sunucu adresi; sunucunun yoğunluğu; API anahtarı. Embedding ve reranker isteklerinde anlık bir bağlantı kopması (bağlantı reddedildi, yarıda kesildi) 1 ve 2 sn bekleyerek iki kez yeniden denenir; sertifika hataları ve zaman aşımları yeniden denenmez. |
 
 ### HTTPS sertifika hataları (`SSL: CERTIFICATE_VERIFY_FAILED`)
 

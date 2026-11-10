@@ -249,3 +249,27 @@ def test_the_switch_never_holds_two_sets_of_vectors(shared, engine):
     assert network._vectors is None, "the network library's vectors were let go"
     assert engine.shared._vectors is not None, "the copy's are loaded, ready for the next question"
     assert engine.retrieve("DDR5 tRFC").passages
+
+
+def test_a_fast_mode_view_follows_the_switch_to_the_copy(shared, engine, fake):
+    """An evaluation with the fast model holds a view of the engine for its whole run: when the local copy is taken
+    (or renewed) meanwhile, the view answers from the new copy too - the network library's vectors are not loaded
+    again beside the copy's, and a renewed copy's old file being cleaned up does not break the view."""
+    from techrag.llm import LLMClient
+
+    shared.llm_fast.model = "fast-test"
+    engine._fast_llm = LLMClient(shared.chat_config("fast"), transport=fake.transport())
+    network = engine.shared
+    view = engine.for_mode("fast")                # made before the copy exists
+    assert view is not engine and view.shared is network
+    mgr, swaps = _manager(engine)
+    mgr.configure(shared)
+    assert mgr.check()
+    assert Path(view.shared.db_path) == swaps[0] and view.store is engine.store, "the view sees the copy"
+    assert view.retrieve("DDR5 tRFC").passages
+    assert network._vectors is None, "the network library's vectors are not loaded again"
+    first = Path(engine.shared.db_path)
+    _bump(shared)                                 # the library is updated on the network
+    assert mgr.check()                            # renewed copy; the first copy's file is cleaned up
+    assert not first.exists() and Path(view.shared.db_path) == swaps[1]
+    assert view.retrieve("DDR5 tRFC").passages, "the view keeps answering from the renewed copy"

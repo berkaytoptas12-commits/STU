@@ -217,6 +217,30 @@ const I18N = {
     modeDeep: "Kapsamlı", modeFast: "Hızlı", modeTitle: "Bu soruyu cevaplayacak model: {0}", tModel: "Model", evalMode: "Cevaplayan model",
     enabled: "etkin", notOnServer: "(sunucuda yok)", savedSettings: "Ayarlar kaydedildi.", noModels: "Model listesi alınamadı",
     errorPrefix: "Hata", needToken: "Bu sunucu bir API anahtarı istiyor:",
+    themeSetting: "Tema", themeDark: "Koyu", themeLight: "Açık", themeHint: "Hemen uygulanır; bu bilgisayarda sizin için hatırlanır.",
+    pStatusTitle: "Kişisel dosyaların indeksleme durumu", pStatusRefresh: "Yenile",
+    pStatusHint: "Kişisel klasördeki ve bağlı klasörlerdeki her belge: indekslenip indekslenmediği, ne zaman indekslendiği ve hangi parçalara bölündüğü. Beklemedeki dosyalar Kaynaklar › Kişisel › “Yeniden indeksle” ile işlenir.",
+    pStatusNone: "Henüz kişisel dosya yok. Kaynaklar › Kişisel bölümünden dosya veya klasör ekleyin.",
+    pStatusSummary: "{0} belge: {1} indekslendi, {2} kısmen, {3} beklemede, {4} hata, {5} dosya yok.",
+    pStatusRunning: "İndeksleme sürüyor; bittiğinde liste kendiliğinden güncellenir.",
+    pStatusUnreachable: "Ulaşılamayan bağlı klasör(ler): {0}. Bu klasörlerdeki belgeler olduğu gibi duruyor.",
+    pColStatus: "Durum", pColDoc: "Belge", pColDate: "İndekslendiği tarih", pColContent: "İçerik",
+    pst_indexed: "İndekslendi", pst_partial: "Kısmen", pst_pending: "Beklemede", pst_failed: "Hata", pst_missing: "Dosya yok",
+    pr_new: "Yeni dosya, henüz indekslenmedi.", pr_changed: "Dosya indekslendikten sonra değişti; yeni hâli henüz indekslenmedi (önceki hâli aranıyor).",
+    pr_settings: "İndeksleme ayarları değişti; bir sonraki indekslemede yeniden işlenir.", pr_restored: "Dosya yeniden bulundu; bir sonraki indekslemede yeniden kullanılır.",
+    pr_failed_kept: "Son indeksleme başarısız oldu; önceki indeksi kullanılıyor ({0}).", pr_failed_new: "İndekslenemedi; cevaplarda kullanılmıyor.",
+    pr_partial: "İndekslendi, ama bazı adımlar tamamlanamadı (ayrıntıda).", pr_missing: "Dosya klasöründe yok; cevaplarda kullanılmıyor.",
+    pr_unreachable: "Klasörüne şu an ulaşılamıyor; belge olduğu gibi duruyor.",
+    pContent: "{0} sayfa · {1} parça", pTables: "{0} tablo ({1} doğrulandı)", pParams: "{0} parametre satırı ({1} doğrulandı)",
+    pDetail: "Ayrıntı", pDetailClose: "Kapat", pChunks: "Parçalar: {0} / {1}", pMore: "Daha fazla parça",
+    pChunkMeta: "#{0} · s. {1} · {2}", pChunkSearchOnly: "yalnızca arama (PDF metniyle eşleşmeyen tablo okuması)",
+    pChunkTable: "tablo", pNoChunks: "Bu belgenin indekste parçası yok.", pStandard: "Standart: {0}",
+    err_memory: "Bu bilgisayarda yeterli boş bellek yok: kütüphanenin arama verisi belleğe yüklenemedi. Açık programları kapatıp soruyu yeniden sorun; sorun sürerse uygulamadan çıkıp (simgeye sağ tık › Uygulamadan çık) yeniden açın.",
+    err_connect: "Model sunucusuna bağlanılamadı. Ağ bağlantısını ve Ayarlar'daki sunucu adresini kontrol edip yeniden deneyin.",
+    err_tls: "Model sunucusunun sertifikası doğrulanamadı. Admin › Ayarlar › Bağlantı güvenliği bölümüne bakın.",
+    err_timeout: "Model sunucusu zamanında cevap vermedi; sunucu yoğun olabilir. Biraz sonra yeniden deneyin.",
+    err_auth: "Model sunucusu isteği reddetti (yetki). Ayarlar'daki API anahtarını kontrol edin.",
+    errDetail: "Teknik ayrıntı",
     newChatStarted: "Yeni sohbet başladı.", calc: "hesap", parameter: "parametre", table: "tablo", pageKind: "sayfa", unverified: "doğrulanmamış çıkarım",
     tlsTitle: "Bağlantı güvenliği (HTTPS sertifikaları)",
     tlsSystem: "Windows sertifika deposuna güven (BT'nin dağıttığı şirket CA sertifikaları)",
@@ -241,7 +265,8 @@ const I18N = {
     admSharedHint: "Ortak belgeler bu kütüphaneden ve aşağıdaki belge klasörlerinden okunur. Kişisel dosyalar burada değil, her kullanıcının kendi klasöründedir.",
     rootsLibrary: "Kütüphanenin kendi klasörü", rootsNone: "Henüz belge klasörü eklenmedi.", rootsDocs: "{0} belge",
     rootsBuckets: "Bucket'lar", sharedGroup: "Ortak", personalGroup: "Kişisel", personalAdd: "Dosya seç…",
-    personalRescan: "Kişisel klasörü yeniden tara", personalDir: "Klasör", personalChange: "değiştir",
+    personalRescan: "Kişisel klasördeki ve bağlı klasörlerdeki yeni ve değişmiş dosyaları indeksle (değişmeyenler atlanır)",
+    personalReindex: "Yeniden indeksle", personalDir: "Klasör", personalChange: "değiştir",
     personalEmpty: "Henüz kişisel dosya yok. Seçtiğiniz dosyalar bu klasöre kopyalanır ve yalnızca sizin kişisel indeksinizde aranır.",
     personalIndexing: "Kişisel dosyalar indeksleniyor", personalDirPrompt: "Kişisel dosyaların kaydedileceği klasör:",
     personalSaved: "Kişisel klasör değişti.",
@@ -519,6 +544,30 @@ const I18N = {
     modeDeep: "Thorough", modeFast: "Fast", modeTitle: "Model answering this question: {0}", tModel: "Model", evalMode: "Answering model",
     enabled: "enabled", notOnServer: "(not on server)", savedSettings: "Settings saved.", noModels: "Could not load models",
     errorPrefix: "Error", needToken: "This server requires an API token:",
+    themeSetting: "Theme", themeDark: "Dark", themeLight: "Light", themeHint: "Applied at once; remembered for you on this computer.",
+    pStatusTitle: "Indexing status of personal files", pStatusRefresh: "Refresh",
+    pStatusHint: "Every document in the personal folder and the linked folders: whether it is indexed, when, and which pieces it was split into. Waiting files are processed with Sources › Personal › “Re-index”.",
+    pStatusNone: "No personal files yet. Add files or a folder under Sources › Personal.",
+    pStatusSummary: "{0} document(s): {1} indexed, {2} partly, {3} waiting, {4} failed, {5} file missing.",
+    pStatusRunning: "Indexing is running; the list updates when it ends.",
+    pStatusUnreachable: "Linked folder(s) not reachable: {0}. Their documents are left as they are.",
+    pColStatus: "Status", pColDoc: "Document", pColDate: "Indexed", pColContent: "Content",
+    pst_indexed: "Indexed", pst_partial: "Partly", pst_pending: "Waiting", pst_failed: "Failed", pst_missing: "File missing",
+    pr_new: "New file, not indexed yet.", pr_changed: "The file changed after it was indexed; its new version is not indexed yet (the previous one is searched).",
+    pr_settings: "Indexing settings changed; it is processed again at the next indexing.", pr_restored: "The file is back; it is used again at the next indexing.",
+    pr_failed_kept: "The last indexing failed; its previous index is used ({0}).", pr_failed_new: "Could not be indexed; not used in answers.",
+    pr_partial: "Indexed, but some steps did not complete (see details).", pr_missing: "The file is not in its folder; not used in answers.",
+    pr_unreachable: "Its folder cannot be reached now; the document is left as it is.",
+    pContent: "{0} page(s) · {1} piece(s)", pTables: "{0} table(s) ({1} verified)", pParams: "{0} parameter row(s) ({1} verified)",
+    pDetail: "Details", pDetailClose: "Close", pChunks: "Pieces: {0} of {1}", pMore: "More pieces",
+    pChunkMeta: "#{0} · p. {1} · {2}", pChunkSearchOnly: "search only (a table reading that did not match the PDF text)",
+    pChunkTable: "table", pNoChunks: "This document has no pieces in the index.", pStandard: "Standard: {0}",
+    err_memory: "This computer does not have enough free memory: the library's search data could not be loaded. Close other programs and ask again; if it persists, quit the app (right-click the icon › Quit) and start it again.",
+    err_connect: "The model server cannot be reached. Check the network and the server address in Settings, then try again.",
+    err_tls: "The model server's certificate could not be verified. See Admin › Settings › Connection security.",
+    err_timeout: "The model server did not answer in time; it may be busy. Try again a little later.",
+    err_auth: "The model server refused the request (authorization). Check the API key in Settings.",
+    errDetail: "Technical detail",
     newChatStarted: "New chat started.", calc: "calculation", parameter: "parameter", table: "table", pageKind: "page", unverified: "unverified extraction",
     tlsTitle: "Connection security (HTTPS certificates)",
     tlsSystem: "Trust the Windows certificate store (company CA certificates deployed by IT)",
@@ -543,7 +592,8 @@ const I18N = {
     admSharedHint: "Shared documents are read from this library and the document folders below. Personal files are not here: they stay in each user's own folder.",
     rootsLibrary: "The library's own folder", rootsNone: "No document folder added yet.", rootsDocs: "{0} documents",
     rootsBuckets: "Buckets", sharedGroup: "Shared", personalGroup: "Personal", personalAdd: "Choose files…",
-    personalRescan: "Rescan the personal folder", personalDir: "Folder", personalChange: "change",
+    personalRescan: "Index new and changed files in the personal folder and the linked folders (unchanged ones are skipped)",
+    personalReindex: "Re-index", personalDir: "Folder", personalChange: "change",
     personalEmpty: "No personal files yet. The files you choose are copied into this folder and searched only in your personal index.",
     personalIndexing: "Indexing personal files", personalDirPrompt: "Folder for your personal files:",
     personalSaved: "Personal folder changed.",
@@ -619,6 +669,31 @@ function t(key, ...args) {
   let s = (I18N[LANG] && I18N[LANG][key]) ?? I18N.en[key] ?? key;
   args.forEach((a, i) => { s = String(s).replace(`{${i}}`, a); });
   return s;
+}
+// Theme: dark unless the user chose light (Ayarlar). The page arrives with it already set (the server writes it into
+// the page), so nothing flashes; a change applies at once and is saved as the user's own setting.
+function applyTheme(theme) {
+  const th = theme === "light" ? "light" : "dark";
+  document.documentElement.dataset.theme = th;
+  $$(".theme").forEach((b) => b.classList.toggle("active", b.dataset.themeChoice === th));
+}
+async function chooseTheme(theme) {
+  const before = document.documentElement.dataset.theme;
+  applyTheme(theme);
+  try {
+    await postJSON("/api/settings", { ui: { theme } }, "PUT");
+    if (state.info) state.info.theme = theme;
+  } catch (e) {
+    applyTheme(before);
+    alert(`${t("errorPrefix")}: ${e.message}`);
+  }
+}
+// An error that ended a question: what it means and what to do, when its kind is known (memory, connection,
+// certificate, timeout, authorization); the technical message stays available under it.
+function errorHtml(message, code) {
+  const key = code ? `err_${code}` : "";
+  if (!key || !I18N.en[key]) return `${esc(t("errorPrefix"))}: ${esc(message)}`;
+  return `${esc(t(key))}<details class="err-detail small"><summary>${esc(t("errDetail"))}</summary>${esc(message)}</details>`;
 }
 function applyI18n() {
   document.documentElement.lang = LANG;
@@ -792,6 +867,7 @@ function renderMarkdown(md, cites = true) {
 async function loadInfo() {
   state.info = await getJSON("/api/info");
   if (!safeGet("techrag.lang")) LANG = state.info.language || LANG;
+  if (state.info.theme) applyTheme(state.info.theme);
   renderInfo();
   const ids = new Set((state.info.buckets || []).map((b) => b.id));
   for (const id of [...state.selectedBuckets]) if (!ids.has(id)) state.selectedBuckets.delete(id);
@@ -838,6 +914,7 @@ function renderInfo() {
   const pers = i.personal || {};
   $("#personal-dir").textContent = pers.dir || "";
   $("#personal-box").hidden = pers.can_add === false;
+  $("#btn-personal-rescan").hidden = pers.can_add === false;
   const banner = $("#banner");
   const missing = SERVICES.filter((s) => s !== "vision" && !i.models[s]);
   if (i.error) { banner.hidden = false; banner.textContent = `${t("errorPrefix")}: ${i.error}`; }
@@ -1685,7 +1762,8 @@ async function openConv(id) {
     } else {
       const n = document.createElement("div");
       n.className = turn.cancelled ? "notice stopped" : "verify warning";
-      n.textContent = turn.cancelled ? t("stoppedNote") : `${t("errorPrefix")}: ${turn.error || ""}`;
+      if (turn.cancelled) n.textContent = t("stoppedNote");
+      else n.innerHTML = errorHtml(turn.error || "", turn.errorCode);
       $(".body", el).append(n);
     }
   }
@@ -1849,7 +1927,7 @@ async function ask(question, reply) {
         record({ final: clarified });
         break;
       }
-      case "error": el._final = true; trace.status = "error"; status.textContent = ""; body.innerHTML = `<div class="verify warning">${t("errorPrefix")}: ${esc(ev.message)}</div>`; record({ error: ev.message }); break;
+      case "error": el._final = true; trace.status = "error"; status.textContent = ""; body.innerHTML = `<div class="verify warning">${errorHtml(ev.message, ev.code)}</div>`; record({ error: ev.message, errorCode: ev.code || "" }); break;
       default: break;
     }
   };
@@ -2510,9 +2588,11 @@ async function openSettings() {
   grid.innerHTML = "";
   grid.append(svcCard("llm"), svcCard("llm_fast"));
   $("#set-notify").checked = !SETTINGS.ui || SETTINGS.ui.notify !== false;
+  applyTheme(document.documentElement.dataset.theme);
   $("#settings-status").textContent = "";
   $$("#dlg-settings [data-i18n]").forEach((x) => { x.textContent = t(x.dataset.i18n); });
   $("#dlg-settings").showModal();
+  refreshPersonalStatus().catch(() => {});
 }
 function cardPatch(card) {
   const same = $(".same", card);
@@ -3048,9 +3128,102 @@ function bindSrcSplitter() {
   applySrcSplit();
 }
 
+// Ayarlar › personal files: what the personal index holds of every document (indexed / partly / waiting / failed /
+// file missing), when it was indexed, and - on demand - the pieces it was split into. Only reads.
+let pstatusTimer = null;
+async function refreshPersonalStatus() {
+  if (!$("#dlg-settings").open) return;
+  clearTimeout(pstatusTimer);
+  const list = $("#pstatus-list");
+  let r;
+  try { r = await getJSON("/api/personal/status"); }
+  catch (e) { list.innerHTML = `<p class="small bad">${esc(e.message)}</p>`; return; }
+  const docs = r.documents || [];
+  const c = r.counts || {};
+  const parts = [];
+  if (docs.length) parts.push(t("pStatusSummary", docs.length, c.indexed || 0, c.partial || 0, c.pending || 0, c.failed || 0, c.missing || 0));
+  if (r.running) parts.push(t("pStatusRunning"));
+  if ((r.unreachable || []).length) parts.push(t("pStatusUnreachable", r.unreachable.join(", ")));
+  $("#pstatus-summary").textContent = parts.join(" ");
+  if (!docs.length) list.innerHTML = `<p class="small muted pstatus-empty">${esc(t("pStatusNone"))}</p>`;
+  else {
+    const rows = docs.map((d, i) => {
+      const content = [];
+      if (d.n_chunks || d.n_pages) content.push(t("pContent", d.n_pages || 0, d.n_chunks || 0));
+      if (d.tables) content.push(t("pTables", d.tables, d.tables_grounded || 0));
+      if (d.parameters) content.push(t("pParams", d.parameters, d.parameters_verified || 0));
+      if ((d.entities || []).length) content.push(t("pStandard", d.entities.join(", ")));
+      return `<tr data-i="${i}"><td><span class="pst ${esc(d.status)}">${esc(t("pst_" + d.status))}</span></td>
+        <td class="pst-doc"><b>${esc(d.title)}</b><br><span class="muted">${esc(d.bucket || t("personalGroup"))} · ${esc(d.file)}</span></td>
+        <td>${d.ingested_at ? esc(fmtTime(d.ingested_at)) : "—"}</td>
+        <td>${esc(content.join(" · ") || "—")}</td>
+        <td><button type="button" class="ghost small pst-more" data-i="${i}">${esc(t("pDetail"))}</button></td></tr>`;
+    }).join("");
+    list.innerHTML = `<table class="pstatus-table"><thead><tr><th>${esc(t("pColStatus"))}</th><th>${esc(t("pColDoc"))}</th>
+      <th>${esc(t("pColDate"))}</th><th>${esc(t("pColContent"))}</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+    $$(".pst-more", list).forEach((b) => b.addEventListener("click", () => togglePersonalDetail(b, docs[Number(b.dataset.i)])));
+  }
+  if (r.running) pstatusTimer = setTimeout(() => refreshPersonalStatus().catch(() => {}), 3000);
+}
+function personalReason(d) {
+  const lines = [];
+  if (d.reason) lines.push(t("pr_" + d.reason, fmtTime((d.quality || {}).last_ok_at || d.ingested_at)));
+  if (d.unreachable) lines.push(t("pr_unreachable"));
+  return lines;
+}
+async function togglePersonalDetail(btn, d) {
+  const row = btn.closest("tr");
+  const open = row.nextElementSibling && row.nextElementSibling.classList.contains("pst-detail") ? row.nextElementSibling : null;
+  if (open) { open.remove(); btn.textContent = t("pDetail"); return; }
+  btn.textContent = t("pDetailClose");
+  const detail = document.createElement("tr");
+  detail.className = "pst-detail";
+  detail.innerHTML = `<td colspan="5"><div class="pst-body"></div></td>`;
+  row.after(detail);
+  const body = $(".pst-body", detail);
+  const issues = ((d.quality || {}).issues || []).map((it) => {
+    const { text, act } = qIssue(it);
+    return `<li>${esc(text)}${act ? `<br><span class="q-act small">${esc(t("qAction"))} ${esc(act)}</span>` : ""}</li>`;
+  });
+  const notes = personalReason(d).map((l) => `<li>${esc(l)}</li>`);
+  body.innerHTML = (notes.length || issues.length) ? `<ul class="pst-issues small">${notes.join("")}${issues.join("")}</ul>` : "";
+  if (!d.doc_id) return;
+  const box = document.createElement("div");
+  body.append(box);
+  await loadPersonalChunks(d, box, 0);
+}
+async function loadPersonalChunks(d, box, offset) {
+  let r;
+  try { r = await getJSON(`/api/personal/documents/${d.doc_id}/chunks?offset=${offset}&limit=40`); }
+  catch (e) { box.insertAdjacentHTML("beforeend", `<p class="small bad">${esc(e.message)}</p>`); return; }
+  $(".pst-more-chunks", box)?.remove();
+  if (!r.total && !r.chunks.length) { box.innerHTML = `<p class="small muted">${esc(t("pNoChunks"))}</p>`; return; }
+  let ul = $(".pst-chunks", box);
+  if (!ul) {
+    box.insertAdjacentHTML("beforeend", `<p class="small pst-count"></p><ul class="pst-chunks"></ul>`);
+    ul = $(".pst-chunks", box);
+  }
+  ul.insertAdjacentHTML("beforeend", r.chunks.map((ch) => {
+    const pages = ch.page_start === ch.page_end ? ch.page_start : `${ch.page_start}–${ch.page_end}`;
+    const kind = [ch.kind === "table" ? t("pChunkTable") : "", ch.evidence ? "" : t("pChunkSearchOnly"), `~${ch.tokens} token`].filter(Boolean).join(" · ");
+    return `<li><div class="meta">${esc(t("pChunkMeta", ch.n, pages, ch.section || "—"))}${kind ? ` · ${esc(kind)}` : ""}</div>
+      <div class="txt">${esc(ch.text)}${ch.cut ? " …" : ""}</div></li>`;
+  }).join(""));
+  const shown = $$("li", ul).length;
+  $(".pst-count", box).textContent = t("pChunks", shown, r.total);
+  if (shown < r.total) {
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "ghost small pst-more-chunks";
+    more.textContent = t("pMore");
+    more.addEventListener("click", () => loadPersonalChunks(d, box, shown));
+    box.append(more);
+  }
+}
 async function rescanPersonal() {
   try { const r = await postJSON("/api/personal/rescan", {}); await pollJob(r.job, t("personalIndexing")); }
   catch (e) { alert(`${t("errorPrefix")}: ${e.message}`); }
+  refreshPersonalStatus();
 }
 async function changePersonalDir() {
   const cur = ((state.info || {}).personal || {}).dir || "";
@@ -3138,6 +3311,8 @@ function bind() {
   $$(".src-toggle").forEach((b) => b.addEventListener("click", () => toggleSrcPane(b.dataset.pane)));
   $("#adm-doc-filter").addEventListener("input", renderAdminDocs);
   $("#btn-personal-rescan").addEventListener("click", rescanPersonal);
+  $$(".theme").forEach((b) => b.addEventListener("click", () => chooseTheme(b.dataset.themeChoice)));
+  $("#btn-pstatus-refresh").addEventListener("click", () => refreshPersonalStatus().catch(() => {}));
   $("#personal-change").addEventListener("click", (e) => { e.preventDefault(); changePersonalDir(); });
   bindSrcSplitter();
   $("#personal-file-input").addEventListener("change", (e) => {

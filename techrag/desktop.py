@@ -836,9 +836,12 @@ def _run_gui(key: str, log_path: Path) -> int:
     state = DesktopState(log_path.parent / "desktop.json")
     api = JsApi()
     width, height, min_w, min_h, x, y = _chat_geometry(state)
+    # the window's own background matches the page's theme: no white flash before a dark page is drawn
+    background = "#f5f6f8" if getattr(app.state.state["cfg"].ui, "theme", "dark") == "light" else "#12161c"
     chat = webview.create_window(APP_TITLE, f"http://127.0.0.1:{port}/?token={token}", js_api=api,
                                  width=width, height=height, x=x, y=y, min_size=(min_w, min_h), text_select=True,
-                                 hidden=use_launcher)  # created once, in the background: the icon shows it
+                                 hidden=use_launcher,  # created once, in the background: the icon shows it
+                                 background_color=background)
     api._window = chat
     desk = DesktopApp(chat, app.state.jobs, lambda: app.state.state["cfg"].ui.language, state,
                       hide_on_close=use_launcher)

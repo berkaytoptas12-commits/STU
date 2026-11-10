@@ -2,22 +2,50 @@
   --bg: #f5f6f8; --panel: #ffffff; --text: #1c2430; --muted: #687385; --border: #e1e5eb;
   --accent: #2f5bd3; --accent-soft: #e8eefc; --ok: #1d7a46; --ok-soft: #e4f4ea; --warn: #9a5b00;
   --warn-soft: #fdf1dc; --bad: #b42318; --bad-soft: #fdecea; --code: #f1f3f6; --user: #eef2f8;
+  --on-accent: #fff;
   --radius: 10px;
   --font: "Segoe UI", system-ui, -apple-system, Roboto, "Noto Sans", Arial, sans-serif;
   --mono: "Cascadia Mono", Consolas, ui-monospace, Menlo, "Liberation Mono", monospace;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #12161c; --panel: #1a1f27; --text: #e4e8ee; --muted: #96a0ae; --border: #2b323d;
-    --accent: #7ea2ff; --accent-soft: #233056; --ok: #6fd39a; --ok-soft: #173525; --warn: #f0b85a;
-    --warn-soft: #3a2d12; --bad: #ff8a80; --bad-soft: #3b1714; --code: #232a34; --user: #222a36;
-  }
+/* Dark is the default theme (the page is served with data-theme="dark" unless the user chose light in Ayarlar). */
+:root { color-scheme: light; }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #12161c; --panel: #1a1f27; --text: #e4e8ee; --muted: #96a0ae; --border: #2b323d;
+  --accent: #7ea2ff; --accent-soft: #233056; --ok: #6fd39a; --ok-soft: #173525; --warn: #f0b85a;
+  --warn-soft: #3a2d12; --bad: #ff8a80; --bad-soft: #3b1714; --code: #232a34; --user: #222a36;
+  --on-accent: #0f1520;
 }
+.theme-row { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+/* Ayarlar › personal files: indexing status of every personal document */
+.pstatus-head { justify-content: space-between; }
+.pstatus { max-height: 42vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.pstatus-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.pstatus-table th { position: sticky; top: 0; background: var(--panel); text-align: left; font-weight: 600;
+  color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.pstatus-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.pstatus-table tr.pst-detail td { background: var(--code); }
+.pstatus-table .pst-doc { overflow-wrap: anywhere; }
+.pst { display: inline-block; white-space: nowrap; font-size: 11.5px; padding: 1px 8px; border-radius: 10px; font-weight: 600; }
+.pst.indexed { background: var(--ok-soft); color: var(--ok); }
+.pst.partial, .pst.pending { background: var(--warn-soft); color: var(--warn); }
+.pst.failed { background: var(--bad-soft); color: var(--bad); }
+.pst.missing { background: var(--code); color: var(--muted); }
+.pst-chunks { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pst-chunks li { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+.pst-chunks .meta { color: var(--muted); font-size: 11.5px; }
+.pst-chunks .txt { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 3px; font-family: var(--mono); font-size: 11.5px; }
+.pst-issues { margin: 4px 0 0 16px; padding: 0; }
+.seg { display: inline-flex; }
+.seg button { border-radius: 0; padding: 4px 12px; }
+.seg button:first-child { border-radius: 8px 0 0 8px; }
+.seg button:last-child { border-radius: 0 8px 8px 0; border-left: 0; }
+.seg button.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--text); font: 14.5px/1.55 var(--font); display: flex; flex-direction: column; }
-button { font: inherit; cursor: pointer; border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: 8px; padding: 5px 12px; }
+button { font: inherit; cursor: pointer; border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); border-radius: 8px; padding: 5px 12px; }
 button.ghost { background: transparent; color: var(--text); border-color: var(--border); }
 button.ghost:hover { border-color: var(--accent); }
 button:disabled { opacity: .5; cursor: default; }
@@ -84,7 +112,10 @@ body.narrow .viewer { position: fixed; z-index: 21; right: 8px; top: 52px; botto
 .hint { font-size: 12.5px; color: var(--muted); margin: 6px 0 10px; }
 
 .sources { display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
-.src-group { margin: 4px 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.src-group { margin: 4px 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+  display: flex; align-items: center; gap: 8px; }
+.src-reindex { margin-left: auto; text-transform: none; letter-spacing: 0; font-size: 11.5px; font-weight: 500;
+  padding: 1px 8px; white-space: nowrap; }
 .src-toggle { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; text-transform: inherit;
   letter-spacing: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
 .src-toggle::before { content: "▾"; font-size: 11px; width: 10px; display: inline-block; }
@@ -105,7 +136,6 @@ body.narrow .viewer { position: fixed; z-index: 21; right: 8px; top: 52px; botto
 .personal-box { display: flex; flex-direction: column; gap: 4px; }
 .personal-box .row { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
 .personal-box button { font-size: 12.5px; padding: 4px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#btn-personal-rescan { font-size: 15px; padding: 2px 9px; }
 .personal-dir { overflow-wrap: anywhere; }
 .personal-dir code { font-size: 11.5px; }
 .doc-filter { width: 100%; font-size: 12.5px; padding: 4px 8px; }

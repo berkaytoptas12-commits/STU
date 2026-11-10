@@ -1213,6 +1213,21 @@ class Store:
             out = sorted((t for t in out if score(t) > 0), key=score, reverse=True)
         return out[:limit]
 
+    def doc_counts(self) -> dict[int, dict]:
+        """Per document: its tables read by the vision model (and how many of them match the PDF text cell by cell)
+        and its parameter rows (and how many are verified) - for the personal files' status panel."""
+        out: dict[int, dict] = {}
+        t_status = "status" in self.columns.get("tables", ())
+        p_status = "status" in self.columns.get("parameters", ())
+        with self.connect() as con:
+            grounded = "SUM(CASE WHEN status='grounded' THEN 1 ELSE 0 END)" if t_status else "0"
+            for r in con.execute(f"SELECT doc_id, COUNT(*) AS n, {grounded} AS g FROM tables GROUP BY doc_id"):
+                out.setdefault(r["doc_id"], {}).update(tables=r["n"], tables_grounded=r["g"] or 0)
+            ok = "SUM(CASE WHEN verified=1 AND status='grounded' THEN 1 ELSE 0 END)" if p_status else "0"
+            for r in con.execute(f"SELECT doc_id, COUNT(*) AS n, {ok} AS v FROM parameters GROUP BY doc_id"):
+                out.setdefault(r["doc_id"], {}).update(parameters=r["n"], parameters_verified=r["v"] or 0)
+        return out
+
     # ----------------------------------------------------------------- stats
     def stats(self) -> dict:
         with self.connect() as con:
@@ -1269,6 +1284,10 @@ class Store:
         version = self.get_meta("index_version")
         with self._lock:
             if self._vectors is None or version != self._vectors_version:
+                # The previous set goes first: the old and the new vectors of a large library may not fit in memory
+                # together (a search already running keeps its own reference until it ends).
+                self._vectors = None
+                self._vectors_version = None
                 self._vectors = self._load_vectors()
                 self._vectors_version = version
             return self._vectors

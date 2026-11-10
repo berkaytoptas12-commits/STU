@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="tr">
+<html lang="tr" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -47,12 +47,13 @@
                aria-controls="src-shared src-personal" aria-valuemin="15" aria-valuemax="85" data-i18n-title="srcSplitter"></div>
           <div class="src-pane" id="src-personal">
             <h3 class="src-group"><button type="button" class="src-toggle" data-pane="personal" aria-expanded="true"
-              aria-controls="personal-box personal-collections" data-i18n="personalGroup"></button></h3>
+              aria-controls="personal-box personal-collections" data-i18n="personalGroup"></button>
+              <button type="button" class="ghost src-reindex" id="btn-personal-rescan" data-i18n="personalReindex"
+                data-i18n-title="personalRescan"></button></h3>
             <div class="personal-box" id="personal-box">
               <div class="row">
                 <button id="btn-personal-folder" data-i18n="personalFolder" data-i18n-title="personalFolderTitle"></button>
                 <button class="ghost" id="btn-personal-add" data-i18n="personalAdd"></button>
-                <button class="ghost" id="btn-personal-rescan" data-i18n-title="personalRescan">⟳</button>
                 <input type="file" id="personal-file-input" accept=".pdf,.txt,.md,.html,.htm,.docx" multiple hidden>
               </div>
               <div class="small muted personal-dir"><span data-i18n="personalDir"></span>: <code id="personal-dir"></code>
@@ -140,8 +141,19 @@
       <div class="svc-grid" id="svc-grid"></div>
       <fieldset id="user-box">
         <legend data-i18n="general"></legend>
+        <div class="wide theme-row"><span data-i18n="themeSetting"></span>
+          <div class="seg theme-toggle" role="group" data-i18n-title="themeHint">
+            <button type="button" class="ghost theme" data-theme-choice="dark" data-i18n="themeDark"></button><button type="button" class="ghost theme" data-theme-choice="light" data-i18n="themeLight"></button>
+          </div></div>
         <label class="wide"><input type="checkbox" id="set-notify"> <span data-i18n="notifySetting"></span></label>
         <p class="hint wide" data-i18n="adminSettingsHint"></p>
+      </fieldset>
+      <fieldset id="pstatus-box">
+        <legend data-i18n="pStatusTitle"></legend>
+        <div class="row wide pstatus-head"><span class="small" id="pstatus-summary"></span>
+          <button type="button" class="ghost small" id="btn-pstatus-refresh" data-i18n="pStatusRefresh"></button></div>
+        <p class="hint wide" data-i18n="pStatusHint"></p>
+        <div class="pstatus wide" id="pstatus-list"></div>
       </fieldset>
       <div class="dlg-actions">
         <span class="muted small" id="settings-status"></span>

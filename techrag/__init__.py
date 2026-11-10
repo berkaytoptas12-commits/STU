@@ -1,3 +1,3 @@
 """techrag - offline, source-grounded RAG for hardware and avionics interface standards."""
 
-__version__ = "0.14.2"
+__version__ = "0.15.0"

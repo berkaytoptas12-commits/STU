@@ -320,9 +320,16 @@ RANGES = {("llm", "context_tokens"): (2048, 1_048_576), ("vision", "min_page_sco
           ("reranker", "candidates"): (5, 300)}
 
 
+# Settings with a fixed set of values: (section, key) -> allowed values
+CHOICES = {("ui", "theme"): ("dark", "light")}
+
+
 def check_ranges(cfg: Config, changed: dict) -> None:
     """Range check of the advanced values this update changes (a value set elsewhere, e.g. in a YAML file,
     does not block an unrelated change)."""
+    for (section, key), allowed in CHOICES.items():
+        if key in (changed.get(section) or {}) and getattr(getattr(cfg, section), key) not in allowed:
+            raise ValueError(f"{section}.{key} must be one of {', '.join(allowed)}")
     for (section, key), (lo, hi) in RANGES.items():
         if key not in (changed.get(section) or {}):
             continue

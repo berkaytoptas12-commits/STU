@@ -674,7 +674,7 @@ def test_thinking_and_searches_are_in_admin_not_in_the_chat(ui):
 
 
 def test_personal_files_are_chosen_from_the_computer(ui, tmp_path, cfg):
-    groups = ui.evaluate("() => [...document.querySelectorAll('.src-group')].map((h) => h.textContent)")
+    groups = ui.evaluate("() => [...document.querySelectorAll('.src-group .src-toggle')].map((h) => h.textContent)")
     assert groups == ["Ortak", "Kişisel"]
     assert str(cfg.personal_dir) in ui.inner_text("#personal-dir")
     assert "Henüz kişisel dosya yok" in ui.inner_text("#personal-collections")
@@ -1179,3 +1179,73 @@ def test_a_line_at_the_top_shows_the_local_copy_progress(ui):
         renderInfo();
         return document.querySelector('#banner').hidden; }""")
     assert hidden, "gone when the copy is in use"
+
+
+def _bg(page) -> str:
+    return page.evaluate("() => getComputedStyle(document.body).backgroundColor")
+
+
+def test_dark_theme_by_default_and_light_from_settings(ui):
+    assert ui.evaluate("() => document.documentElement.dataset.theme") == "dark"
+    assert _bg(ui) == "rgb(18, 22, 28)", "the app opens dark"
+    ui.click("#btn-settings")
+    ui.wait_for_selector("#dlg-settings[open]")
+    assert ui.locator(".theme.active").get_attribute("data-theme-choice") == "dark"
+    ui.click(".theme[data-theme-choice=light]")
+    ui.wait_for_function("() => document.documentElement.dataset.theme === 'light'")
+    assert _bg(ui) == "rgb(245, 246, 248)", "applied at once"
+    ui.wait_for_function("async () => (await (await fetch('/api/settings')).json()).ui.theme === 'light'")
+    ui.reload()
+    ui.wait_for_selector("#collections .bucket")
+    assert ui.evaluate("() => document.documentElement.dataset.theme") == "light", "remembered"
+    ui.click("#btn-settings")
+    ui.click(".theme[data-theme-choice=dark]")
+    ui.wait_for_function("() => document.documentElement.dataset.theme === 'dark'")
+
+
+def test_reindex_button_next_to_the_personal_heading(ui, cfg):
+    btn = ui.locator("#src-personal .src-group #btn-personal-rescan")
+    assert btn.inner_text() == "Yeniden indeksle" and btn.is_visible()
+    assert "⟳" not in ui.inner_text("#personal-box"), "the old ⟳ button is gone"
+    cfg.personal_dir.mkdir(parents=True, exist_ok=True)
+    (cfg.personal_dir / "elle_eklenen.md").write_text("# Elle\n\nThe KLM3 jumper is J4.\n", encoding="utf-8")
+    btn.click()
+    ui.wait_for_selector("#personal-collections .bucket", timeout=30000)
+    assert ui.inner_text("#personal-collections .bucket-name") == "Kişisel"
+
+
+def test_personal_files_status_panel_in_settings(ui, tmp_path):
+    f = tmp_path / "picked" / "notlarim.md"
+    f.parent.mkdir()
+    f.write_text("# Notlarım\n\nThe ZQX7 probe ground spring must be shorter than 5 mm.\n", encoding="utf-8")
+    ui.set_input_files("#personal-file-input", str(f))
+    ui.wait_for_selector("#personal-collections .bucket", timeout=30000)
+    ui.wait_for_function("() => document.querySelector('#job-title').textContent.length > 0")
+    ui.click("#btn-settings")
+    ui.wait_for_selector("#pstatus-list table")
+    row = ui.locator("#pstatus-list tbody tr").first
+    text = row.inner_text()
+    assert "İndekslendi" in text and "notlarim.md" in text and "parça" in text, text
+    assert "1 belge: 1 indekslendi" in ui.inner_text("#pstatus-summary")
+    row.locator(".pst-more").click()
+    ui.wait_for_selector("#pstatus-list .pst-chunks li")
+    assert "ZQX7" in ui.inner_text("#pstatus-list .pst-chunks")
+    assert ui.inner_text("#pstatus-list .pst-count").startswith("Parçalar: ")
+    row.locator(".pst-more").click()
+    assert ui.locator("#pstatus-list .pst-detail").count() == 0, "the details close again"
+
+
+def test_an_answer_that_ran_out_of_memory_says_what_to_do(ui, engine, monkeypatch):
+    def no_memory(*a, **kw):
+        raise MemoryError("Unable to allocate 809. MiB for an array with shape (51749, 4096) and data type float32")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(engine, "ask_stream", no_memory)
+    ui.fill("#question", "DDR5 tRFC değeri nedir?")
+    ui.press("#question", "Enter")
+    ui.wait_for_selector(".msg.assistant .verify.warning")
+    box = ui.locator(".msg.assistant .verify.warning").last
+    assert "yeterli boş bellek yok" in box.inner_text()
+    assert "MemoryError" not in box.locator("summary").inner_text()
+    box.locator("summary").click()
+    assert "Unable to allocate" in box.inner_text(), "the technical message stays available"

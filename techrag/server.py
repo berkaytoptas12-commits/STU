@@ -19,12 +19,12 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from techrag import __version__, askctx, mirror, org, tls
-from techrag.api import APIClient, check_service, configure_tls, current_tls, normalize_base_url
+from techrag.api import APIClient, check_service, configure_tls, current_tls, error_code, normalize_base_url
 from techrag.config import PERSONAL_INDEX_DIR, Config, ServiceConfig, _apply_env, apply_dict, resource_path, same_path
 from techrag.engine import RAGEngine
 from techrag.store import Store
@@ -173,6 +173,11 @@ def _safe_filename(name: str) -> str:
     return re.sub(r"[^\w.\- ()]+", "_", name, flags=re.UNICODE).strip(" .") or "upload"
 
 
+def ui_theme(cfg: Config) -> str:
+    """The page theme: dark (the default) unless the user chose light."""
+    return "light" if getattr(cfg.ui, "theme", "dark") == "light" else "dark"
+
+
 def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = True,
                desktop: bool = False) -> FastAPI:
     jobs = Jobs()
@@ -267,7 +272,10 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
 
     @app.get("/", include_in_schema=False)
     def index():
-        return FileResponse(WEB_DIR / "index.html")
+        # The page starts in the user's theme (dark unless they chose light): set before anything is drawn, so the
+        # window never flashes the other theme while the script loads.
+        html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+        return HTMLResponse(html.replace('data-theme="dark"', f'data-theme="{ui_theme(state["cfg"])}"', 1))
 
     # ------------------------------------------------------------------ info
     @app.get("/api/info", dependencies=guard)
@@ -285,7 +293,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 if k not in e.domains.keys():
                     domains.append({"key": k, "name": k, **v})
         return {"version": __version__, "desktop": desktop, "library": str(c.library_dir.resolve()),
-                "read_only": c.read_only, "language": c.ui.language,
+                "read_only": c.read_only, "language": c.ui.language, "theme": ui_theme(c),
                 "legacy_documents": stats.get("legacy_documents", 0),
                 "buckets": e.store.buckets() if e else [], "roots": e.store.roots() if e else [],
                 "missing_documents": sum(b["missing"] for b in e.store.buckets()) if e else 0,
@@ -657,7 +665,9 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                     q.put({"type": "cancelled"})
                     return
                 except Exception as exc:
-                    last = {"type": "error", "message": f"{exc.__class__.__name__}: {exc}"}
+                    # code: what kind of failure (memory, connection, certificate ...) - the page words it for the
+                    # user and keeps the technical message as detail
+                    last = {"type": "error", "message": f"{exc.__class__.__name__}: {exc}", "code": error_code(exc)}
                     q.put(last)
                 finally:
                     # Read before the stream ends: closing the stream after the last event also sets ctx.stopped,
@@ -1199,6 +1209,109 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         if jobs.running():
             raise HTTPException(409, "indexing is running; remove the folder when it has finished")
         return {"ok": True, "removed": e.personal.remove_root(root_id), "name": r["label"]}
+
+    PSTATUS_ORDER = {"failed": 0, "pending": 1, "partial": 2, "missing": 3, "indexed": 4}
+
+    @app.get("/api/personal/status", dependencies=guard)
+    def personal_status():
+        """Every personal document and what the personal index holds of it: indexed (when; pages, pieces, tables),
+        partly indexed (some table pages could not be read), waiting (a new file, or one changed since it was
+        indexed - "Yeniden indeksle" processes it), failed, or its file gone. Only reads: the folders are listed (size
+        and modification time; nothing is opened or hashed) and compared with the index."""
+        from techrag.ingest.pipeline import ingest_fingerprint
+        from techrag.ingest.sources import plan_changes, scan_root
+        from techrag.library import PERSONAL_OFFSET
+
+        c: Config = state["cfg"]
+        e = eng()
+        own = e.personal
+        running = any(j["status"] in ("queued", "running") and str(j["kind"]).startswith("personal")
+                      for j in list(jobs.items.values()))
+        if own is None:
+            return {"available": False, "running": running, "documents": [], "counts": {}, "unreachable": []}
+        lib_cfg = c.personal_config()
+        fp = ingest_fingerprint(lib_cfg, e.vision.model if e.vision else None)
+        records = own.quality() or {}
+        counts = own.doc_counts()
+        plan: dict = {}
+        unreachable: list[str] = []
+        for r in own.roots():
+            bucket = (r.get("label") or Path(r["path"]).name) if r.get("kind") == "bucket" else ""
+            scan = scan_root(r["path"], exclude=(lib_cfg.library_dir,), single_bucket=bucket,
+                             skip_rels=own.excluded_rels(r["id"]))
+            if not scan.reachable:
+                unreachable.append(r["label"] or Path(r["path"]).name)
+            for it in plan_changes(scan, own.root_documents(r["id"]), fp, r["id"]):
+                plan[f"@{r['id']}/{it.rel}"] = it
+
+        def quality_of(rec: Optional[dict]) -> Optional[dict]:
+            if not rec:
+                return None
+            data = rec.get("data") or {}
+            return {"status": rec.get("status"), "processed_at": rec.get("processed_at", ""),
+                    "index_kept": bool(rec.get("index_kept")), "last_ok_at": rec.get("last_ok_at", ""),
+                    "issues": [i for i in (data.get("issues") or []) if i.get("code") != "vlm_disabled"][:40]}
+
+        out = []
+        for d in own.documents():
+            rec, it = records.get(d.path), plan.get(d.path)
+            action = it.action if it else ""
+            if d.missing and action == "restored":
+                status, reason = "pending", "restored"
+            elif d.missing or action == "missing":
+                status, reason = "missing", "missing"
+            elif rec and rec.get("status") == "failed":
+                status, reason = "failed", "failed_kept"
+            elif action in ("changed", "settings"):
+                status, reason = "pending", action
+            elif rec and rec.get("status") == "partial":
+                status, reason = "partial", "partial"
+            else:
+                status, reason = "indexed", ""
+            n = counts.get(d.id, {})
+            out.append({"doc_id": d.id + PERSONAL_OFFSET, "title": d.title, "file": d.rel_path or d.path,
+                        "bucket": d.bucket, "pdf": (d.rel_path or d.path).lower().endswith(".pdf"), "status": status,
+                        "reason": reason, "unreachable": action == "unreachable", "ingested_at": d.ingested_at,
+                        "n_pages": d.n_pages, "n_chunks": d.n_chunks, "tables": n.get("tables", 0),
+                        "tables_grounded": n.get("tables_grounded", 0), "parameters": n.get("parameters", 0),
+                        "parameters_verified": n.get("parameters_verified", 0), "entities": list(d.entities),
+                        "doc_type": d.doc_type, "revision": d.revision, "quality": quality_of(rec)})
+        known = {d.path for d in own.documents()}
+        for key, it in plan.items():
+            if key in known or it.action != "new":
+                continue
+            rec = records.get(key)
+            failed = bool(rec and rec.get("status") == "failed")
+            out.append({"doc_id": None, "title": Path(it.rel).stem, "file": it.rel, "bucket": it.bucket,
+                        "pdf": it.rel.lower().endswith(".pdf"), "status": "failed" if failed else "pending",
+                        "reason": "failed_new" if failed else "new", "unreachable": False, "ingested_at": "",
+                        "n_pages": 0, "n_chunks": 0, "tables": 0, "tables_grounded": 0, "parameters": 0,
+                        "parameters_verified": 0, "entities": [], "doc_type": "", "revision": "",
+                        "quality": quality_of(rec)})
+        out.sort(key=lambda x: (PSTATUS_ORDER.get(x["status"], 9), x["bucket"].lower(), x["title"].lower()))
+        tally: dict[str, int] = {}
+        for x in out:
+            tally[x["status"]] = tally.get(x["status"], 0) + 1
+        return {"available": True, "running": running, "documents": out, "counts": tally, "unreachable": unreachable}
+
+    @app.get("/api/personal/documents/{doc_id}/chunks", dependencies=guard)
+    def personal_chunks(doc_id: int, offset: int = 0, limit: int = 40):
+        """The pieces a personal document was split into, in reading order: section, pages, kind and the start of
+        the text (search-only pieces - a table the vision model read that did not match the PDF text - marked)."""
+        from techrag.ingest.chunker import estimate_tokens
+        from techrag.library import PERSONAL_OFFSET, is_personal
+
+        e = eng()
+        own = e.personal.document(doc_id - PERSONAL_OFFSET) if is_personal(doc_id) and e.personal else None
+        if own is None:
+            raise HTTPException(404, "not a personal document")
+        offset, limit = max(0, int(offset)), min(max(1, int(limit)), 200)
+        rows = e.personal.neighbors(own.id, offset, offset + limit - 1)
+        return {"total": own.n_chunks, "offset": offset,
+                "chunks": [{"n": r.ordinal + 1, "section": r.section, "page_start": r.page_start,
+                            "page_end": r.page_end, "kind": r.kind, "evidence": r.evidence,
+                            "tokens": estimate_tokens(r.text), "text": r.text[:600],
+                            "cut": len(r.text) > 600} for r in rows]}
 
     @app.post("/api/personal/rescan", dependencies=guard)
     def personal_rescan():

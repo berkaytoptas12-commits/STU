@@ -105,7 +105,29 @@ class _Activity:
                 self._cv.notify_all()
 
 
+class _Libraries:
+    """The libraries an engine answers from (shared, personal, the combined view and its catalog), kept in one object
+    the engine shares with its views (for_mode, a shallow copy): when the app switches to a new local copy of the
+    shared library (replace_shared) or creates the personal library (ensure_personal), every view - an evaluation
+    running with the fast model, say - answers from the new one at once instead of keeping the old one open (and its
+    search vectors in memory)."""
+
+    __slots__ = ("shared", "personal", "store", "catalog")
+
+    def __init__(self):
+        self.shared = self.personal = self.store = self.catalog = None
+
+
+def _library_attr(name: str) -> property:
+    return property(lambda self: getattr(self._libs, name), lambda self, value: setattr(self._libs, name, value))
+
+
 class RAGEngine:
+    shared = _library_attr("shared")
+    personal = _library_attr("personal")
+    store = _library_attr("store")
+    catalog = _library_attr("catalog")
+
     def __init__(self, cfg: Config, *, store: Optional[Store] = None, embedder: Optional[Embedder] = None,
                  reranker=_UNSET, llm: Optional[LLMClient] = None, vision: Optional[LLMClient] = _UNSET,
                  domains: Optional[DomainRegistry] = None, personal: Optional[Store] = None,
@@ -114,6 +136,7 @@ class RAGEngine:
         self.base_cfg = cfg      # the settings with the chat model ("Kapsamlı"); cfg.llm is the one answering
         self.mode = "deep"       # which chat model answers: deep (the chat model) | fast (see for_mode)
         self._fast_llm = fast_llm
+        self._libs = _Libraries()   # shared with the views of for_mode
         # shared: the library (indexing of the shared library writes here); personal: the user's own index, when
         # one exists; store: what answering reads - both of them (techrag.library.LibraryView)
         self.shared = store or Store(cfg.db_path, read_only=cfg.read_only)

@@ -37,7 +37,45 @@ class APIError(RuntimeError):
 
 
 RETRY_STATUS = (429, 503)
+# A connection that drops or is refused for a moment (the network, a server restarting) is tried again this many times
+# before the request fails. Only for the requests that give the same result when repeated (embeddings, reranking); a
+# certificate problem or a timeout is never repeated.
+NETWORK_RETRIES = 2
 _sleep = time.sleep  # patched in tests
+
+
+def transient_network_error(exc: BaseException) -> bool:
+    """A connection refused, reset or dropped mid-request - not a certificate problem (repeating cannot fix that) and
+    not a timeout (repeating a request that ran for minutes would only double the wait)."""
+    if isinstance(exc, httpx.TimeoutException):
+        return False
+    if isinstance(exc, httpx.ConnectError):
+        return tls.classify(exc) == tls.CONNECT
+    return isinstance(exc, (httpx.ReadError, httpx.WriteError, httpx.RemoteProtocolError))
+
+
+def error_code(exc: BaseException) -> str:
+    """What kind of failure ended a question, for a message the user can act on (the UI words it; the technical text
+    stays available as detail): memory | connect | tls | timeout | auth | "" (anything else)."""
+    e: Optional[BaseException] = exc
+    for _ in range(8):
+        if e is None:
+            break
+        if isinstance(e, MemoryError):
+            return "memory"
+        if isinstance(e, httpx.TimeoutException):
+            return "timeout"
+        code = getattr(e, "code", "")
+        if code == tls.CONNECT:
+            return "connect"
+        if isinstance(code, str) and code.startswith("tls_"):
+            return "tls"
+        if getattr(e, "status", 0) in (401, 403):
+            return "auth"
+        if isinstance(e, httpx.ConnectError):
+            return "connect" if tls.classify(e) == tls.CONNECT else "tls"
+        e = e.__cause__ or e.__context__
+    return ""
 
 
 def retry_after_seconds(headers) -> Optional[float]:
@@ -108,19 +146,27 @@ class APIClient:
         if not self.base:
             raise APIError("endpoint base URL is not configured", code="config")
         retries = max(0, int(getattr(self.svc, "max_retries", 3)))
-        for attempt in range(retries + 1):
+        dropped = 0
+        attempt = 0
+        while True:
             try:
                 r = self.http.post(self.url(path), json=payload)
-            except httpx.ConnectError as exc:
-                raise connect_error(exc, self.base) from exc
+            except httpx.TransportError as exc:
+                if transient_network_error(exc) and dropped < NETWORK_RETRIES:
+                    _sleep(backoff(dropped, None, 4.0))   # 1 s, then 2 s
+                    dropped += 1
+                    continue
+                if isinstance(exc, httpx.ConnectError):
+                    raise connect_error(exc, self.base) from exc
+                raise
             if r.status_code in RETRY_STATUS and attempt < retries:
                 _sleep(backoff(attempt, retry_after_seconds(r.headers), getattr(self.svc, "max_retry_wait", 60.0)))
+                attempt += 1
                 continue
             if r.status_code >= 400:
                 raise APIError(f"{self.base}/{path.lstrip('/')} -> HTTP {r.status_code}: {r.text[:400]}",
                                r.status_code, r.text, code="http", retry_after=retry_after_seconds(r.headers))
             return r.json()
-        raise APIError("unreachable")  # pragma: no cover
 
     def model_entries(self) -> list[dict]:
         """The raw /models entries (vLLM adds max_model_len to each)."""

@@ -1,5 +1,37 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.15.0 — koyu tema, kişisel dosyaların indeksleme durumu, "Yeniden indeksle"
+(Bu sürüm, daha önce geri alınan arama ve etiketleme değişikliklerini içermez.)
+- **Koyu tema varsayılan:** uygulama koyu temayla açılır. Ayarlar › Genel › **Tema: Koyu | Açık** ile değiştirilir;
+  seçim hemen uygulanır, kullanıcının kendi ayarıdır (kurum ayarlarına yazılmaz). Sayfa seçili temayla gelir ve
+  masaüstü penceresinin zemini de aynı renktedir: açılırken diğer tema bir an bile görünmez.
+- **Yeniden indeksle:** Kaynaklar › Kişisel başlığının yanında, adı yazılı bir düğme (eski ⟳'nun yerine, aynı iş):
+  kişisel klasördeki ve bağlı klasörlerdeki yeni ve değişmiş dosyaları indeksler, değişmeyenleri atlar.
+- **Kişisel dosyaların indeksleme durumu** (Ayarlar): her belgenin durumu (İndekslendi / Kısmen / Beklemede / Hata /
+  Dosya yok), indekslendiği tarih, içerik özeti (sayfa, parça, tablo, doğrulanan parametre, standart) ve **Ayrıntı**'da
+  sorunlar ile belgenin bölündüğü parçalar (sayfa, bölüm, metnin başı). Panel yalnızca okur; dosyalar açılmaz.
+- **Anlaşılır hata mesajları:** bir soru bellek yetmediği, sunucuya bağlanılamadığı, sertifika doğrulanamadığı, sunucu
+  zamanında cevap vermediği veya yetki reddedildiği için biterse ne olduğu ve ne yapılacağı Türkçe/İngilizce yazar;
+  asıl hata "Teknik ayrıntı"da kalır (ör. "MemoryError: Unable to allocate 809. MiB …" yerine).
+- **Düzeltme — Hızlı model ve yerel kopya:** Hızlı modelle süren bir değerlendirme sırasında ortak kütüphanenin yerel
+  kopyası alınır veya yenilenirse o değerlendirme eski kütüphaneden okumaya devam ediyordu: bellekte iki takım arama
+  verisi kalabiliyor, kopya yenilenince "unable to open database file" hatası çıkabiliyordu. Artık Hızlı görünüm de
+  geçişle birlikte yeni kopyadan okur.
+- **Bellek:** kütüphane güncellendiğinde arama verisi yeniden yüklenirken eskisi önce bırakılır (kısa süreliğine iki
+  takım tutulmaz). Bulunan kaynaklar aynıdır.
+- **Ağ kopmasında yeniden deneme:** embedding ve reranker isteklerinde anlık bir bağlantı kopması (reddedildi,
+  yarıda kesildi) belgeyi "başarısız" saymadan 1 ve 2 sn bekleyerek iki kez yeniden denenir. Sertifika hataları ve
+  zaman aşımları yeniden denenmez; sunucunun "meşgul" (HTTP 429/503) cevabındaki bekleme değişmedi. Sohbet modelinin
+  akışı yeniden denenmez (cevap iki kez üretilmesin).
+- **Derleme sürümleri sabit:** kütüphaneler `packaging/constraints.txt` dosyasındaki, v0.14.2'nin derlendiği
+  sürümlerle kurulur (Linux testleri ve Windows derlemesi).
+- Doğrulanan: testler (tema: varsayılan koyu, Ayarlar'dan açığa geçiş ve kalıcılığı, kurum ayarlarına yazılmaması;
+  "Yeniden indeksle" düğmesinin yeri ve işi; durum panelinde indekslendi / beklemede (yeni, değişmiş) / hata / dosya yok
+  ve parça listesi; bellek hatasının anlaşılır mesajı; Hızlı görünümün kopya geçişini ve yenilenmesini izlemesi; yeniden
+  yüklemede eski verinin önce bırakılması; ağ kopmasında yeniden deneme, sertifika ve zaman aşımında denememe, 429
+  beklemesinin değişmemesi; sabit sürümlerin tüm gereksinimleri kapsaması). Gerçek bir Windows makinesinde ve ağ
+  paylaşımında denenmedi.
+
 ### 0.14.2 — yerel kopya ve bellek
 - **Düzeltme:** belleği az bir bilgisayarda, ortak kütüphanenin yerel kopyası alınırken soru sorulunca "Hata:
   MemoryError: Unable to allocate … MiB" çıkıyordu. Soru, kopyayı en fazla 15 dakika bekleyip ağdaki kütüphaneyle devam
