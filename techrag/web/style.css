@@ -16,6 +16,18 @@
   --warn-soft: #3a2d12; --bad: #ff8a80; --bad-soft: #3b1714; --code: #232a34; --user: #222a36;
   --on-accent: #0f1520;
 }
+/* Yellow-black: black surfaces, yellow for everything that acts (buttons, active tabs, links, the focus line). */
+:root[data-theme="yellow"] {
+  color-scheme: dark;
+  --bg: #0a0a0a; --panel: #141414; --text: #f4f1e6; --muted: #bdb48a; --border: #3d3618;
+  --accent: #ffd200; --accent-soft: #3a3000; --ok: #7ddc8a; --ok-soft: #12301a; --warn: #ffa64d;
+  --warn-soft: #3a2410; --bad: #ff7070; --bad-soft: #3d1414; --code: #1d1d1d; --user: #2a2400;
+  --on-accent: #111111;
+}
+:root[data-theme="yellow"] .topbar { border-bottom: 2px solid var(--accent); }
+:root[data-theme="yellow"] .brand-name { color: var(--accent); }
+/* plain links (e.g. "değiştir") yellow instead of the browser's blue; :where keeps it below every link rule of its own */
+:where(:root[data-theme="yellow"]) a { color: var(--accent); }
 .theme-row { display: flex; align-items: center; gap: 10px; font-size: 13px; }
 /* Ayarlar › personal files: indexing status of every personal document */
 .pstatus-head { justify-content: space-between; }
@@ -39,7 +51,8 @@
 .seg { display: inline-flex; }
 .seg button { border-radius: 0; padding: 4px 12px; }
 .seg button:first-child { border-radius: 8px 0 0 8px; }
-.seg button:last-child { border-radius: 0 8px 8px 0; border-left: 0; }
+.seg button + button { border-left: 0; }
+.seg button:last-child { border-radius: 0 8px 8px 0; }
 .seg button.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }

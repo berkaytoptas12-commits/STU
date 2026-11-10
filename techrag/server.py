@@ -173,9 +173,13 @@ def _safe_filename(name: str) -> str:
     return re.sub(r"[^\w.\- ()]+", "_", name, flags=re.UNICODE).strip(" .") or "upload"
 
 
+UI_THEMES = ("dark", "light", "yellow")
+
+
 def ui_theme(cfg: Config) -> str:
-    """The page theme: dark (the default) unless the user chose light."""
-    return "light" if getattr(cfg.ui, "theme", "dark") == "light" else "dark"
+    """The page theme: dark (the default) unless the user chose light or yellow (black with yellow)."""
+    theme = getattr(cfg.ui, "theme", "dark")
+    return theme if theme in UI_THEMES else "dark"
 
 
 def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = True,
@@ -272,8 +276,8 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
 
     @app.get("/", include_in_schema=False)
     def index():
-        # The page starts in the user's theme (dark unless they chose light): set before anything is drawn, so the
-        # window never flashes the other theme while the script loads.
+        # The page starts in the user's theme (dark unless they chose light or yellow): set before anything is drawn,
+        # so the window never flashes another theme while the script loads.
         html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
         return HTMLResponse(html.replace('data-theme="dark"', f'data-theme="{ui_theme(state["cfg"])}"', 1))
 

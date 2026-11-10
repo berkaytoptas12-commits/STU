@@ -170,7 +170,8 @@ anahtarlar ilk kayıtta ortak anahtara taşınır (sohbet modelininki esas alın
 * Doğrulanamayan iddialar: **Kaldır** (varsayılan) veya **İşaretle**.
 * **Bildirim:** pencere küçültülmüş, simgenin arkasına gizlenmiş veya başka pencerelerin arkasındayken cevap
   hazır olunca Windows bildirimi (varsayılan açık; Windows'un odak yardımı / sessiz saatleri geçerlidir).
-* **Tema:** uygulama **koyu** temayla açılır; Ayarlar › Genel › **Tema: Koyu | Açık** ile değiştirilir. Seçim hemen
+* **Tema:** uygulama **koyu** temayla açılır; Ayarlar › Genel › **Tema: Koyu | Açık | Sarı-Siyah** ile değiştirilir
+  (Sarı-Siyah: siyah zemin, düğmeler ve vurgular sarı, düğme yazıları siyah). Seçim hemen
   uygulanır ve kullanıcının kendi ayarıdır (kurum ayarlarına yazılmaz). Sayfa sunucudan seçili temayla gelir, pencere
   açılırken diğer tema bir an bile görünmez.
 * **Kişisel dosyaların indeksleme durumu** (Ayarlar'ın altında): kişisel klasördeki ve bağlı klasörlerdeki her

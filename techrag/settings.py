@@ -321,7 +321,7 @@ RANGES = {("llm", "context_tokens"): (2048, 1_048_576), ("vision", "min_page_sco
 
 
 # Settings with a fixed set of values: (section, key) -> allowed values
-CHOICES = {("ui", "theme"): ("dark", "light")}
+CHOICES = {("ui", "theme"): ("dark", "light", "yellow")}
 
 
 def check_ranges(cfg: Config, changed: dict) -> None:

@@ -1,5 +1,13 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.15.1 — Sarı-Siyah tema
+- **Üçüncü tema: Sarı-Siyah.** Ayarlar › Genel › **Tema: Koyu | Açık | Sarı-Siyah**. Siyah zemin; düğmeler, seçili
+  sekmeler, atıflar, bağlantılar ve üst çubuğun alt çizgisi sarı; sarı düğmelerin yazısı siyah. Diğer iki tema gibi
+  hemen uygulanır, kullanıcının kendi ayarıdır ve pencere açılırken de siyah zeminle gelir. Arama ve cevaplama
+  değişmedi.
+- Doğrulanan: testler (Sarı-Siyah'a geçiş, kalıcılığı, düğme renkleri, bilinmeyen bir tema değerinin koyu açılması,
+  yalnızca üç temanın kabul edilmesi). Gerçek bir Windows makinesinde denenmedi.
+
 ### 0.15.0 — koyu tema, kişisel dosyaların indeksleme durumu, "Yeniden indeksle"
 (Bu sürüm, daha önce geri alınan arama ve etiketleme değişikliklerini içermez.)
 - **Koyu tema varsayılan:** uygulama koyu temayla açılır. Ayarlar › Genel › **Tema: Koyu | Açık** ile değiştirilir;

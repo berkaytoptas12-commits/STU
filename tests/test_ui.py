@@ -1203,6 +1203,27 @@ def test_dark_theme_by_default_and_light_from_settings(ui):
     ui.wait_for_function("() => document.documentElement.dataset.theme === 'dark'")
 
 
+def test_yellow_black_theme_from_settings(ui):
+    ui.click("#btn-settings")
+    ui.wait_for_selector("#dlg-settings[open]")
+    assert ui.locator(".theme").count() == 3
+    assert ui.inner_text(".theme[data-theme-choice=yellow]") == "Sarı-Siyah"
+    ui.click(".theme[data-theme-choice=yellow]")
+    ui.wait_for_function("() => document.documentElement.dataset.theme === 'yellow'")
+    assert _bg(ui) == "rgb(10, 10, 10)", "black page"
+    assert ui.locator(".theme.active").get_attribute("data-theme-choice") == "yellow"
+    colors = ui.evaluate("""() => { const s = getComputedStyle(document.querySelector('#btn-send'));
+        return [s.backgroundColor, s.color]; }""")
+    assert colors == ["rgb(255, 210, 0)", "rgb(17, 17, 17)"], "yellow buttons with black text"
+    ui.wait_for_function("async () => (await (await fetch('/api/settings')).json()).ui.theme === 'yellow'")
+    ui.reload()
+    ui.wait_for_selector("#collections .bucket")
+    assert ui.evaluate("() => document.documentElement.dataset.theme") == "yellow", "remembered"
+    ui.click("#btn-settings")
+    ui.click(".theme[data-theme-choice=dark]")
+    ui.wait_for_function("() => document.documentElement.dataset.theme === 'dark'")
+
+
 def test_reindex_button_next_to_the_personal_heading(ui, cfg):
     btn = ui.locator("#src-personal .src-group #btn-personal-rescan")
     assert btn.inner_text() == "Yeniden indeksle" and btn.is_visible()
