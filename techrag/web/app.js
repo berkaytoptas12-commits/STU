@@ -217,7 +217,7 @@ const I18N = {
     modeDeep: "Kapsamlı", modeFast: "Hızlı", modeTitle: "Bu soruyu cevaplayacak model: {0}", tModel: "Model", evalMode: "Cevaplayan model",
     enabled: "etkin", notOnServer: "(sunucuda yok)", savedSettings: "Ayarlar kaydedildi.", noModels: "Model listesi alınamadı",
     errorPrefix: "Hata", needToken: "Bu sunucu bir API anahtarı istiyor:",
-    themeSetting: "Tema", themeDark: "Koyu", themeLight: "Açık", themeYellow: "Sarı-Siyah", themeHint: "Hemen uygulanır; bu bilgisayarda sizin için hatırlanır.",
+    themeSetting: "Tema", themeDark: "Koyu", themeLight: "Açık", themeHint: "Hemen uygulanır; bu bilgisayarda sizin için hatırlanır.",
     pStatusTitle: "Kişisel dosyaların indeksleme durumu", pStatusRefresh: "Yenile",
     pStatusHint: "Kişisel klasördeki ve bağlı klasörlerdeki her belge: indekslenip indekslenmediği, ne zaman indekslendiği ve hangi parçalara bölündüğü. Beklemedeki dosyalar Kaynaklar › Kişisel › “Yeniden indeksle” ile işlenir.",
     pStatusNone: "Henüz kişisel dosya yok. Kaynaklar › Kişisel bölümünden dosya veya klasör ekleyin.",
@@ -544,7 +544,7 @@ const I18N = {
     modeDeep: "Thorough", modeFast: "Fast", modeTitle: "Model answering this question: {0}", tModel: "Model", evalMode: "Answering model",
     enabled: "enabled", notOnServer: "(not on server)", savedSettings: "Settings saved.", noModels: "Could not load models",
     errorPrefix: "Error", needToken: "This server requires an API token:",
-    themeSetting: "Theme", themeDark: "Dark", themeLight: "Light", themeYellow: "Yellow-Black", themeHint: "Applied at once; remembered for you on this computer.",
+    themeSetting: "Theme", themeDark: "Dark", themeLight: "Light", themeHint: "Applied at once; remembered for you on this computer.",
     pStatusTitle: "Indexing status of personal files", pStatusRefresh: "Refresh",
     pStatusHint: "Every document in the personal folder and the linked folders: whether it is indexed, when, and which pieces it was split into. Waiting files are processed with Sources › Personal › “Re-index”.",
     pStatusNone: "No personal files yet. Add files or a folder under Sources › Personal.",
@@ -670,10 +670,10 @@ function t(key, ...args) {
   args.forEach((a, i) => { s = String(s).replace(`{${i}}`, a); });
   return s;
 }
-// Theme: dark unless the user chose light or yellow-black (Ayarlar). The page arrives with it already set (the server writes it into
+// Theme: dark unless the user chose light (Ayarlar). The page arrives with it already set (the server writes it into
 // the page), so nothing flashes; a change applies at once and is saved as the user's own setting.
 function applyTheme(theme) {
-  const th = ["light", "yellow"].includes(theme) ? theme : "dark";
+  const th = theme === "light" ? "light" : "dark";
   document.documentElement.dataset.theme = th;
   $$(".theme").forEach((b) => b.classList.toggle("active", b.dataset.themeChoice === th));
 }

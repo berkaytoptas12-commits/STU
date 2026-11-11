@@ -170,9 +170,10 @@ anahtarlar ilk kayıtta ortak anahtara taşınır (sohbet modelininki esas alın
 * Doğrulanamayan iddialar: **Kaldır** (varsayılan) veya **İşaretle**.
 * **Bildirim:** pencere küçültülmüş, simgenin arkasına gizlenmiş veya başka pencerelerin arkasındayken cevap
   hazır olunca Windows bildirimi (varsayılan açık; Windows'un odak yardımı / sessiz saatleri geçerlidir).
-* **Tema:** uygulama **koyu** temayla açılır; Ayarlar › Genel › **Tema: Koyu | Açık | Sarı-Siyah** ile değiştirilir
-  (Sarı-Siyah: müdürlüğün "Yapay Zeka Asistanları" menüsünün renkleri; kömür grisi paneller, bronz düğmeler ve
-  vurgular, kırık beyaz yazılar). Seçim hemen
+* **Tema:** uygulama **koyu** temayla açılır; Ayarlar › Genel › **Tema: Koyu | Açık** ile değiştirilir. İkisi de
+  müdürlüğün "Yapay Zeka Asistanları" menüsünün renklerindedir: Koyu, menünün kendisi (kömür grisi paneller, bronz
+  düğmeler ve vurgular, kırık beyaz yazılar); Açık, aynı bronzun açık zeminli eşi (açık sıcak gri zemin, kırık beyaz
+  paneller, kömür grisi yazılar, bronz düğmeler; bağlantı ve atıflar okunsun diye daha koyu bronz). Seçim hemen
   uygulanır ve kullanıcının kendi ayarıdır (kurum ayarlarına yazılmaz). Sayfa sunucudan seçili temayla gelir, pencere
   açılırken diğer tema bir an bile görünmez.
 * **Kişisel dosyaların indeksleme durumu** (Ayarlar'ın altında): kişisel klasördeki ve bağlı klasörlerdeki her

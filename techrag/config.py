@@ -284,8 +284,8 @@ class UIConfig:
     language: str = "tr"            # tr | en
     notify: bool = True             # desktop: a Windows notification when an answer is ready while the window is
                                     # minimized, hidden or behind other windows
-    theme: str = "dark"             # dark (default) | light | yellow (black with yellow) - the user's own choice
-                                    # (Ayarlar), never an organization setting
+    theme: str = "dark"             # dark (default) | light - the user's own choice (Ayarlar), never an
+                                    # organization setting; the former "yellow" (0.15.1-0.15.2) reads as dark
 
 
 @dataclass

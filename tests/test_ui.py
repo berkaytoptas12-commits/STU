@@ -1187,13 +1187,14 @@ def _bg(page) -> str:
 
 def test_dark_theme_by_default_and_light_from_settings(ui):
     assert ui.evaluate("() => document.documentElement.dataset.theme") == "dark"
-    assert _bg(ui) == "rgb(18, 22, 28)", "the app opens dark"
+    assert _bg(ui) == "rgb(23, 24, 26)", "the app opens dark: the launcher's charcoal"
+    assert ui.locator(".theme").count() == 2
     ui.click("#btn-settings")
     ui.wait_for_selector("#dlg-settings[open]")
     assert ui.locator(".theme.active").get_attribute("data-theme-choice") == "dark"
     ui.click(".theme[data-theme-choice=light]")
     ui.wait_for_function("() => document.documentElement.dataset.theme === 'light'")
-    assert _bg(ui) == "rgb(245, 246, 248)", "applied at once"
+    assert _bg(ui) == "rgb(239, 238, 235)", "applied at once"
     ui.wait_for_function("async () => (await (await fetch('/api/settings')).json()).ui.theme === 'light'")
     ui.reload()
     ui.wait_for_selector("#collections .bucket")
@@ -1203,23 +1204,18 @@ def test_dark_theme_by_default_and_light_from_settings(ui):
     ui.wait_for_function("() => document.documentElement.dataset.theme === 'dark'")
 
 
-def test_yellow_black_theme_from_settings(ui):
+def test_both_themes_have_bronze_buttons_with_charcoal_text(ui):
+    def colors():
+        return ui.evaluate("""() => { const s = getComputedStyle(document.querySelector('#btn-send'));
+            const b = getComputedStyle(document.querySelector('.brand-name'));
+            return [s.backgroundColor, s.color, b.color]; }""")
+
+    assert colors() == ["rgb(198, 164, 125)", "rgb(32, 33, 36)", "rgb(198, 164, 125)"], "dark"
     ui.click("#btn-settings")
     ui.wait_for_selector("#dlg-settings[open]")
-    assert ui.locator(".theme").count() == 3
-    assert ui.inner_text(".theme[data-theme-choice=yellow]") == "Sarı-Siyah"
-    ui.click(".theme[data-theme-choice=yellow]")
-    ui.wait_for_function("() => document.documentElement.dataset.theme === 'yellow'")
-    assert _bg(ui) == "rgb(23, 24, 26)", "the launcher's charcoal, a shade darker behind the panels"
-    assert ui.locator(".theme.active").get_attribute("data-theme-choice") == "yellow"
-    colors = ui.evaluate("""() => { const s = getComputedStyle(document.querySelector('#btn-send'));
-        return [s.backgroundColor, s.color]; }""")
-    assert colors == ["rgb(198, 164, 125)", "rgb(32, 33, 36)"], "bronze buttons with charcoal text"
-    ui.wait_for_function("async () => (await (await fetch('/api/settings')).json()).ui.theme === 'yellow'")
-    ui.reload()
-    ui.wait_for_selector("#collections .bucket")
-    assert ui.evaluate("() => document.documentElement.dataset.theme") == "yellow", "remembered"
-    ui.click("#btn-settings")
+    ui.click(".theme[data-theme-choice=light]")
+    ui.wait_for_function("() => document.documentElement.dataset.theme === 'light'")
+    assert colors() == ["rgb(198, 164, 125)", "rgb(32, 33, 36)", "rgb(138, 106, 67)"], "light: darker bronze text"
     ui.click(".theme[data-theme-choice=dark]")
     ui.wait_for_function("() => document.documentElement.dataset.theme === 'dark'")
 

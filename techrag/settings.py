@@ -115,6 +115,9 @@ def load_user_settings() -> dict:
             for k in SECRET_KEYS:
                 if k in section:
                     section[k] = decrypt_secret(section[k], (name, k))
+    ui = raw.get("ui")
+    if isinstance(ui, dict) and ui.get("theme") == "yellow":
+        ui["theme"] = "dark"   # 0.15.1-0.15.2's third theme (yellow-black) became the dark theme
     return raw
 
 
@@ -321,7 +324,7 @@ RANGES = {("llm", "context_tokens"): (2048, 1_048_576), ("vision", "min_page_sco
 
 
 # Settings with a fixed set of values: (section, key) -> allowed values
-CHOICES = {("ui", "theme"): ("dark", "light", "yellow")}
+CHOICES = {("ui", "theme"): ("dark", "light")}
 
 
 def check_ranges(cfg: Config, changed: dict) -> None:

@@ -1,34 +1,30 @@
 :root {
-  --bg: #f5f6f8; --panel: #ffffff; --text: #1c2430; --muted: #687385; --border: #e1e5eb;
-  --accent: #2f5bd3; --accent-soft: #e8eefc; --ok: #1d7a46; --ok-soft: #e4f4ea; --warn: #9a5b00;
-  --warn-soft: #fdf1dc; --bad: #b42318; --bad-soft: #fdecea; --code: #f1f3f6; --user: #eef2f8;
-  --on-accent: #fff;
+  /* Light: the bronze of the department's "Yapay Zeka Asistanları" launcher on light surfaces. Buttons are filled with
+     the launcher's bronze (#C6A47D) and charcoal text; text-sized accents (links, citations, active tabs) use a darker
+     bronze so they stay readable on white. */
+  --bg: #efeeeb; --panel: #faf9f7; --text: #202124; --muted: #6b6a66; --border: #d6d4cf;
+  --accent: #8a6a43; --accent-soft: #f3ede4; --ok: #1d7a46; --ok-soft: #e4f4ea; --warn: #9a5b00;
+  --warn-soft: #fdf1dc; --bad: #b42318; --bad-soft: #fdecea; --code: #f1f0ed; --user: #ebe8e3;
+  --fill: #c6a47d; --on-accent: #202124;
   --radius: 10px;
   --font: "Segoe UI", system-ui, -apple-system, Roboto, "Noto Sans", Arial, sans-serif;
   --mono: "Cascadia Mono", Consolas, ui-monospace, Menlo, "Liberation Mono", monospace;
 }
-/* Dark is the default theme (the page is served with data-theme="dark" unless the user chose light in Ayarlar). */
+/* Dark is the default theme (the page is served with data-theme="dark" unless the user chose light in Ayarlar): the
+   launcher's own colors (its PanelWindow): surface #202124, card / hovered row #303135, text #F2F0EC, muted #A9A8A4,
+   bronze #C6A47D, lines #55565A, warning #FFBE5C. The page behind the panels and the input fields are a shade darker
+   than the surface; ok and bad are ours. */
 :root { color-scheme: light; }
 :root[data-theme="dark"] {
-  color-scheme: dark;
-  --bg: #12161c; --panel: #1a1f27; --text: #e4e8ee; --muted: #96a0ae; --border: #2b323d;
-  --accent: #7ea2ff; --accent-soft: #233056; --ok: #6fd39a; --ok-soft: #173525; --warn: #f0b85a;
-  --warn-soft: #3a2d12; --bad: #ff8a80; --bad-soft: #3b1714; --code: #232a34; --user: #222a36;
-  --on-accent: #0f1520;
-}
-/* Yellow-black: the palette of the department's "Yapay Zeka Asistanları" launcher (its PanelWindow): surface
-   #202124, card / hovered row #303135, text #F2F0EC, muted #A9A8A4, bronze accent #C6A47D, lines #55565A, warning
-   #FFBE5C. The page behind the panels and the input fields are a shade darker than the surface; ok and bad are ours. */
-:root[data-theme="yellow"] {
   color-scheme: dark;
   --bg: #17181a; --panel: #202124; --text: #f2f0ec; --muted: #a9a8a4; --border: #55565a;
   --accent: #c6a47d; --accent-soft: #303135; --ok: #8fd39c; --ok-soft: #1c2e22; --warn: #ffbe5c;
   --warn-soft: #3a2f1a; --bad: #ff8a7a; --bad-soft: #3d1f1c; --code: #2a2b2f; --user: #303135;
-  --on-accent: #202124;
+  --fill: #c6a47d; --on-accent: #202124;
 }
-:root[data-theme="yellow"] .brand-name { color: var(--accent); }
-/* plain links (e.g. "değiştir") yellow instead of the browser's blue; :where keeps it below every link rule of its own */
-:where(:root[data-theme="yellow"]) a { color: var(--accent); }
+.brand-name { color: var(--accent); }
+/* plain links (e.g. "değiştir") in the accent instead of the browser's blue; :where keeps it below every link rule */
+:where(:root) a { color: var(--accent); }
 .theme-row { display: flex; align-items: center; gap: 10px; font-size: 13px; }
 /* Ayarlar › personal files: indexing status of every personal document */
 .pstatus-head { justify-content: space-between; }
@@ -59,7 +55,7 @@
 [hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--text); font: 14.5px/1.55 var(--font); display: flex; flex-direction: column; }
-button { font: inherit; cursor: pointer; border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); border-radius: 8px; padding: 5px 12px; }
+button { font: inherit; cursor: pointer; border: 1px solid var(--fill); background: var(--fill); color: var(--on-accent); border-radius: 8px; padding: 5px 12px; }
 button.ghost { background: transparent; color: var(--text); border-color: var(--border); }
 button.ghost:hover { border-color: var(--accent); }
 button:disabled { opacity: .5; cursor: default; }

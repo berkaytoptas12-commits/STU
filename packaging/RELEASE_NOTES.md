@@ -1,16 +1,24 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
-### 0.15.2 — "Yapay Zeka Asistanları" menüsüyle aynı renkler ve simge
-- **Sarı-Siyah tema, müdürlüğün "Yapay Zeka Asistanları" menüsünün renkleriyle:** menünün kendi renk tanımları
-  kullanıldı: paneller #202124 (kömür grisi), seçili ve üzerine gelinen satırlar #303135, yazılar #F2F0EC, soluk
-  yazılar #A9A8A4, düğmeler, atıflar, seçili sekmeler ve bağlantılar bronz #C6A47D (yazısı kömür grisi), çizgiler
-  #55565A, uyarılar #FFBE5C. Panellerin arası ve yazı kutuları bir ton koyu. Üst çubuktaki sarı çizgi kaldırıldı.
-  Diğer temalar, arama ve cevaplama değişmedi.
+### 0.15.3 — "Yapay Zeka Asistanları" menüsüyle aynı renkler ve simge
+(0.15.2 yayınlanmadı; değişiklikleri bu sürümdedir.)
+- **İki tema, ikisi de müdürlüğün "Yapay Zeka Asistanları" menüsünün renklerinde:** Ayarlar › Genel › **Tema: Koyu |
+  Açık**. Ayrı "Sarı-Siyah" seçeneği kalktı; onun yerini Koyu aldı. Eski mavi vurgulu koyu ve açık temalar yok.
+  - **Koyu** (varsayılan): menünün kendi renk tanımları: paneller #202124 (kömür grisi), seçili ve üzerine gelinen
+    satırlar #303135, yazılar #F2F0EC, soluk yazılar #A9A8A4, düğmeler, atıflar, seçili sekmeler, bağlantılar ve
+    uygulama adı bronz #C6A47D (düğme yazısı kömür grisi), çizgiler #55565A, uyarılar #FFBE5C. Panellerin arası ve
+    yazı kutuları bir ton koyu.
+  - **Açık**: aynı bronzun açık zeminli eşi: zemin #EFEEEB, paneller #FAF9F7, yazılar #202124, soluk yazılar
+    #6B6A66, çizgiler #D6D4CF; düğmeler bronz #C6A47D (yazısı kömür grisi), bağlantılar, atıflar ve seçili sekmeler
+    okunsun diye daha koyu bronz #8A6A43.
+  - 0.15.1'de "Sarı-Siyah"ı seçmiş olanlar uygulama açılınca Koyu temayla devam eder (ayar dosyasındaki eski değer
+    Koyu olarak okunur, hata verilmez). Arama ve cevaplama değişmedi.
 - **Yeni simge:** masaüstündeki simge ve exe'nin simgesi (Dosya Gezgini, görev çubuğu, pencere başlığı, bildirimler)
   artık menüdeki Sayısal Tasarım Uzmanı simgesi: kömür grisi daire üzerinde bronz devre yolları ve via'lar (eski mavi
   mikroçip yerine). Resim `techrag/resources/sayisal-tasarim.png` olarak pakette; her boyuta uygulamanın içinde
   küçültülür (ek kütüphane gerekmez). Simge daire olduğundan dairenin tamamı tıklanır, köşeler saydam kalır.
-- Doğrulanan: testler (Sarı-Siyah'a geçiş, kalıcılığı, zemin ve düğme renkleri; simgenin 256 px'te dosyadaki resimle
+- Doğrulanan: testler (varsayılan Koyu, Açık'a geçiş ve kalıcılığı, iki temada zemin, düğme ve vurgu renkleri,
+  yalnızca iki temanın kabul edilmesi, eski "Sarı-Siyah" ayarının Koyu okunması; simgenin 256 px'te dosyadaki resimle
   birebir aynı olması, saydam köşeler, opak daire, üzerine gelince açılması, .ico'nun Windows'un okuduğu biçimde
   olması; PNG çözücünün bütün satır filtreleriyle doğru çalışması). Gerçek bir Windows makinesinde denenmedi.
 
