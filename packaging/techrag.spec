@@ -63,8 +63,8 @@ with open(VERSION_FILE, "w", encoding="utf-8-sig") as fh:  # BOM: PyInstaller ho
 )
 """)
 
-# The microchip of the launcher as the exe's icon (Explorer, taskbar, title bar, notifications), drawn by
-# techrag.icon at build time - no image file in the repository.
+# The app's icon (techrag/resources/sayisal-tasarim.png, also the launcher icon) as the exe's .ico (Explorer,
+# taskbar, title bar, notifications), written by techrag.icon at build time.
 import sys
 
 sys.path.insert(0, ROOT)

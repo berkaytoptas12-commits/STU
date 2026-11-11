@@ -171,7 +171,8 @@ anahtarlar ilk kayıtta ortak anahtara taşınır (sohbet modelininki esas alın
 * **Bildirim:** pencere küçültülmüş, simgenin arkasına gizlenmiş veya başka pencerelerin arkasındayken cevap
   hazır olunca Windows bildirimi (varsayılan açık; Windows'un odak yardımı / sessiz saatleri geçerlidir).
 * **Tema:** uygulama **koyu** temayla açılır; Ayarlar › Genel › **Tema: Koyu | Açık | Sarı-Siyah** ile değiştirilir
-  (Sarı-Siyah: siyah zemin, düğmeler ve vurgular sarı, düğme yazıları siyah). Seçim hemen
+  (Sarı-Siyah: müdürlüğün "Yapay Zeka Asistanları" menüsünün renkleri; kömür grisi paneller, bronz düğmeler ve
+  vurgular, kırık beyaz yazılar). Seçim hemen
   uygulanır ve kullanıcının kendi ayarıdır (kurum ayarlarına yazılmaz). Sayfa sunucudan seçili temayla gelir, pencere
   açılırken diğer tema bir an bile görünmez.
 * **Kişisel dosyaların indeksleme durumu** (Ayarlar'ın altında): kişisel klasördeki ve bağlı klasörlerdeki her
@@ -511,8 +512,9 @@ her şey burada toplanır):
 ### Açılış: sohbet simgesi
 
 * `SayisalTasarimUzmani.exe` açılınca önce ekranın sağ alt köşesinde (görev çubuğunun üstünde) küçük bir
-  **mikroçip simgesi** belirir (uygulamanın içinde çizilir; internetten bir şey indirilmez, her monitörün
-  ölçeğinde keskin görünür, köşeleri saydamdır). Simge normal pencerelerin üzerinde kalır ama klavye odağını
+  **simge** belirir: kömür grisi bir daire üzerinde bronz devre yolları ve via'lar, "Yapay Zeka Asistanları"
+  menüsündeki Sayısal Tasarım Uzmanı simgesiyle aynı (`techrag/resources/sayisal-tasarim.png`; uygulamanın içinde
+  her monitörün ölçeğine küçültülür, internetten bir şey indirilmez, köşeleri saydamdır). Exe'nin simgesi de budur. Simge normal pencerelerin üzerinde kalır ama klavye odağını
   almaz; yazdığınız uygulama odakta kalır. Ayrı bir tarayıcı açılmaz.
 * **Sol tık sohbet penceresini açar/gizler:** pencere gizliyse gösterilip öne alınır; görünür ve öndeyse
   gizlenir; simge durumuna küçültülmüş veya başka pencerelerin arkasındaysa gizlenmez, geri yüklenip öne
@@ -838,8 +840,9 @@ techrag/
                    gizle/göster, güvenli çıkış; argümanla CLI
   mirror.py        ağdaki salt-okunur kütüphanenin indeksinin yerel kopyası, açılışta güncellik denetimi
   org.py           kurum ayarları: ortak klasördeki kurum-ayarlari.yaml, exe'nin yanındaki işaretçi, yerel kopya
-  icon.py          uygulamanın dosya simgesi: launcher'ın mikroçip çizimi, derlemede .ico olarak yazılır
-  launcher.py      mikroçip simgesi (Win32 katmanlı pencere, DPI/çoklu monitör, sağ tık menüsü, aç/gizle için
+  icon.py          uygulamanın simgesi (resources/sayisal-tasarim.png): PNG çözme ve ölçekleme (numpy),
+                   derlemede exe'nin .ico'su olarak yazılır
+  launcher.py      masaüstü simgesi (Win32 katmanlı pencere, DPI/çoklu monitör, sağ tık menüsü, aç/gizle için
                    "pencere önde mi" denetimi), tek örnek kilidi
   server.py        API: ayarlar, kütüphane (yayımla, geçiş), dokümanlar, sayfa görüntüsü/bilgisi, SSE soru akışı
   engine.py        plan -> kapsam -> arama -> ajan döngüsü -> doğrulama/denetçi/hatalı cümle düzeltmesi -> kanıt konumu

@@ -31,7 +31,7 @@ from techrag.config import APP_TITLE, write_text_atomic
 
 log = logging.getLogger("techrag.launcher")
 
-SIZE_DIP = 60        # icon window edge in device-independent pixels (disc + soft shadow)
+SIZE_DIP = 60        # icon window edge in device-independent pixels (the disc)
 MARGIN_DIP = 16      # default distance from the work-area edges (bottom-right corner)
 DRAG_DIP = 4         # a press that moves farther than this is a drag, not a click
 IDM_OPEN, IDM_SETTINGS, IDM_QUIT = 1001, 1002, 1003
@@ -209,76 +209,21 @@ class PressTracker:
 
 
 # ------------------------------------------------------------------------------------------- drawing
-def render_icon(size: int, hover: bool = False, *, shadow: bool = True, click_target: bool = True) -> bytes:
-    """Premultiplied BGRA pixels (top-down) of the launcher: a microchip - a rounded square package with four pins
-    on each side, a lighter die and a pin-1 dot - with a soft shadow, so it reads on light and dark desktops alike.
-    Drawn in code at the monitor's pixel size (nothing is downloaded or scaled), anti-aliased by 4x4 supersampling.
-    The corners are fully transparent (click-through); between the pins the alpha is 1/255 - invisible, but the
-    whole chip stays one click target. The app's file icon (techrag.icon) is the same drawing, without the click
-    target (and without the shadow at small sizes)."""
+def render_icon(size: int, hover: bool = False) -> bytes:
+    """Premultiplied BGRA pixels (top-down) of the launcher: the app's icon (techrag.icon - the bronze circuit-board
+    disc shared with the department's "Yapay Zeka Asistanları" launcher), scaled to the monitor's pixel size. The
+    corners are fully transparent (click-through); the disc is opaque, so all of it is the click target. Hover lifts
+    the picture a little towards white."""
     import numpy as np
 
-    ss = 4
-    S = float(size)
-    coords = (np.arange(size * ss, dtype=np.float32) + 0.5) / ss
-    X, Y = np.meshgrid(coords, coords)
+    from techrag.icon import icon_premultiplied
 
-    def cover(mask) -> "np.ndarray":
-        return mask.astype(np.float32).reshape(size, ss, size, ss).mean(axis=(1, 3))
-
-    def rrect(cx, cy, w, h, r):
-        """Signed distance to a rounded rectangle (<= 0 inside)."""
-        qx, qy = np.abs(X - cx) - (w / 2 - r), np.abs(Y - cy) - (h / 2 - r)
-        return np.hypot(np.maximum(qx, 0), np.maximum(qy, 0)) + np.minimum(np.maximum(qx, qy), 0) - r
-
-    c = S / 2 - S * 0.01
-    body_w, body_r = S * 0.54, S * 0.09
-    pin_len, pin_w = S * 0.14, S * 0.07
-    edge = body_w / 2
-    pins = np.zeros_like(X, dtype=bool)
-    for k in range(4):
-        off = c + (k - 1.5) * S * 0.12
-        for horizontal in (True, False):
-            for side in (-1, 1):
-                mid = c + side * (edge + pin_len / 2 - S * 0.02)   # tucked a little under the package
-                if horizontal:   # pins on the left and right edges
-                    pins |= rrect(mid, off, pin_len + S * 0.04, pin_w, pin_w * 0.3) <= 0
-                else:            # top and bottom
-                    pins |= rrect(off, mid, pin_w, pin_len + S * 0.04, pin_w * 0.3) <= 0
-    body = cover(rrect(c, c, body_w, body_w, body_r) <= 0)
-    pin = cover(pins)
-    die = cover(rrect(c, c, S * 0.26, S * 0.26, S * 0.045) <= 0)
-    dot = cover(np.hypot(X - (c - edge + S * 0.10), Y - (c - edge + S * 0.10)) <= S * 0.04)
-    reach = edge + pin_len - S * 0.02                      # half-size of the chip with its pins
-    hit = cover(rrect(c, c, 2 * reach, 2 * reach, S * 0.10) <= 0)
-    sd = rrect(c, c + S * 0.03, body_w, body_w, body_r)   # a soft shadow under the package only
-    shade = (np.clip(1 - sd / (S * 0.08), 0, 1) ** 2).reshape(size, ss, size, ss).mean(axis=(1, 3)) * 0.35
-    if not shadow:
-        shade = np.zeros_like(shade)
-    if not click_target:
-        hit = np.zeros_like(hit)
-
-    rows = (np.arange(size, dtype=np.float32) + 0.5)[:, None]
-    t = np.clip((rows - (c - edge)) / body_w, 0, 1)[..., None] * np.ones((1, size, 1), np.float32)
-    top, bottom = np.array([64, 116, 230], np.float32), np.array([30, 62, 170], np.float32)
-    die_top, die_bottom = np.array([132, 172, 255], np.float32), np.array([96, 140, 240], np.float32)
-    pin_rgb = np.array([150, 162, 186], np.float32)
+    pm = np.array(icon_premultiplied(size))
     if hover:
-        top, bottom, die_top, die_bottom = top + 22, bottom + 22, die_top + 14, die_bottom + 14
-    body_rgb = top * (1 - t) + bottom * t
-    die_rgb = die_top * (1 - t) + die_bottom * t
-    black = np.zeros((size, size, 3), np.float32)
-
-    rgb = np.zeros((size, size, 3), np.float32)   # premultiplied
-    alpha = np.zeros((size, size), np.float32)
-    for color, a in ((black, np.maximum(shade, hit / 255.0)), (pin_rgb * np.ones_like(rgb), pin),
-                     (body_rgb, body), (die_rgb, die * body), (np.full_like(rgb, 255), dot * body)):
-        rgb = color * a[..., None] + rgb * (1 - a[..., None])
-        alpha = a + alpha * (1 - a)
-    a8 = np.clip(np.round(alpha * 255), 0, 255)
-    a8 = np.where(hit > 0.5, np.maximum(a8, 1), a8)   # never 0 inside the click target
-    c8 = np.minimum(np.clip(np.round(rgb), 0, 255), a8[..., None])
-    return np.dstack([c8[..., 2], c8[..., 1], c8[..., 0], a8]).astype(np.uint8).tobytes()
+        pm[..., :3] += (pm[..., 3:4] - pm[..., :3]) * 0.14   # towards white, inside the same alpha
+    px = np.round(np.clip(pm, 0, 1) * 255)
+    px[..., :3] = np.minimum(px[..., :3], px[..., 3:4])
+    return np.dstack([px[..., 2], px[..., 1], px[..., 0], px[..., 3]]).astype(np.uint8).tobytes()
 
 
 # ------------------------------------------------------------------------------------------- state

@@ -95,30 +95,24 @@ def test_press_tracker_tells_a_click_from_a_drag():
     assert t.release((50, 50)) is None
 
 
-def _runs(line, threshold=128) -> int:
-    on = line >= threshold
-    return int(on[0]) + int(((~on[:-1]) & on[1:]).sum())
+def test_icon_is_the_round_app_icon_with_transparent_corners():
+    from techrag.icon import icon_rgba
 
-
-def test_icon_is_a_microchip_with_transparent_corners():
     for size in (32, 48, 60, 90, 120):
         raw = render_icon(size)
-        assert len(raw) == size * size * 4, "drawn at the exact pixel size of the monitor (no scaling)"
+        assert len(raw) == size * size * 4, "drawn at the exact pixel size of the monitor"
         px = np.frombuffer(raw, np.uint8).reshape(size, size, 4)
         a = px[..., 3]
         assert a[0, 0] == a[0, -1] == a[-1, 0] == a[-1, -1] == 0, "corners click-through"
-        assert a[size // 2, size // 2] == 255, "opaque package"
+        assert a[size // 2, size // 2] == 255 and a[size // 2, size // 8] == 255, "an opaque disc: all of it is clickable"
         assert (px[..., :3] <= px[..., 3:4]).all(), "premultiplied alpha"
         assert ((a > 0) & (a < 255)).any(), "anti-aliased edges"
-        # four pins on every side: along a line through the pins, four opaque runs
-        k = round(size * 0.14)
-        for line in (a[:, k], a[:, -1 - k], a[k, :], a[-1 - k, :]):
-            assert _runs(line) == 4, (size, line)
-        if size >= 60:  # between two pins the icon is invisible but still part of the click target
-            gap = a[int(size * 0.37), k]
-            assert 1 <= gap < 40, gap
-    assert render_icon(60, hover=True) != render_icon(60), "hover feedback"
-    assert render_icon(60) == render_icon(60), "deterministic, nothing loaded from outside"
+        assert np.array_equal(a, icon_rgba(size)[..., 3]), "the same picture as the exe's icon"
+    hover = np.frombuffer(render_icon(60, hover=True), np.uint8).reshape(60, 60, 4).astype(int)
+    plain = np.frombuffer(render_icon(60), np.uint8).reshape(60, 60, 4).astype(int)
+    assert (hover[..., :3] >= plain[..., :3]).all() and hover[..., :3].sum() > plain[..., :3].sum(), "hover lighter"
+    assert np.array_equal(hover[..., 3], plain[..., 3]), "same shape on hover"
+    assert render_icon(60) == render_icon(60), "deterministic"
 
 
 def test_desktop_state_file(tmp_path):

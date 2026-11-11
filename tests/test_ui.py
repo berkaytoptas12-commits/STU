@@ -1210,11 +1210,11 @@ def test_yellow_black_theme_from_settings(ui):
     assert ui.inner_text(".theme[data-theme-choice=yellow]") == "Sarı-Siyah"
     ui.click(".theme[data-theme-choice=yellow]")
     ui.wait_for_function("() => document.documentElement.dataset.theme === 'yellow'")
-    assert _bg(ui) == "rgb(10, 10, 10)", "black page"
+    assert _bg(ui) == "rgb(23, 24, 26)", "the launcher's charcoal, a shade darker behind the panels"
     assert ui.locator(".theme.active").get_attribute("data-theme-choice") == "yellow"
     colors = ui.evaluate("""() => { const s = getComputedStyle(document.querySelector('#btn-send'));
         return [s.backgroundColor, s.color]; }""")
-    assert colors == ["rgb(255, 210, 0)", "rgb(17, 17, 17)"], "yellow buttons with black text"
+    assert colors == ["rgb(198, 164, 125)", "rgb(32, 33, 36)"], "bronze buttons with charcoal text"
     ui.wait_for_function("async () => (await (await fetch('/api/settings')).json()).ui.theme === 'yellow'")
     ui.reload()
     ui.wait_for_selector("#collections .bucket")

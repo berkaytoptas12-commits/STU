@@ -837,7 +837,7 @@ def _run_gui(key: str, log_path: Path) -> int:
     api = JsApi()
     width, height, min_w, min_h, x, y = _chat_geometry(state)
     # the window's own background matches the page's theme: no white flash before a dark page is drawn
-    background = {"light": "#f5f6f8", "yellow": "#0a0a0a"}.get(getattr(app.state.state["cfg"].ui, "theme", "dark"),
+    background = {"light": "#f5f6f8", "yellow": "#17181a"}.get(getattr(app.state.state["cfg"].ui, "theme", "dark"),
                                                                  "#12161c")
     chat = webview.create_window(APP_TITLE, f"http://127.0.0.1:{port}/?token={token}", js_api=api,
                                  width=width, height=height, x=x, y=y, min_size=(min_w, min_h), text_select=True,

@@ -1,5 +1,19 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.15.2 — "Yapay Zeka Asistanları" menüsüyle aynı renkler ve simge
+- **Sarı-Siyah tema, müdürlüğün "Yapay Zeka Asistanları" menüsünün renkleriyle:** menünün kendi renk tanımları
+  kullanıldı: paneller #202124 (kömür grisi), seçili ve üzerine gelinen satırlar #303135, yazılar #F2F0EC, soluk
+  yazılar #A9A8A4, düğmeler, atıflar, seçili sekmeler ve bağlantılar bronz #C6A47D (yazısı kömür grisi), çizgiler
+  #55565A, uyarılar #FFBE5C. Panellerin arası ve yazı kutuları bir ton koyu. Üst çubuktaki sarı çizgi kaldırıldı.
+  Diğer temalar, arama ve cevaplama değişmedi.
+- **Yeni simge:** masaüstündeki simge ve exe'nin simgesi (Dosya Gezgini, görev çubuğu, pencere başlığı, bildirimler)
+  artık menüdeki Sayısal Tasarım Uzmanı simgesi: kömür grisi daire üzerinde bronz devre yolları ve via'lar (eski mavi
+  mikroçip yerine). Resim `techrag/resources/sayisal-tasarim.png` olarak pakette; her boyuta uygulamanın içinde
+  küçültülür (ek kütüphane gerekmez). Simge daire olduğundan dairenin tamamı tıklanır, köşeler saydam kalır.
+- Doğrulanan: testler (Sarı-Siyah'a geçiş, kalıcılığı, zemin ve düğme renkleri; simgenin 256 px'te dosyadaki resimle
+  birebir aynı olması, saydam köşeler, opak daire, üzerine gelince açılması, .ico'nun Windows'un okuduğu biçimde
+  olması; PNG çözücünün bütün satır filtreleriyle doğru çalışması). Gerçek bir Windows makinesinde denenmedi.
+
 ### 0.15.1 — Sarı-Siyah tema
 - **Üçüncü tema: Sarı-Siyah.** Ayarlar › Genel › **Tema: Koyu | Açık | Sarı-Siyah**. Siyah zemin; düğmeler, seçili
   sekmeler, atıflar, bağlantılar ve üst çubuğun alt çizgisi sarı; sarı düğmelerin yazısı siyah. Diğer iki tema gibi
