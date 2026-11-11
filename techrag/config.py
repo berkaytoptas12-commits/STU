@@ -87,6 +87,23 @@ class AuthConfig:
     api_key: str = ""
 
 
+# How long a model server may stay silent before a request fails (seconds): waiting in its queue, reading the prompt
+# before the first word, or a pause between two parts of a streamed answer. 15 minutes, so a busy server is waited
+# for. Connecting is separate and stays short (techrag.api), so an unreachable server is still reported at once.
+REQUEST_TIMEOUT = 900.0
+LEGACY_TIMEOUT = 300.0   # the default up to 0.15.3: written into exported organization files, read as REQUEST_TIMEOUT
+
+
+def upgrade_timeouts(data: dict) -> dict:
+    """Settings saved by an earlier version carry the old 5-minute default for every model server; drop it so the
+    current default applies. Any other value someone chose stays."""
+    for name in ("llm", "vision", "embedding", "reranker"):
+        section = data.get(name)
+        if isinstance(section, dict) and section.get("timeout") == LEGACY_TIMEOUT:
+            section.pop("timeout")
+    return data
+
+
 @dataclass
 class ServiceConfig:
     """One OpenAI-compatible endpoint. base_url should end with /v1 (it is added when missing).
@@ -95,7 +112,7 @@ class ServiceConfig:
     base_url: str = ""
     api_key: str = ""
     model: str = ""
-    timeout: float = 300.0
+    timeout: float = REQUEST_TIMEOUT
     # Last resort for test setups: skip HTTPS certificate verification for this endpoint.
     verify_ssl: bool = True
     # Rate limiting (HTTP 429/503): wait as the server asks (Retry-After, capped) and give up after a few tries.

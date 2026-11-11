@@ -16,7 +16,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from techrag.config import Config, _apply_env, apply_dict, user_config_dir
+from techrag.config import Config, _apply_env, apply_dict, upgrade_timeouts, user_config_dir
 
 log = logging.getLogger("techrag.settings")
 
@@ -118,7 +118,7 @@ def load_user_settings() -> dict:
     ui = raw.get("ui")
     if isinstance(ui, dict) and ui.get("theme") == "yellow":
         ui["theme"] = "dark"   # 0.15.1-0.15.2's third theme (yellow-black) became the dark theme
-    return raw
+    return upgrade_timeouts(raw)   # the old 5-minute default, if an earlier version saved it
 
 
 def save_user_settings(data: dict) -> Path:

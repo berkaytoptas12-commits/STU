@@ -1,5 +1,19 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.15.4 — model sunucularına 15 dakika
+- **Bekleme süresi 5 dakikadan 15 dakikaya çıktı:** sohbet modeli, Hızlı model, görsel model (tablo okuma), embedding
+  ve reranker. Sunucu bir isteğe 15 dakika boyunca hiçbir şey göndermezse istek zaman aşımına düşer; yoğun bir
+  sunucuda kuyrukta bekleme, ilk kelimeden önce uzun istemin okunması veya cevabın ortasındaki bir duraklama artık
+  5 dakikada değil 15 dakikada hata verir. Akan bir cevabın toplam süresi yine sınırsızdır.
+- **Değişmeyenler:** bağlanma en çok 10 sn beklenir (ulaşılamayan sunucu hemen bildirilir); Ayarlar'daki "Test et" ve
+  "Modelleri getir" kısa sürede sonuç verir; zaman aşımına düşen istek yeniden denenmez (kuyruğun sonuna geçip
+  bekleme iki katına çıkmasın).
+- **Eski ayarlar:** daha önceki sürümlerle kaydedilmiş kurum ayarları dosyalarında her sunucu için yazılı olan eski
+  varsayılan (300 sn) 15 dakika olarak okunur; bir yöneticinin bilerek seçtiği başka bir değer korunur. Yeni kaydedilen
+  kurum ayarları 900 sn yazar.
+- Doğrulanan: testler (beş sunucuda 15 dakika ve 10 sn bağlanma; eski kurum dosyası ve eski kişisel ayarla 15 dakika,
+  seçilmiş değerin korunması; yeni kurum dosyasının 900 yazması). Gerçek bir Windows makinesinde denenmedi.
+
 ### 0.15.3 — "Yapay Zeka Asistanları" menüsüyle aynı renkler ve simge
 (0.15.2 yayınlanmadı; değişiklikleri bu sürümdedir.)
 - **İki tema, ikisi de müdürlüğün "Yapay Zeka Asistanları" menüsünün renklerinde:** Ayarlar › Genel › **Tema: Koyu |
