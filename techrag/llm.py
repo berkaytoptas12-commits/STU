@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import socket
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -189,7 +190,7 @@ class LLMClient:
         ok = False
         try:
             with self.api.http.stream("POST", self.api.url("chat/completions"), json=payload) as r:
-                with (ctx.closing(r.close) if ctx is not None else _nothing()):
+                with (ctx.closing(lambda: abort_response(r)) if ctx is not None else _nothing()):
                     if r.status_code >= 400:
                         body = r.read().decode("utf-8", "replace")
                         raise APIError(f"LLM HTTP {r.status_code}: {body[:400]}", r.status_code, body,
@@ -237,6 +238,8 @@ class LLMClient:
                                     call.arguments += args if isinstance(args, str) else json.dumps(args)
                             if choice.get("finish_reason"):
                                 result.finish_reason = choice["finish_reason"]
+                    if ctx is not None and ctx.stopped:
+                        raise askctx.Cancelled()   # the stop ended the stream: what arrived is not an answer
             ok = True
         except httpx.ConnectError as exc:
             if ctx is not None and ctx.stopped:
@@ -336,6 +339,21 @@ def image_part(png_bytes: bytes) -> dict:
     import base64
 
     return {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(png_bytes).decode()}}
+
+
+def abort_response(r: httpx.Response) -> None:
+    """Close a streaming response from another thread (the user stopped the question). Closing alone does not wake a
+    read that is waiting for the server's next bytes - the connection stays open until that read returns, which is
+    when the server sends something or the read times out: minutes while a busy server queues the request or reads a
+    long prompt. Shutting the socket down ends that read at once, and the server sees the request go away."""
+    try:
+        stream = r.extensions.get("network_stream")
+        sock = stream.get_extra_info("socket") if stream is not None else None
+        if sock is not None:
+            sock.shutdown(socket.SHUT_RDWR)
+    except Exception:   # already closed, or a transport without a socket (tests): closing below is enough
+        pass
+    r.close()
 
 
 @contextmanager

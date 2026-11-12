@@ -542,7 +542,9 @@ her şey burada toplanır):
 
 * **Durdur:** model çalışırken gönder düğmesinin yerinde kırmızı **Durdur** düğmesi ve geçen süre görünür.
   Durdur, modele giden isteği de keser (sunucu o cevap için üretmeyi bırakır); yarım taslak doğrulanmadığı için
-  cevap olarak gösterilmez. "Yeni sohbet" de süren cevabı aynı şekilde durdurur.
+  cevap olarak gösterilmez. Sunucu henüz hiçbir şey göndermiyorken de (yoğun sunucuda kuyruk, uzun istemin okunması)
+  hemen durur: bağlantı kesilir, sunucunun bir şey göndermesi beklenmez. "Yeni sohbet" de süren cevabı aynı şekilde
+  durdurur.
 * **Bildirim:** pencere küçültülmüş, gizli veya başka pencerelerin arkasındayken cevap (ya da netleştirme
   sorusu) hazır olunca Windows bildirimi çıkar; tıklayınca sohbet açılır. Küçültülmüş pencerenin görev çubuğu
   düğmesi de yanıp söner. Pencere öndeyken bildirim çıkmaz. Ayarlar'dan kapatılabilir.

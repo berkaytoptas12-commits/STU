@@ -1,5 +1,18 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.15.5 — Durdur, sunucu yoğunken de hemen durdurur
+(0.15.4 yayınlanmadı; değişiklikleri bu sürümdedir.)
+- **Düzeltme — Durdur:** model sunucusu henüz hiçbir şey göndermiyorken (yoğun sunucuda kuyrukta bekleme, uzun
+  istemin okunması) Durdur'a basılınca düğme "Durduruluyor…" yazıyor ama cevap ancak sunucu bir sonraki parçayı
+  gönderince, ya da bekleme süresi dolunca duruyordu (bekleme süresi 15 dakikaya çıkınca bu çok uzayabiliyordu).
+  Bağlantıyı kapatmak, cevabı bekleyen okumayı uyandırmıyordu. Artık durdurunca bağlantı soket düzeyinde kesilir:
+  cevap hemen durur ve sunucu isteğin gittiğini hemen görür (o cevap için üretmeyi bırakır). Cevap yazılırken
+  durdurma zaten hemen çalışıyordu; değişmedi. Durdurmanın kestiği bir akış hatasız bitse de yarım metin cevap
+  sayılmaz.
+- Doğrulanan: testler (gerçek bağlantıyla, sunucu yanıt başlığını gönderip sustuğunda durdurmanın hemen bitmesi ve
+  sunucunun bağlantının kapandığını görmesi; hatasız biten akışın da durdurma sayılması; iki test de düzeltmeden
+  önceki kodda başarısız oluyordu). HTTPS bağlantıda da elle denendi. Gerçek bir Windows makinesinde denenmedi.
+
 ### 0.15.4 — model sunucularına 15 dakika
 - **Bekleme süresi 5 dakikadan 15 dakikaya çıktı:** sohbet modeli, Hızlı model, görsel model (tablo okuma), embedding
   ve reranker. Sunucu bir isteğe 15 dakika boyunca hiçbir şey göndermezse istek zaman aşımına düşer; yoğun bir

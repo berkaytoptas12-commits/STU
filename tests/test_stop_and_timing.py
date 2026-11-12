@@ -211,3 +211,75 @@ def test_stop_while_the_reader_is_blocked_is_a_stop_not_an_error():
     with askctx.active(ctx), pytest.raises(askctx.Cancelled):
         list(llm.stream([{"role": "user", "content": "q"}]))
     assert ctx.calls and not ctx.calls[0].ok
+
+
+def test_a_stream_the_stop_ended_without_an_error_is_still_a_stop():
+    """The connection the stop shut down may simply end (no error): what arrived before is not an answer."""
+    ctx = askctx.AskContext()
+
+    def body():
+        yield _sse([{"choices": [{"delta": {"content": "first "}}]}], done=False).encode()
+        ctx.stop()                       # the stream just ends after this
+
+    llm = _client(lambda req: httpx.Response(200, content=body(), headers={"content-type": "text/event-stream"}))
+    with askctx.active(ctx), pytest.raises(askctx.Cancelled):
+        list(llm.stream([{"role": "user", "content": "q"}]))
+
+
+def test_stop_while_a_busy_server_is_still_silent_ends_at_once():
+    """Real sockets: the server has sent the response headers but nothing else yet (its queue, the prompt being
+    read). Closing the response alone would leave the read waiting until the server sends something - minutes on
+    a busy server; the stop shuts the connection down, so the question ends at once and the server sees it go."""
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    gone = threading.Event()
+
+    class Silent(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, *args):
+            pass
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get("content-length", 0)))
+            self.send_response(200)
+            self.send_header("content-type", "text/event-stream")
+            self.send_header("transfer-encoding", "chunked")
+            self.end_headers()
+            self.wfile.flush()
+            # waits for the client to go away (or 10 s): nothing is sent meanwhile
+            self.connection.settimeout(10)
+            try:
+                if self.connection.recv(1) == b"":
+                    gone.set()
+            except OSError:
+                gone.set()
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), Silent)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        llm = LLMClient(LLMConfig(base_url=f"http://127.0.0.1:{srv.server_address[1]}/v1", model="m", timeout=900))
+        ctx = askctx.AskContext()
+        out = {}
+
+        def work():
+            try:
+                with askctx.active(ctx):
+                    list(llm.stream([{"role": "user", "content": "q"}]))
+                out["result"] = "finished"
+            except askctx.Cancelled:
+                out["result"] = "cancelled"
+            except Exception as exc:  # pragma: no cover - reported by the assertion below
+                out["result"] = repr(exc)
+
+        th = threading.Thread(target=work, daemon=True)
+        th.start()
+        time.sleep(0.5)
+        t0 = time.time()
+        ctx.stop()
+        th.join(5)
+        assert out.get("result") == "cancelled", out
+        assert time.time() - t0 < 3, "stopped at once, not when the server next sends something"
+        assert gone.wait(5), "the server sees the request go away"
+    finally:
+        srv.shutdown()
