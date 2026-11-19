@@ -4,11 +4,17 @@ existing %APPDATA%/TechRAG folder from before the rename keeps being used).
 One API key is used for every model server (section "auth"); keys saved per service by older versions are moved
 there on the next save. API keys are encrypted with Windows DPAPI (bound to the Windows user account) when
 available; on other platforms the file is created with owner-only permissions.
+
+The key can also come from the organization settings (techrag.org). A key the user sets themselves is kept here and
+wins on this computer only; an empty key, or "use the organization's key", goes back to the organization's. This
+file never holds the organization's key: where the organization's value of a setting is recorded (to notice a later
+change), a secret is recorded as a fingerprint only.
 """
 
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 import os
@@ -144,6 +150,13 @@ def public_settings(cfg: Config) -> dict:
     d = cfg.to_dict()
     out = {s: d[s] for s in SECTIONS}
     out["auth"]["api_key"] = MASK if cfg.auth.api_key else ""
+    # Where the key comes from, for the lock in Settings: the organization's, the user's own on this computer, or
+    # none; and whether the organization provides one (to go back to it).
+    from techrag import org
+
+    org_key = org.value("auth", "api_key")
+    out["auth"]["source"] = "" if not cfg.auth.api_key else ("org" if org_key == cfg.auth.api_key else "own")
+    out["auth"]["org_key"] = bool(org_key)
     for s in SERVICE_SECTIONS:
         out[s].pop("api_key", None)
     out["read_only"] = cfg.read_only
@@ -172,6 +185,14 @@ def _migrate_keys(stored: dict) -> None:
     stored["auth"] = auth
 
 
+def _recorded(key: str, value: Any) -> Any:
+    """How the organization's value of a setting is recorded in the user's settings file: as it is, except a secret
+    (the API key), recorded as a fingerprint - enough to notice that the organization changed it, never the key."""
+    if key in SECRET_KEYS and isinstance(value, str) and value:
+        return "sha256:" + hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+    return value
+
+
 def update_settings(cfg: Config, patch: dict) -> Config:
     """Merge a settings patch from the UI into the stored user settings and return a new Config.
     A masked or missing api_key keeps the stored one; a key given for a single service is ignored (one shared key,
@@ -195,7 +216,17 @@ def update_settings(cfg: Config, patch: dict) -> Config:
             return
         holder[k] = v
         if org.sets(section, k):
-            base[name] = org_value
+            base[name] = _recorded(k, org_value)
+
+    patch = dict(patch or {})
+    if isinstance(patch.get("auth"), dict):
+        auth = {k: v for k, v in patch["auth"].items() if k in ("api_key", "use_org_key")}
+        org_key = org.value("auth", "api_key")
+        if auth.pop("use_org_key", False) and org_key:
+            auth["api_key"] = org_key             # "Kurum anahtarına dön": the user's own key is dropped
+        if auth.get("api_key") == "" and org_key:
+            auth["api_key"] = org_key             # an emptied key falls back to the organization's
+        patch["auth"] = auth
 
     applied: dict = {}
     for section, values in (patch or {}).items():
@@ -281,15 +312,16 @@ def follow_org(user: dict, persist: bool = True) -> dict:
             changed = True
             continue
         if name in base:
-            if org.same(section, k, base[name], org_value):
+            if org.same(section, k, base[name], _recorded(k, org_value)):
                 continue                    # chosen while the organization had this value: the user's is newer
         elif section == "read_only" or written_later:
-            base[name] = org_value          # how this user opens the library / chosen after the organization's save
+            base[name] = _recorded(k, org_value)   # how this user opens the library / chosen after the org's save
             changed = True
             continue
         holder.pop(k)
         base.pop(name, None)
-        moved[name] = {"value": own, "organization": org_value,
+        secret = k in SECRET_KEYS           # a replaced key is not kept: only that it was replaced, and when
+        moved[name] = {"value": None if secret else own, "organization": _recorded(k, org_value),
                        "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
         replaced.append(name)
         emptied.add(section)

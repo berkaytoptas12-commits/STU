@@ -87,16 +87,19 @@ def test_the_copy_read_last_is_used_when_the_folder_is_away(tmp_path, user_setti
     assert st["loaded"] and st["cached"] and st["error"] == "not_found"
 
 
-def test_an_edited_file_cannot_set_a_key_or_personal_paths(tmp_path, user_settings):
+def test_an_edited_file_sets_only_the_shared_key_never_other_secrets_or_personal_paths(tmp_path, user_settings):
     share = tmp_path / "share"
     share.mkdir()
     (share / org.ORG_FILE).write_text(yaml.safe_dump({
-        "auth": {"api_key": "stolen"}, "llm": {"model": "m", "api_key": "x"}, "server": {"api_token": "t"},
+        "auth": {"api_key": "org-shared-key", "other": "x"}, "llm": {"model": "m", "api_key": "x"},
+        "server": {"api_token": "t"},
         "paths": {"library_dir": "\\\\s\\lib", "personal_dir": "C:\\x", "user_data_dir": "C:\\y"}}), encoding="utf-8")
     (tmp_path / "exe").mkdir()
     (tmp_path / "exe" / org.POINTER_FILE).write_text(f"# kurum\n{share}\n", encoding="utf-8")
     cfg = load_config()
-    assert cfg.llm.model == "m" and cfg.auth.api_key == "" and cfg.llm.api_key == "" and cfg.server.api_token == ""
+    assert cfg.llm.model == "m" and cfg.server.api_token == ""
+    assert cfg.auth.api_key == cfg.llm.api_key == "org-shared-key", "the shared key only, sent to every server"
+    assert org.STATUS["values"]["auth"] == {"api_key": "org-shared-key"}
     assert cfg.paths.library_dir == "\\\\s\\lib" and cfg.paths.personal_dir != "C:\\x"
 
 

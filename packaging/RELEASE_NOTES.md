@@ -1,5 +1,33 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.15.6 — kurum ayarlarıyla ortak API anahtarı, kilit, kullanım günlüğünde tek token ölçüsü
+(0.15.4 ve 0.15.5 yayınlanmadı; değişiklikleri bu sürümdedir: 15 dakikalık bekleme süresi ve Durdur düzeltmesi.)
+- **Ortak API anahtarı kurum ayarlarıyla herkese:** Admin › Ayarlar › Kurum ayarları'nda **"Ortak API anahtarını da
+  kurum ayarlarına yaz"** (varsayılan işaretli). Anahtar `kurum-ayarlari.yaml` dosyasına **düz metin** yazılır: klasörü
+  okuyabilen herkes görebilir, klasörün okuma iznini yalnızca uygulamayı kullananlara açın. Kullanıcılar anahtar
+  girmeden başlar. Kurum anahtarı kullanıcının ayar dosyasına hiç yazılmaz (yalnızca değiştiğini anlamaya yetecek bir
+  parmak izi); klasöre ulaşılamayan günler için bilgisayarda tutulan kopyada anahtar şifrelidir (Windows DPAPI).
+- **Kilit (🔒):** Ayarlar'daki ortak API anahtarı alanı, anahtar varken kilitli ve maskeli durur; kazayla değiştirilmesin
+  diye. Kilide tıklayan herkes açabilir (🔓); kaydedince yeniden kilitlenir. Alanın altında anahtarın kaynağı yazar
+  ("kurum ayarlarından" / "bu bilgisayarda değiştirildi").
+- **Kişisel anahtar yalnızca o bilgisayarda:** kullanıcının değiştirdiği anahtar kurum dosyasını değiştirmez; **Kurum
+  anahtarına dön** bağlantısıyla (ya da alanı boşaltıp kaydederek) kurum anahtarına dönülür. Yönetici kurum anahtarını
+  sonradan değiştirirse yeni anahtar herkese geçer (en yeni karar geçerli kuralı).
+- **Kullanım günlüğü — tek token ölçüsü:** **toplam token** artık modellerin bir soru için ürettiği metin (düşünme
+  dahil): cevabın altındaki **Süre** dökümünde de aynı sayı **"Toplam: … token"** olarak görünür. Eskiden toplam, her
+  model çağrısına giden istem token'larını da topluyordu (araç turlarında aynı pasajlar tekrar tekrar sayıldığı için
+  çok büyük çıkıyordu). Admin › Kullanım günlüğü tablosu: Kullanıcı | Soru | Toplam token | **Soru başına ortalama** |
+  Son soru.
+- **CSV:** istem, üretilen ve düşünme token sütunları kalktı; `toplam_token` yeni ölçüdür. Eski bir dosya, o
+  kullanıcının bir sonraki sorusunda bir kez dönüştürülür: önce `<kullanıcı>.csv.yedek` kopyası bırakılır, eski
+  satırlar yeni ölçüye çevrilir, dosya tek seferde yazılır. Dosya Excel'de açıksa dönüştürme sonraki soruya kalır;
+  satır eski biçimde eklenir, sütunlar kaymaz, yedek birikmez.
+- Doğrulanan: testler (anahtarın kurum dosyasına yazılması/yazılmaması, başka kullanıcının anahtarı alması, kişisel
+  anahtarın yalnızca o bilgisayarda kalması ve kuruma dönüş, boş anahtarın kuruma dönmesi, kurum anahtarı değişince
+  herkese geçmesi, hiçbir kullanıcı dosyasında anahtarın düz metin olmaması, yerel kopyanın şifreli olması ve klasöre
+  ulaşılamayınca anahtarı vermesi; kilidin davranışı; CSV dönüştürme, yedek, Excel açıkken eski biçimde ekleme;
+  Süre toplamı ile kullanım tablosunun aynı sayıyı vermesi). Gerçek bir Windows makinesinde elle denenmedi.
+
 ### 0.15.5 — Durdur, sunucu yoğunken de hemen durdurur
 (0.15.4 yayınlanmadı; değişiklikleri bu sürümdedir.)
 - **Düzeltme — Durdur:** model sunucusu henüz hiçbir şey göndermiyorken (yoğun sunucuda kuyrukta bekleme, uzun

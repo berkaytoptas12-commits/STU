@@ -107,6 +107,7 @@ class FolderRequest(BaseModel):
 class OrgSaveRequest(BaseModel):
     path: str = Field(min_length=1, max_length=4000)
     others_read_only: bool = True
+    include_key: bool = False   # the shared API key goes into the file too (the page ticks it by default)
 
 
 class OrgUseRequest(BaseModel):
@@ -359,11 +360,11 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
 
     @app.post("/api/org/save", dependencies=guard)
     def org_save(req: OrgSaveRequest):
-        """Admin: write the current settings as the organization's (no API key, no personal folders) into the given
-        folder, and the pointer file next to the exe that is handed out with it."""
+        """Admin: write the current settings as the organization's (the shared API key only when asked; never personal
+        folders) into the given folder, and the pointer file next to the exe that is handed out with it."""
         with engine_lock:
             try:
-                out = org.save(req.path, state["cfg"], req.others_read_only)
+                out = org.save(req.path, state["cfg"], req.others_read_only, req.include_key)
             except FileNotFoundError:
                 raise HTTPException(400, "folder not found")
             except OSError as exc:

@@ -36,7 +36,7 @@ const I18N = {
     tTools: "— bunun {0} araç çağrısı", tVerify: "Doğrulama (bağımsız denetçi)", tRegenerate: "Hatalı ifadeleri düzeltme",
     tLocate: "Kanıt konumu", tTotal: "Toplam", tCalls: "Model çağrıları",
     cStage_plan: "planlayıcı", cStage_answer: "cevap", cStage_judge: "denetçi", cStage_regenerate: "düzeltme", cStage_figure: "görsel model", cStage_tools: "araçlar", cStage_other: "diğer",
-    cLine: "{0}: {1} çağrı, {2} — {3} token{4}{5}{6}", cThink: " (düşünme {0})", cSpeed: ", {0} token/sn", cFirst: ", ilk token en geç {0}",
+    cLine: "{0}: {1} çağrı, {2} — {3} token{4}{5}{6}", cTotal: "Toplam: {0} token (düşünme dahil)", cThink: " (düşünme {0})", cSpeed: ", {0} token/sn", cFirst: ", ilk token en geç {0}",
     notifySetting: "Pencere küçültülmüş, gizli veya arkadayken cevap hazır olunca Windows bildirimi göster",
     advToolRounds: "En fazla araç turu (her tur ayrı bir model çağrısı; az tur daha hızlı)",
     vSupported: "✓ Cevaptaki {0} ifadenin tamamı kaynaklarla doğrulandı (sayı/atıf kontrolü ve bağımsız denetçi).",
@@ -210,6 +210,12 @@ const I18N = {
     readOnly: "salt-okunur", docs: "doküman", params: "parametre", modelsLoad: "Modelleri getir", test: "Test et",
     sameAsChat: "Sohbet modeliyle aynı", baseUrl: "API adresi (…/v1)", apiKey: "Ortak API anahtarı", model: "Model",
     apiKeyHint: "Tek anahtar: sohbet (vLLM), görsel model, embedding ve reranker sunucularının hepsine bu anahtar gönderilir.",
+    keyLocked: "Kilitli: değiştirmek için kilidi açın", keyUnlocked: "Kilidi açık: yeni anahtarı yazıp kaydedin (tekrar kilitlemek için tıklayın)",
+    keyFromOrg: "Anahtar kurum ayarlarından geliyor.", keyOwn: "Anahtar bu bilgisayarda değiştirildi; kurumun anahtarı yerine bu kullanılıyor.",
+    keyUseOrg: "Kurum anahtarına dön", keyUsedOrg: "Kurum anahtarına dönüldü.",
+    orgIncludeKey: "Ortak API anahtarını da kurum ayarlarına yaz",
+    orgIncludeKeyHint: "Anahtar dosyaya düz metin olarak yazılır: klasörü okuyabilen herkes görebilir. Klasörün okuma iznini yalnızca uygulamayı kullanacak kişilere açın.",
+    orgKeyIncluded: "Ortak API anahtarı da yazıldı; kullanıcılar ayrıca girmeden kullanır.", orgKeyMissing: "Kaydedilecek bir API anahtarı yok; anahtar yazılmadı.",
     svc_llm: "Sohbet modeli — Kapsamlı", svc_llm_fast: "Sohbet modeli — Hızlı", svc_vision: "Görsel model (VLM)", svc_embedding: "Embedding", svc_reranker: "Reranker",
     fastHint: "Sohbette “Hızlı” seçilince bu model kullanılır: soru çözümleme, cevap, denetçi ve atıf düzeltme. Model boşsa sohbette seçim gösterilmez. Sunucu boşsa kapsamlı modelin sunucusu kullanılır.",
     fastSameServer: "(boş: kapsamlı modelin sunucusu)", fastThinking: "Hızlı model: düşünme modu",
@@ -301,7 +307,7 @@ const I18N = {
     tocClose: "İçindekileri kapat (Ctrl+B)",
     srcCollapse: "Daralt / genişlet", tocShow: "İçindekiler (aç / kapat, Ctrl+B)", tocResize: "İçindekiler genişliğini ayarla (sürükleyin; ←/→; çift tık: varsayılan)",
     orgTitle: "Kurum ayarları", orgFolder: "Kaydedileceği klasör (ağ klasörü; ör. ortak kütüphane klasörü)",
-    orgHint: "Kayıtlı ayarlarınız (model sunucuları ve modeller, cevaplama ve gelişmiş ayarlar, bağlantı güvenliği, ortak kütüphane klasörü, kullanım günlüğü klasörü) bu klasöre kurum-ayarlari.yaml olarak yazılır. API anahtarı ve kişisel klasörler yazılmaz. Exe'nin yanına da bu klasörü gösteren SayisalTasarimUzmani.kurum.txt bırakılır: exe'yi bu dosyayla birlikte verdiğiniz kullanıcılar ayarları buradan alır, yalnızca API anahtarlarını girer. Kurum ayarları varsayılandır, kullanıcı değiştirebilir. Önce yukarıdaki ayarları kaydedin.",
+    orgHint: "Kayıtlı ayarlarınız (model sunucuları ve modeller, cevaplama ve gelişmiş ayarlar, bağlantı güvenliği, ortak kütüphane klasörü, kullanım günlüğü klasörü) bu klasöre kurum-ayarlari.yaml olarak yazılır; aşağıdaki kutu işaretliyse ortak API anahtarı da. Kişisel klasörler yazılmaz. Exe'nin yanına da bu klasörü gösteren SayisalTasarimUzmani.kurum.txt bırakılır: exe'yi bu dosyayla birlikte verdiğiniz kullanıcılar ayarları buradan alır (anahtar dosyada yoksa yalnızca API anahtarını girer). Kurum ayarları varsayılandır, kullanıcı değiştirebilir. Önce yukarıdaki ayarları kaydedin.",
     orgReadOnly: "Diğer kullanıcılar ortak kütüphaneyi salt-okunur açsın", orgSave: "Kurum ayarlarını kaydet",
     orgNone: "Kurum ayarı kullanılmıyor.", orgFrom: "Kurum ayarları: {0}", orgFromCached: "Kurum ayarları: {0} (klasöre ulaşılamadı; son okunan kopya kullanılıyor)",
     orgFromError: "Kurum ayarları okunamadı: {0}", orgSrc_pointer: "exe'nin yanındaki dosyadan", orgSrc_user: "ilk açılışta verilen klasörden",
@@ -317,7 +323,7 @@ const I18N = {
     orgLibraryLocal: "Uyarı: ortak kütüphane yolu yerel görünüyor ({0}); diğer bilgisayarlar bu yola erişemeyebilir. Ağ yolunu kullanın (\\\\sunucu\\paylasim\\...).",
     orgAskTitle: "Kurum ayarları", orgAskText: "Uygulama henüz ayarlanmamış. Kurumunuz ayarları ortak bir klasörde tutuyorsa o klasörü girin (yöneticinizden öğrenebilirsiniz; ör. \\\\sunucu\\paylasim\\library). Sunucular, modeller ve ortak kütüphane oradan gelir; siz yalnızca API anahtarınızı girersiniz.",
     orgAskUse: "Kullan", orgAskNone: "Kurum ayarı kullanmıyorum", orgAskBad: "Bu klasörde kurum-ayarlari.yaml bulunamadı.",
-    orgKeyHint: "Kurum ayarları yüklendi ({0}). Yalnızca API anahtarınızı girip kaydedin.",
+    orgKeyHint: "Kurum ayarları yüklendi ({0}). Kurum ayarlarında API anahtarı yok: anahtarınızı girip kaydedin.",
     admDocs: "Belgeler", admDocFilter: "Belge veya bucket ara",
     admDocsHint: "Ortak kütüphanedeki bir belgeyi 🗑 ile kaldırabilirsiniz. Belge yalnızca indeksten çıkar: dosyası silinmez, yerinde kalır ve sonraki taramalarda atlanır. Kütüphaneyi kullanan herkes için kaldırılır; “Kaldırılan belgeler”den geri alınabilir.",
     admDocsMore: "… ve {0} belge daha (aramayı daraltın)", admDocsNone: "Belge yok.", admDocsReadOnly: "Kütüphane salt-okunur açık: belge kaldırılamaz.",
@@ -333,7 +339,8 @@ const I18N = {
     usageHint: "Her soru, soranın Windows kullanıcı adı, sorusu, süresi ve harcanan token sayısıyla bu klasörde kullanıcı başına bir CSV dosyasına yazılır (Excel: ';' ayraçlı). Cevap metni yazılmaz.",
     usageEnabled: "Kullanım günlüğünü tut", usageDir: "Günlük klasörü (boş: bu bilgisayardaki ayarlar klasörü; ağ klasörü olabilir)",
     openFolder: "Klasörü aç", usageMe: "Bu bilgisayar: {0} @ {1} → {2}", usageSaved: "Kaydedildi.",
-    usageUser: "Kullanıcı", usageQuestions: "Soru", usageTokens: "Toplam token", usageCompletion: "Üretilen token",
+    usageUser: "Kullanıcı", usageQuestions: "Soru", usageTokens: "Toplam token", usageAvg: "Soru başına ortalama",
+    usageTokensHint: "Token: modellerin bir soru için ürettiği metin, düşünme dahil. Cevabın altındaki \"Süre\" dökümündeki toplamla aynıdır.",
     usageLast: "Son soru", usageNone: "Henüz kayıt yok.", usageError: "Günlük klasörüne yazılamadı ({0}); kayıtlar yerel klasöre yazılıyor.",
   },
   en: {
@@ -363,7 +370,7 @@ const I18N = {
     tTools: "— of which {0} tool calls", tVerify: "Verification (independent judge)", tRegenerate: "Correcting failed statements",
     tLocate: "Evidence location", tTotal: "Total", tCalls: "Model calls",
     cStage_plan: "planner", cStage_answer: "answer", cStage_judge: "judge", cStage_regenerate: "correction", cStage_figure: "vision model", cStage_tools: "tools", cStage_other: "other",
-    cLine: "{0}: {1} calls, {2} — {3} tokens{4}{5}{6}", cThink: " (thinking {0})", cSpeed: ", {0} tokens/s", cFirst: ", first token at most {0}",
+    cLine: "{0}: {1} calls, {2} — {3} tokens{4}{5}{6}", cTotal: "Total: {0} tokens (thinking included)", cThink: " (thinking {0})", cSpeed: ", {0} tokens/s", cFirst: ", first token at most {0}",
     notifySetting: "Show a Windows notification when an answer is ready while the window is minimized, hidden or behind",
     advToolRounds: "Maximum tool rounds (each round is a separate model call; fewer rounds are faster)",
     vSupported: "✓ All {0} statements of the answer were verified against the sources (number/citation check and independent judge).",
@@ -537,6 +544,12 @@ const I18N = {
     readOnly: "read-only", docs: "documents", params: "parameters", modelsLoad: "Load models", test: "Test",
     sameAsChat: "Same as chat model", baseUrl: "API base URL (…/v1)", apiKey: "Shared API key", model: "Model",
     apiKeyHint: "One key: it is sent to every model server (chat/vLLM, vision, embedding and reranker).",
+    keyLocked: "Locked: unlock to change it", keyUnlocked: "Unlocked: type the new key and save (click to lock again)",
+    keyFromOrg: "The key comes from the organization settings.", keyOwn: "The key was changed on this computer; it is used instead of the organization's.",
+    keyUseOrg: "Use the organization's key", keyUsedOrg: "Back to the organization's key.",
+    orgIncludeKey: "Also write the shared API key into the organization settings",
+    orgIncludeKeyHint: "The key is written to the file in plain text: anyone who can read the folder can see it. Give read access to the folder only to the people who use the app.",
+    orgKeyIncluded: "The shared API key was written too; users use it without entering it.", orgKeyMissing: "There is no API key to save; no key was written.",
     svc_llm: "Chat model — Thorough", svc_llm_fast: "Chat model — Fast", svc_vision: "Vision model (VLM)", svc_embedding: "Embedding", svc_reranker: "Reranker",
     fastHint: "Used when “Fast” is chosen in the chat: planning the question, the answer, the judge and citation repair. No model: the chat offers no choice. No server: the thorough model's server.",
     fastSameServer: "(empty: the thorough model's server)", fastThinking: "Fast model: thinking mode",
@@ -628,7 +641,7 @@ const I18N = {
     tocClose: "Hide the contents (Ctrl+B)",
     srcCollapse: "Collapse / expand", tocShow: "Contents (show / hide, Ctrl+B)", tocResize: "Resize the contents (drag; ←/→; double click: default)",
     orgTitle: "Organization settings", orgFolder: "Folder to save them to (a network folder; e.g. the shared library's)",
-    orgHint: "Your saved settings (model servers and models, answering and advanced settings, connection security, the shared library folder, the usage log folder) are written into this folder as kurum-ayarlari.yaml. Never the API key or personal folders. Next to the exe, SayisalTasarimUzmani.kurum.txt pointing to this folder is left: users you give the exe with this file get the settings from here and only enter their API key. Organization settings are defaults; users can change them. Save the settings above first.",
+    orgHint: "Your saved settings (model servers and models, answering and advanced settings, connection security, the shared library folder, the usage log folder) are written into this folder as kurum-ayarlari.yaml; the shared API key too when the box below is ticked. Never personal folders. Next to the exe, SayisalTasarimUzmani.kurum.txt pointing to this folder is left: users you give the exe with this file get the settings from here (and only enter the API key when the file holds none). Organization settings are defaults; users can change them. Save the settings above first.",
     orgReadOnly: "Other users open the shared library read-only", orgSave: "Save organization settings",
     orgNone: "No organization settings in use.", orgFrom: "Organization settings: {0}", orgFromCached: "Organization settings: {0} (folder not reachable; the copy read last time is used)",
     orgFromError: "Organization settings could not be read: {0}", orgSrc_pointer: "from the file next to the exe", orgSrc_user: "from the folder given at first start",
@@ -644,7 +657,7 @@ const I18N = {
     orgLibraryLocal: "Note: the shared library path looks local ({0}); other computers may not reach it. Use the network path (\\\\server\\share\\...).",
     orgAskTitle: "Organization settings", orgAskText: "The app is not set up yet. If your organization keeps its settings in a shared folder, enter that folder (ask your administrator; e.g. \\\\server\\share\\library). The servers, models and shared library come from there; you only enter your API key.",
     orgAskUse: "Use", orgAskNone: "I do not use organization settings", orgAskBad: "No kurum-ayarlari.yaml in this folder.",
-    orgKeyHint: "Organization settings loaded ({0}). Just enter your API key and save.",
+    orgKeyHint: "Organization settings loaded ({0}). They hold no API key: enter yours and save.",
     admDocs: "Documents", admDocFilter: "Search documents or buckets",
     admDocsHint: "A document of the shared library is removed with 🗑. It only leaves the index: its file is not deleted, stays where it is and later scans leave it out. It is removed for everyone using the library; it can be restored under “Removed documents”.",
     admDocsMore: "… and {0} more (narrow the search)", admDocsNone: "No documents.", admDocsReadOnly: "The library is opened read-only: documents cannot be removed.",
@@ -660,7 +673,8 @@ const I18N = {
     usageHint: "Each question is written with the asker's Windows user name, the question, its duration and the tokens spent, into one CSV file per user in this folder (Excel: ';'-separated). The answer text is not written.",
     usageEnabled: "Keep the usage log", usageDir: "Log folder (empty: the settings folder on this PC; a network folder is fine)",
     openFolder: "Open folder", usageMe: "This computer: {0} @ {1} → {2}", usageSaved: "Saved.",
-    usageUser: "User", usageQuestions: "Questions", usageTokens: "Total tokens", usageCompletion: "Generated tokens",
+    usageUser: "User", usageQuestions: "Questions", usageTokens: "Total tokens", usageAvg: "Average per question",
+    usageTokensHint: "Tokens: the text the models generated for a question, thinking included. The same total as in the \"Time\" breakdown under the answer.",
     usageLast: "Last question", usageNone: "No entries yet.", usageError: "The log folder could not be written ({0}); entries go to a local folder.",
   },
 };
@@ -1579,7 +1593,13 @@ function timingDetailHtml(ev) {
       c.tokens_per_second ? t("cSpeed", c.tokens_per_second) : "",
       c.first_token_max ? t("cFirst", fmtDuration(c.first_token_max)) : "");
   });
-  if (lines.length) html += `<div class="calls">${esc(t("tCalls"))}:<br>${lines.map(esc).join("<br>")}</div>`;
+  if (lines.length) {
+    // the question's total: the same number the usage log records for it
+    const total = Object.values(calls).reduce((n, c) => n + (c.completion_tokens || 0), 0);
+    const approx = Object.values(calls).some((c) => c.estimated) ? "≈" : "";
+    html += `<div class="calls">${esc(t("tCalls"))}:<br>${lines.map(esc).join("<br>")}`
+      + `<br><b class="calls-total">${esc(t("cTotal", approx + fmtInt(total)))}</b></div>`;
+  }
   return html;
 }
 
@@ -2581,7 +2601,7 @@ async function openSettings() {
   $("#settings-org-hint").hidden = true;
   SETTINGS = await getJSON("/api/settings");
   const k = $("#set-api-key");
-  k.value = (SETTINGS.auth && SETTINGS.auth.api_key) || "";   // before the card: it lists models with it
+  showKey(SETTINGS.auth || {});   // before the card: it lists models with it
   k.dataset.loaded = "1";
   k.onchange = () => $$("#svc-grid .load").forEach((b) => { if (!b.disabled) b.click(); });
   const grid = $("#svc-grid");
@@ -2593,6 +2613,49 @@ async function openSettings() {
   $$("#dlg-settings [data-i18n]").forEach((x) => { x.textContent = t(x.dataset.i18n); });
   $("#dlg-settings").showModal();
   refreshPersonalStatus().catch(() => {});
+}
+// The shared key: locked while there is one (against changing it by accident - anyone can unlock it), with where it
+// comes from. A key changed here stays on this computer; "Kurum anahtarına dön" drops it.
+function setKeyLock(locked) {
+  const k = $("#set-api-key"), b = $("#btn-key-lock");
+  k.readOnly = locked;
+  k.classList.toggle("locked", locked);
+  b.textContent = locked ? "🔒" : "🔓";
+  b.title = t(locked ? "keyLocked" : "keyUnlocked");
+  b.setAttribute("aria-label", b.title);
+  b.setAttribute("aria-pressed", locked ? "true" : "false");
+}
+function showKey(auth) {
+  const k = $("#set-api-key");
+  k.value = auth.api_key || "";
+  k.setAttribute("aria-label", t("apiKey"));
+  const has = !!auth.api_key;
+  $("#btn-key-lock").hidden = !has;
+  setKeyLock(has);
+  const src = auth.source === "org" ? t("keyFromOrg") : (auth.source === "own" && auth.org_key ? t("keyOwn") : "");
+  $("#key-source-text").textContent = src;
+  $("#btn-key-org").hidden = !(auth.source === "own" && auth.org_key);
+  $("#key-source").hidden = !src;
+}
+function toggleKeyLock() {
+  const k = $("#set-api-key");
+  if (k.readOnly) {
+    setKeyLock(false);
+    k.focus();
+    k.select();
+  } else {
+    k.value = (SETTINGS.auth && SETTINGS.auth.api_key) || "";   // locking again forgets what was typed
+    setKeyLock(true);
+  }
+}
+async function useOrgKey() {
+  try {
+    const r = await postJSON("/api/settings", { auth: { use_org_key: true } }, "PUT");
+    SETTINGS = r.settings;
+    showKey(SETTINGS.auth || {});
+    $("#settings-status").textContent = r.error ? `${t("errorPrefix")}: ${r.error}` : t("keyUsedOrg");
+    await loadInfo();
+  } catch (err) { $("#settings-status").textContent = `${t("errorPrefix")}: ${err.message}`; }
 }
 function cardPatch(card) {
   const same = $(".same", card);
@@ -2684,9 +2747,11 @@ async function saveOrg() {
   const path = $("#org-path").value.trim();
   if (!path) { $("#org-path").focus(); return; }
   try {
-    const r = await postJSON("/api/org/save", { path, others_read_only: $("#org-readonly").checked });
+    const includeKey = $("#org-include-key").checked;
+    const r = await postJSON("/api/org/save", { path, others_read_only: $("#org-readonly").checked, include_key: includeKey });
     const folder = r.file.replace(/[\\/][^\\/]+$/, "");
     const lines = [t("orgSaved", r.file)];
+    if (includeKey) lines.push(t(r.key_included ? "orgKeyIncluded" : "orgKeyMissing"));
     if (r.pointer) lines.push(t("orgPointer", r.pointer));
     else if (r.pointer_error === "no_exe") lines.push(t("orgPointerDev", folder));
     else lines.push(t("orgPointerFailed", r.pointer_error, folder));
@@ -2993,11 +3058,12 @@ async function loadUsage() {
     $("#usage-me").textContent = t("usageMe", u.user, u.machine, u.file);
     $("#btn-usage-open").hidden = !(state.info && state.info.desktop);
     const head = `<tr><th>${esc(t("usageUser"))}</th><th class="num">${esc(t("usageQuestions"))}</th><th class="num">${esc(t("usageTokens"))}</th>`
-      + `<th class="num">${esc(t("usageCompletion"))}</th><th>${esc(t("usageLast"))}</th></tr>`;
+      + `<th class="num">${esc(t("usageAvg"))}</th><th>${esc(t("usageLast"))}</th></tr>`;
     const rows = (u.users || []).map((x) => `<tr><td>${esc(x.user)}</td><td class="num">${fmtInt(x.questions)}</td><td class="num">${fmtInt(x.tokens)}</td>`
-      + `<td class="num">${fmtInt(x.completion_tokens)}</td><td>${esc(fmtTime(x.last))}</td></tr>`).join("");
+      + `<td class="num">${fmtInt(x.avg_tokens)}</td><td>${esc(fmtTime(x.last))}</td></tr>`).join("");
     $("#usage-table").innerHTML = (u.last_error ? `<div class="verify warning">${esc(t("usageError", u.last_error))}</div>` : "")
-      + (rows ? `<table class="usage-table"><thead>${head}</thead><tbody>${rows}</tbody></table>` : `<p class="muted small">${esc(t("usageNone"))}</p>`)
+      + (rows ? `<table class="usage-table"><thead>${head}</thead><tbody>${rows}</tbody></table>`
+        + `<p class="hint">${esc(t("usageTokensHint"))}</p>` : `<p class="muted small">${esc(t("usageNone"))}</p>`)
       + ((u.errors || []).length ? `<ul class="small bad">${u.errors.map((e) => `<li>${esc(e)}</li>`).join("")}</ul>` : "");
   } catch (e) { $("#usage-status").textContent = `${t("errorPrefix")}: ${e.message}`; }
 }
@@ -3295,6 +3361,8 @@ function bind() {
   $("#btn-personal-add").addEventListener("click", addPersonalFiles);
   $("#btn-personal-folder").addEventListener("click", addPersonalFolder);
   $("#btn-org-save").addEventListener("click", saveOrg);
+  $("#btn-key-lock").addEventListener("click", toggleKeyLock);
+  $("#btn-key-org").addEventListener("click", useOrgKey);
   $("#btn-mirror-sync").addEventListener("click", async () => {
     try { await postJSON("/api/library/mirror/sync", {}); setTimeout(async () => { await loadInfo(); renderMirror(); }, 800); }
     catch (e) { $("#lib-mirror-text").textContent = `${t("errorPrefix")}: ${e.message}`; }

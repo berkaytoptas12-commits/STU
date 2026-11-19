@@ -8,7 +8,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from techrag.server import create_app
-from techrag.usage import COLUMNS, UsageLog, token_totals
+from techrag import usage as U
+from techrag.usage import COLUMNS, OLD_COLUMNS, UsageLog, token_totals
 
 
 def _rows(path):
@@ -26,13 +27,15 @@ def test_lines_are_appended_per_user_for_excel(tmp_path):
     rows = _rows(tmp_path / "logs" / "ayse.csv")
     assert len(rows) == 2 and rows[0]["soru"] == "DDR5 tRFC; 8Gb nedir?", "one line per question, ';' quoted"
     assert rows[0]["kullanici"] == "ayse" and rows[0]["bilgisayar"] == "PC-1" and rows[0]["sure_sn"] == "12"
-    assert rows[0]["toplam_token"] == "1200" and rows[0]["dusunme_token"] == "50" and rows[0]["model_cagrisi"] == "3"
+    assert rows[0]["toplam_token"] == "200", "the tokens the models generated (thinking included), as under Süre"
+    assert "istem_token" not in rows[0] and "uretilen_token" not in rows[0] and "dusunme_token" not in rows[0]
+    assert rows[0]["model_cagrisi"] == "3"
     assert rows[1]["sonuc"] == "hata" and rows[1]["token_tahmini"] == "evet"
     UsageLog(tmp_path / "logs", tmp_path / "local", user="mehmet").record("q", "cevaplandi", tokens={"prompt": 5})
     s = log.summary()
     assert [u["user"] for u in s["users"]][-1] in ("ayse", "mehmet") and len(s["users"]) == 2
     ayse = next(u for u in s["users"] if u["user"] == "ayse")
-    assert ayse["questions"] == 2 and ayse["tokens"] == 1210 and not s["errors"]
+    assert ayse["questions"] == 2 and ayse["tokens"] == 210 and ayse["avg_tokens"] == 105 and not s["errors"]
 
 
 def test_an_unreachable_folder_falls_back_to_a_local_file(tmp_path):
@@ -110,3 +113,66 @@ def test_a_slow_log_does_not_turn_a_finished_answer_into_a_stopped_one(client, c
     assert seen and seen[0]["kind"] == "final", "the desktop is told the answer is ready"
     rows = _rows(next((tmp_path / "slow").glob("*.csv")))
     assert rows[0]["sonuc"] == "cevaplandi"
+
+
+def _old_file(path, rows):
+    """A file as written up to 0.15.5: toplam_token = prompt + generated."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [";".join(OLD_COLUMNS)] + [";".join(str(r.get(c, "")) for c in OLD_COLUMNS) for r in rows]
+    path.write_bytes(("\ufeff" + "\r\n".join(lines) + "\r\n").encode("utf-8"))
+
+
+OLD_ROWS = [{"zaman": "2026-11-01T09:00:00+03:00", "kullanici": "ayse", "soru": "eski 1", "sonuc": "cevaplandi",
+             "istem_token": 40000, "uretilen_token": 3000, "dusunme_token": 2000, "toplam_token": 43000,
+             "model_cagrisi": 6, "token_tahmini": "hayir"},
+            {"zaman": "2026-11-02T09:00:00+03:00", "kullanici": "ayse", "soru": "eski 2", "sonuc": "cevaplandi",
+             "istem_token": 60000, "uretilen_token": 5000, "dusunme_token": 4000, "toplam_token": 65000,
+             "model_cagrisi": 8, "token_tahmini": "hayir"}]
+
+
+def test_an_old_file_is_converted_once_with_a_copy_kept(tmp_path):
+    path = tmp_path / "logs" / "ayse.csv"
+    _old_file(path, OLD_ROWS)
+    before = path.read_bytes()
+    log = UsageLog(tmp_path / "logs", tmp_path / "local", user="ayse")
+    assert log.summary()["users"][0]["tokens"] == 8000, "an old file already counts its generated tokens"
+    log.record("yeni", "cevaplandi", tokens={"prompt": 50000, "completion": 6000, "reasoning": 4000, "calls": 7})
+    assert (tmp_path / "logs" / "ayse.csv.yedek").read_bytes() == before, "the old file is kept as it was"
+    raw = path.read_bytes().decode("utf-8-sig")
+    assert raw.splitlines()[0] == ";".join(COLUMNS)
+    rows = _rows(path)
+    assert [r["soru"] for r in rows] == ["eski 1", "eski 2", "yeni"]
+    assert [r["toplam_token"] for r in rows] == ["3000", "5000", "6000"], "every line in the new measure"
+    assert rows[0]["model_cagrisi"] == "6" and rows[0]["zaman"] == "2026-11-01T09:00:00+03:00"
+    s = log.summary()
+    assert [u["file"] for u in s["users"]] == ["ayse.csv"], "the copy is not counted as another user"
+    assert s["users"][0]["tokens"] == 14000 and s["users"][0]["avg_tokens"] == 4667
+    log.record("bir daha", "cevaplandi", tokens={"completion": 1000})
+    assert len(list((tmp_path / "logs").glob("*.yedek"))) == 1, "converted once"
+
+
+def test_a_file_open_elsewhere_keeps_its_layout_until_it_can_be_converted(tmp_path, monkeypatch):
+    path = tmp_path / "logs" / "ayse.csv"
+    _old_file(path, OLD_ROWS)
+    log = UsageLog(tmp_path / "logs", tmp_path / "local", user="ayse")
+    real_replace = U.os.replace
+
+    def busy(src, dst):
+        raise PermissionError("the file is open in Excel")
+
+    monkeypatch.setattr(U.os, "replace", busy)
+    log.record("excel açıkken", "cevaplandi", tokens={"prompt": 50000, "completion": 6000, "reasoning": 4000})
+    rows = _rows(path)
+    assert path.read_bytes().decode("utf-8-sig").splitlines()[0] == ";".join(OLD_COLUMNS), "not converted yet"
+    assert rows[-1]["soru"] == "excel açıkken" and rows[-1]["uretilen_token"] == "6000" \
+        and rows[-1]["istem_token"] == "50000", "the line is in the file's old layout: no shifted columns"
+    assert not list((tmp_path / "logs").glob("*.tmp")), "no half-written file left behind"
+    log.record("excel hâlâ açık", "cevaplandi", tokens={"completion": 1000})
+    assert not list((tmp_path / "logs").glob("*.yedek")), "no copy piles up while the file stays open"
+    assert log.summary()["users"][0]["tokens"] == 15000, "old-layout lines count their generated tokens"
+    monkeypatch.setattr(U.os, "replace", real_replace)
+    log.record("sonra", "cevaplandi", tokens={"completion": 2000})
+    rows = _rows(path)
+    assert path.read_bytes().decode("utf-8-sig").splitlines()[0] == ";".join(COLUMNS)
+    assert [r["toplam_token"] for r in rows] == ["3000", "5000", "6000", "1000", "2000"]
+    assert len(list((tmp_path / "logs").glob("*.yedek"))) == 1, "one copy, of the file as it was"

@@ -701,10 +701,18 @@ def test_usage_log_tab(ui, tmp_path):
     ui.click("#dlg-admin [data-close]")
     _ask(ui, "DDR5 tRFC değeri nedir?")
     ui.wait_for_function("async () => (await (await fetch('/api/usage')).json()).users.length === 1")
+    ui.click(".msg.assistant .timing")
+    total = ui.inner_text(".msg.assistant .timing-detail .calls-total")
+    assert total.startswith("Toplam:") and "düşünme dahil" in total, total
     _admin(ui, "adm-usage")
     ui.wait_for_selector("#usage-table table")
-    row = ui.inner_text("#usage-table tbody tr")
-    assert row.split("\t")[1].strip() == "1", row
+    head = [x.strip() for x in ui.inner_text("#usage-table thead tr").split("\t")]
+    assert head == ["Kullanıcı", "Soru", "Toplam token", "Soru başına ortalama", "Son soru"], head
+    row = [x.strip() for x in ui.inner_text("#usage-table tbody tr").split("\t")]
+    assert row[1] == "1" and row[2] == row[3], row
+    digits = "".join(ch for ch in total if ch.isdigit())
+    assert "".join(ch for ch in row[2] if ch.isdigit()) == digits, "the usage log counts what Süre shows"
+    assert "Süre" in ui.inner_text("#usage-table .hint")
     assert list(folder.glob("*.csv")), "one CSV per user in the chosen folder"
 
 
@@ -993,7 +1001,9 @@ def test_first_start_asks_for_the_organization_settings(ui, cfg, tmp_path):
     ui.click("#btn-org-use")
     ui.wait_for_selector("#dlg-org:not([open])", state="attached")
     ui.wait_for_selector("#dlg-settings[open]")   # the organization settings came in: only the key is asked for
-    assert "API anahtarınızı" in ui.inner_text("#settings-org-hint")
+    assert "API anahtarı yok" in ui.inner_text("#settings-org-hint")
+    assert ui.is_hidden("#btn-key-lock") and not ui.eval_on_selector("#set-api-key", "e => e.readOnly"), \
+        "no key yet: the field is open for typing"
     assert ui.evaluate("() => document.activeElement.id") == "set-api-key"
     assert client_model(ui) == model
 
@@ -1266,3 +1276,32 @@ def test_an_answer_that_ran_out_of_memory_says_what_to_do(ui, engine, monkeypatc
     assert "MemoryError" not in box.locator("summary").inner_text()
     box.locator("summary").click()
     assert "Unable to allocate" in box.inner_text(), "the technical message stays available"
+
+
+def test_the_shared_key_is_locked_and_shows_where_it_comes_from(ui, cfg):
+    from techrag import org
+
+    org.STATUS.update(loaded=True, values={"auth": {"api_key": "org-key-1"}})   # the organization provides a key
+    ui.evaluate("""() => fetch('/api/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({auth: {api_key: 'org-key-1'}})})""")
+    ui.click("#btn-settings")
+    ui.wait_for_selector("#dlg-settings[open]")
+    assert ui.inner_text("#btn-key-lock") == "🔒" and ui.eval_on_selector("#set-api-key", "e => e.readOnly")
+    assert ui.inner_text("#key-source-text") == "Anahtar kurum ayarlarından geliyor."
+    assert ui.is_hidden("#btn-key-org")
+    ui.click("#btn-key-lock")                       # anyone can unlock it
+    assert ui.inner_text("#btn-key-lock") == "🔓" and not ui.eval_on_selector("#set-api-key", "e => e.readOnly")
+    ui.fill("#set-api-key", "my-own-key")
+    ui.click("#btn-key-lock")                       # locking again forgets what was typed
+    assert ui.eval_on_selector("#set-api-key", "e => e.readOnly && e.value !== 'my-own-key'")
+    ui.click("#btn-key-lock")
+    ui.fill("#set-api-key", "my-own-key")
+    ui.click("#btn-save-settings")
+    ui.wait_for_function("() => !document.querySelector('#dlg-settings').open")
+    ui.click("#btn-settings")
+    ui.wait_for_selector("#dlg-settings[open]")
+    assert ui.eval_on_selector("#set-api-key", "e => e.readOnly"), "locked again after saving"
+    assert "bu bilgisayarda değiştirildi" in ui.inner_text("#key-source-text")
+    ui.click("#btn-key-org")                        # back to the organization's key
+    ui.wait_for_function("() => document.querySelector('#key-source-text').textContent.includes('kurum ayarlarından')")
+    assert ui.is_hidden("#btn-key-org")

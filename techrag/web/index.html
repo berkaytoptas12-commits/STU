@@ -135,7 +135,10 @@
       <p class="notice" id="settings-org-hint" hidden></p>
       <fieldset id="auth-box">
         <legend data-i18n="apiKey"></legend>
-        <label class="wide"><input type="password" id="set-api-key" autocomplete="off"></label>
+        <div class="row wide key-row"><input type="password" id="set-api-key" autocomplete="off">
+          <button type="button" class="ghost key-lock" id="btn-key-lock"></button></div>
+        <p class="small wide key-source" id="key-source" hidden><span id="key-source-text"></span>
+          <button type="button" class="linkish" id="btn-key-org" hidden data-i18n="keyUseOrg"></button></p>
         <p class="hint wide" data-i18n="apiKeyHint"></p>
       </fieldset>
       <div class="svc-grid" id="svc-grid"></div>
@@ -340,6 +343,8 @@
         <label class="wide"><span data-i18n="orgFolder"></span>
           <div class="row"><input id="org-path" placeholder="\\sunucu\paylasim\library"><button type="button" class="ghost" id="btn-pick-org">…</button></div></label>
         <label class="wide"><input type="checkbox" id="org-readonly" checked> <span data-i18n="orgReadOnly"></span></label>
+        <label class="wide"><input type="checkbox" id="org-include-key" checked> <span data-i18n="orgIncludeKey"></span></label>
+        <p class="hint wide warn-text" data-i18n="orgIncludeKeyHint"></p>
         <div class="row wide"><button type="button" id="btn-org-save" data-i18n="orgSave"></button></div>
         <div class="small wide" id="org-save-status" role="status"></div>
       </fieldset>

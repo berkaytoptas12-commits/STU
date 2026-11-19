@@ -3,8 +3,12 @@ folder (usually the shared library's folder), so that the exe can be handed to o
 
 * Saved from Admin › Ayarlar › "Kurum ayarlarını kaydet": the current model servers and models, answering and
   advanced settings, connection security, the shared library folder (and whether others open it read-only) and the
-  usage log folder go into <folder>/kurum-ayarlari.yaml. Never the API key (each user enters it once; it is stored
-  encrypted for that user) and never personal folders.
+  usage log folder go into <folder>/kurum-ayarlari.yaml. The shared API key too when "Ortak API anahtarını da kurum
+  ayarlarına yaz" is ticked (the default): in plain text, so whoever can read the folder can read the key - the
+  folder's permissions are what protect it. Never personal folders. A user who changes the key keeps the change on
+  their own computer (stored encrypted for that user); the copy of these settings kept on each computer for the
+  days the folder cannot be reached holds the key encrypted, and a user's own settings file never holds the
+  organization's key (only a fingerprint of it, to notice a later change).
 * Found, in this order: the TECHRAG_ORG_SETTINGS environment variable (IT can set it), a one-line pointer file next
   to the exe (SayisalTasarimUzmani.kurum.txt, written when the settings are saved, handed out with the exe), or the
   folder the user gave when the app asked once at first start.
@@ -39,9 +43,10 @@ ORG_FILE = "kurum-ayarlari.yaml"
 POINTER_FILE = "SayisalTasarimUzmani.kurum.txt"
 CACHE_FILE = "kurum-ayarlari.cache.yaml"
 
-# What the organization file holds: whole sections, minus the keys listed (secrets and per-user paths).
+# What the organization file holds: whole sections, minus the keys listed (secrets and per-user paths). "auth" -
+# the shared API key - only when the admin includes it (save(include_key=True)).
 EXPORT = {"llm": ("api_key",), "llm_fast": (), "vision": ("api_key",), "embedding": ("api_key",),
-          "reranker": ("api_key",), "answer": (), "retrieval": (), "tls": (), "usage": ()}
+          "reranker": ("api_key",), "answer": (), "retrieval": (), "tls": (), "usage": (), "auth": ()}
 EXPORT_PATHS = ("library_dir",)
 
 STATUS: dict = {"path": "", "source": "", "loaded": False, "cached": False, "error": "", "values": {},
@@ -135,6 +140,11 @@ def _clean(data: Any) -> dict:
         return {}
     out: dict = {}
     for section, drop in EXPORT.items():
+        if section == "auth":
+            key = data["auth"].get("api_key") if isinstance(data.get("auth"), dict) else None
+            if isinstance(key, str) and key.strip():
+                out["auth"] = {"api_key": key.strip()}
+            continue
         if isinstance(data.get(section), dict):
             out[section] = {k: v for k, v in data[section].items() if k not in drop}
     if isinstance(data.get("paths"), dict):
@@ -159,9 +169,8 @@ def load(user: dict) -> dict:
         values = _clean(yaml.safe_load(path.read_text(encoding="utf-8-sig")))
         STATUS.update(loaded=True, values=values, mtime=_mtime(path))   # mtime: when it was last saved
         try:   # for the days the folder cannot be reached
-            write_text_atomic(_cache_path(), yaml.safe_dump({"_source": str(path), "_mtime": STATUS["mtime"],
-                                                             **values}, allow_unicode=True, sort_keys=False))
-        except OSError:
+            _write_cache(path, values)
+        except (OSError, RuntimeError):
             pass
         return values
     except FileNotFoundError:
@@ -171,7 +180,7 @@ def load(user: dict) -> dict:
     try:
         cached = yaml.safe_load(_cache_path().read_text(encoding="utf-8"))
         if isinstance(cached, dict) and cached.get("_source") == str(path):
-            values = _clean(cached)
+            values = _clean(_decrypt_cached_key(cached))
             mtime = cached.get("_mtime")
             STATUS.update(loaded=True, cached=True, values=values,
                           mtime=float(mtime) if isinstance(mtime, (int, float)) else None)
@@ -184,6 +193,30 @@ def load(user: dict) -> dict:
     return {}
 
 
+def _write_cache(path: Path, values: dict) -> None:
+    """The copy read last time, for the days the folder cannot be reached. The shared key in it is encrypted for
+    this Windows user (DPAPI; elsewhere the file is readable by its owner only), never in plain text."""
+    from techrag.settings import encrypt_secret
+
+    data = {"_source": str(path), "_mtime": STATUS["mtime"], **values}
+    key = (values.get("auth") or {}).get("api_key")
+    if key:
+        data["auth"] = {"api_key": encrypt_secret(key)}
+    target = _cache_path()
+    write_text_atomic(target, yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+    if os.name != "nt":
+        os.chmod(target, 0o600)
+
+
+def _decrypt_cached_key(cached: dict) -> dict:
+    from techrag.settings import decrypt_secret
+
+    auth = cached.get("auth")
+    if isinstance(auth, dict) and "api_key" in auth:
+        cached = dict(cached, auth={"api_key": decrypt_secret(auth["api_key"], ("organization", "api_key"))})
+    return cached
+
+
 def value(section: str, key: str) -> Any:
     """The organization's value of a setting (None when it sets none)."""
     if section == "read_only":
@@ -192,9 +225,12 @@ def value(section: str, key: str) -> Any:
     return sec.get(key) if isinstance(sec, dict) else None
 
 
-def export(cfg: Config, others_read_only: bool = True) -> dict:
+def export(cfg: Config, others_read_only: bool = True, include_key: bool = False) -> dict:
     d = cfg.to_dict()
-    out = {section: {k: v for k, v in d[section].items() if k not in drop} for section, drop in EXPORT.items()}
+    out = {section: {k: v for k, v in d[section].items() if k not in drop} for section, drop in EXPORT.items()
+           if section != "auth"}
+    if include_key and cfg.auth.api_key:
+        out["auth"] = {"api_key": cfg.auth.api_key}
     out["paths"] = {k: d["paths"][k] for k in EXPORT_PATHS}
     out["paths"]["library_dir"] = str(cfg.library_dir.resolve()) if cfg.paths.library_dir else ""
     out["read_only"] = bool(others_read_only)
@@ -203,22 +239,27 @@ def export(cfg: Config, others_read_only: bool = True) -> dict:
 
 HEADER = """# Sayısal Tasarım Uzmanı - kurum ayarları ({when})
 # Bu dosyadaki değerler her kullanıcı için varsayılandır; kullanıcı kendi bilgisayarında değiştirebilir.
-# API anahtarı ve kişisel klasörler burada tutulmaz. Admin › Ayarlar › "Kurum ayarlarını kaydet" ile yazılır.
+# {key_line}
+# Kişisel klasörler burada tutulmaz. Admin › Ayarlar › "Kurum ayarlarını kaydet" ile yazılır.
 """
+KEY_LINE = {True: "Ortak API anahtarı bu dosyada düz metin olarak durur: klasörü okuyabilen herkes görebilir.",
+            False: "API anahtarı bu dosyada tutulmaz: her kullanıcı kendisi girer."}
 
 
-def save(folder: str | Path, cfg: Config, others_read_only: bool = True) -> dict:
+def save(folder: str | Path, cfg: Config, others_read_only: bool = True, include_key: bool = False) -> dict:
     """Write the organization file into folder (atomically: others never read half a file) and the pointer file
-    next to the exe. Returns where both went; the pointer's error when it could not be written (e.g. the exe sits
-    in a read-only folder) - the settings file is written either way."""
+    next to the exe. include_key: the shared API key goes in too (plain text). Returns where both went and whether
+    the key was written; the pointer's error when it could not be written (e.g. the exe sits in a read-only
+    folder) - the settings file is written either way."""
     target = org_file(folder)
     if not target.parent.is_dir():
         raise FileNotFoundError(f"folder not found: {target.parent}")
-    data = export(cfg, others_read_only)
-    text = HEADER.format(when=datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M")) + \
-        yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
+    data = export(cfg, others_read_only, include_key)
+    with_key = "auth" in data
+    text = HEADER.format(when=datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M"),
+                         key_line=KEY_LINE[with_key]) + yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
     write_text_atomic(target, text)
-    out = {"file": str(target), "pointer": "", "pointer_error": "", "warnings": []}
+    out = {"file": str(target), "pointer": "", "pointer_error": "", "warnings": [], "key_included": with_key}
     lib = data["paths"]["library_dir"]
     if lib and not lib.startswith(("\\\\", "//")):
         out["warnings"].append("library_local")
@@ -244,4 +285,5 @@ def public_status(cfg: Config) -> dict:
             "cached": STATUS["cached"], "error": STATUS["error"], "pointer": str(pointer_path() or ""),
             "ask": not STATUS["path"] and not cfg.org.asked and unconfigured,
             "needs_key": STATUS["loaded"] and not cfg.auth.api_key,
+            "org_key": bool(value("auth", "api_key")),
             "replaced": list(STATUS.get("replaced") or [])}
