@@ -13,7 +13,7 @@
     <div class="brand"><span class="brand-name">Sayısal Tasarım Uzmanı</span> <span class="muted small" id="lib-info"></span></div>
     <div class="top-actions">
       <button class="ghost" id="btn-new-chat" data-i18n="newChat"></button>
-      <button class="ghost" id="btn-admin" data-i18n="admin"></button>
+      <span class="admin-wrap" id="admin-wrap"><button class="ghost" id="btn-admin" data-i18n="admin"></button></span>
       <button class="ghost" id="btn-settings" data-i18n="settings"></button>
       <button class="ghost" id="btn-toggle-right" aria-controls="viewer-panel" data-i18n="toggleRight"></button>
       <div class="lang-toggle" role="group">
@@ -149,7 +149,7 @@
             <button type="button" class="ghost theme" data-theme-choice="dark" data-i18n="themeDark"></button><button type="button" class="ghost theme" data-theme-choice="light" data-i18n="themeLight"></button>
           </div></div>
         <label class="wide"><input type="checkbox" id="set-notify"> <span data-i18n="notifySetting"></span></label>
-        <p class="hint wide" data-i18n="adminSettingsHint"></p>
+        <p class="hint wide" id="admin-settings-hint" data-i18n="adminSettingsHint"></p>
       </fieldset>
       <fieldset id="pstatus-box">
         <legend data-i18n="pStatusTitle"></legend>
@@ -157,6 +157,11 @@
           <button type="button" class="ghost small" id="btn-pstatus-refresh" data-i18n="pStatusRefresh"></button></div>
         <p class="hint wide" data-i18n="pStatusHint"></p>
         <div class="pstatus wide" id="pstatus-list"></div>
+      </fieldset>
+      <fieldset id="trace-box">
+        <legend data-i18n="admTrace"></legend>
+        <p class="hint wide" data-i18n="traceHint"></p>
+        <div id="trace-list" class="trace-list wide"></div>
       </fieldset>
       <div class="dlg-actions">
         <span class="muted small" id="settings-status"></span>
@@ -215,7 +220,6 @@
       <div class="adm-tabs" role="tablist">
         <button type="button" class="adm-tab" role="tab" data-page="adm-library" data-i18n="admShared"></button>
         <button type="button" class="adm-tab" role="tab" data-page="adm-settings" data-i18n="admSettings"></button>
-        <button type="button" class="adm-tab" role="tab" data-page="adm-trace" data-i18n="admTrace"></button>
         <button type="button" class="adm-tab" role="tab" data-page="adm-eval" data-i18n="evaluation"></button>
         <button type="button" class="adm-tab" role="tab" data-page="adm-usage" data-i18n="admUsage"></button>
       </div>
@@ -345,13 +349,12 @@
         <label class="wide"><input type="checkbox" id="org-readonly" checked> <span data-i18n="orgReadOnly"></span></label>
         <label class="wide"><input type="checkbox" id="org-include-key" checked> <span data-i18n="orgIncludeKey"></span></label>
         <p class="hint wide warn-text" data-i18n="orgIncludeKeyHint"></p>
+        <label class="wide"><span data-i18n="orgAdmins"></span>
+          <textarea id="org-admins" rows="3" spellcheck="false" autocomplete="off" placeholder="ahmet.yilmaz&#10;ayse.demir"></textarea></label>
+        <p class="hint wide"><span data-i18n="orgAdminsHint"></span> <span id="org-admins-me"></span></p>
         <div class="row wide"><button type="button" id="btn-org-save" data-i18n="orgSave"></button></div>
         <div class="small wide" id="org-save-status" role="status"></div>
       </fieldset>
-      </section>
-      <section class="adm-page" id="adm-trace" role="tabpanel" hidden>
-        <p class="hint" data-i18n="traceHint"></p>
-        <div id="trace-list" class="trace-list"></div>
       </section>
       <section class="adm-page" id="adm-eval" role="tabpanel" hidden>
       <p class="hint" data-i18n="evalHint"></p>

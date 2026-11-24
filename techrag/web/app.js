@@ -216,6 +216,12 @@ const I18N = {
     orgIncludeKey: "Ortak API anahtarını da kurum ayarlarına yaz",
     orgIncludeKeyHint: "Anahtar dosyaya düz metin olarak yazılır: klasörü okuyabilen herkes görebilir. Klasörün okuma iznini yalnızca uygulamayı kullanacak kişilere açın.",
     orgKeyIncluded: "Ortak API anahtarı da yazıldı; kullanıcılar ayrıca girmeden kullanır.", orgKeyMissing: "Kaydedilecek bir API anahtarı yok; anahtar yazılmadı.",
+    adminLocked: "Admin yetkiniz yok. Yetki için yöneticinize başvurun.",
+    orgAdmins: "Admin yetkisi olan kullanıcı adları (her satıra bir ad)",
+    orgAdminsHint: "Boş bırakılırsa herkes Admin'i kullanabilir. Alan adı ve büyük-küçük harf dikkate alınmaz (ŞİRKET\\ahmet = ahmet). Ayarlar penceresi herkese açık kalır.",
+    orgAdminsMe: "Sizin kullanıcı adınız: {0}",
+    orgSelfNotListed: "Kendi kullanıcı adınız ({0}) listede yok: böyle kaydedilirse Admin'e siz de giremezsiniz. Adınızı listeye ekleyin.",
+    orgAdminsSaved: "Admin yetkisi: {0}.", orgAdminsEveryone: "Admin yetkisi: herkes (liste boş).",
     svc_llm: "Sohbet modeli — Kapsamlı", svc_llm_fast: "Sohbet modeli — Hızlı", svc_vision: "Görsel model (VLM)", svc_embedding: "Embedding", svc_reranker: "Reranker",
     fastHint: "Sohbette “Hızlı” seçilince bu model kullanılır: soru çözümleme, cevap, denetçi ve atıf düzeltme. Model boşsa sohbette seçim gösterilmez. Sunucu boşsa kapsamlı modelin sunucusu kullanılır.",
     fastSameServer: "(boş: kapsamlı modelin sunucusu)", fastThinking: "Hızlı model: düşünme modu",
@@ -550,6 +556,12 @@ const I18N = {
     orgIncludeKey: "Also write the shared API key into the organization settings",
     orgIncludeKeyHint: "The key is written to the file in plain text: anyone who can read the folder can see it. Give read access to the folder only to the people who use the app.",
     orgKeyIncluded: "The shared API key was written too; users use it without entering it.", orgKeyMissing: "There is no API key to save; no key was written.",
+    adminLocked: "You have no Admin rights. Ask your administrator for access.",
+    orgAdmins: "User names with Admin rights (one per line)",
+    orgAdminsHint: "Left empty, everyone can use Admin. The domain part and letter case do not matter (COMPANY\\ahmet = ahmet). The Settings window stays open to everyone.",
+    orgAdminsMe: "Your user name: {0}",
+    orgSelfNotListed: "Your own user name ({0}) is not in the list: saved like this, you could not open Admin either. Add your name to the list.",
+    orgAdminsSaved: "Admin rights: {0}.", orgAdminsEveryone: "Admin rights: everyone (the list is empty).",
     svc_llm: "Chat model — Thorough", svc_llm_fast: "Chat model — Fast", svc_vision: "Vision model (VLM)", svc_embedding: "Embedding", svc_reranker: "Reranker",
     fastHint: "Used when “Fast” is chosen in the chat: planning the question, the answer, the judge and citation repair. No model: the chat offers no choice. No server: the thorough model's server.",
     fastSameServer: "(empty: the thorough model's server)", fastThinking: "Fast model: thinking mode",
@@ -788,6 +800,10 @@ async function api(path, opts = {}) {
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`;
     try { const j = await res.json(); msg = j.detail || msg; } catch { /* not json */ }
+    if (res.status === 403 && msg === "admin_required") {
+      msg = t("adminLocked");
+      if (path !== "/api/info") loadInfo().catch(() => {});   // the list may have changed since the page loaded
+    }
     throw new Error(msg);
   }
   return res;
@@ -923,6 +939,7 @@ function renderInfo() {
   renderModePick();
   const ro = i.read_only ? ` · ${t("readOnly")}` : "";
   $("#lib-info").textContent = `${i.library} · ${i.stats.documents} ${t("docs")} · ${i.stats.parameters || 0} ${t("params")}${ro}`;
+  applyAdminLock();
   $("#add-box").hidden = !i.allow_upload;
   $("#adm-shared-actions").hidden = !i.allow_upload;
   const pers = i.personal || {};
@@ -932,7 +949,7 @@ function renderInfo() {
   const banner = $("#banner");
   const missing = SERVICES.filter((s) => s !== "vision" && !i.models[s]);
   if (i.error) { banner.hidden = false; banner.textContent = `${t("errorPrefix")}: ${i.error}`; }
-  else if (i.legacy_documents && !i.read_only) { banner.hidden = false; banner.textContent = `${t("legacyNotice", i.legacy_documents)} → ${t("admin")} › ${t("admShared")} › ${t("migrate")}`; }
+  else if (i.legacy_documents && !i.read_only && isAdmin()) { banner.hidden = false; banner.textContent = `${t("legacyNotice", i.legacy_documents)} → ${t("admin")} › ${t("admShared")} › ${t("migrate")}`; }
   else if (mirrorCopying(i)) { banner.hidden = false; banner.textContent = mirrorBannerText(i.mirror); }
   else if (i.org && i.org.path && (i.org.cached || !i.org.loaded)) { banner.hidden = false; banner.textContent = orgLine(i.org); }
   else if (i.mirror && i.mirror.enabled && i.mirror.state === "offline") { banner.hidden = false; banner.textContent = mirrorText(i.mirror); }
@@ -1051,7 +1068,7 @@ function renderMissing() {
   mb.hidden = !missing.length;
   if (missing.length) {
     mb.innerHTML = `⚠ ${esc(t("missingNotice", missing.length))} <a href="#" class="show-missing">${t("showMissing")}</a>
-      ${state.info && !state.info.read_only ? `· <a href="#" class="purge-missing">${t("purgeMissing")}</a>` : ""}
+      ${state.info && !state.info.read_only && isAdmin() ? `· <a href="#" class="purge-missing">${t("purgeMissing")}</a>` : ""}
       <ul class="missing-list" hidden>${missing.map((d) => `<li title="${esc(d.rel_path || d.path)}">${esc(docLocation(d))}</li>`).join("")}</ul>`;
     $(".show-missing", mb).addEventListener("click", (e) => { e.preventDefault(); $(".missing-list", mb).hidden = !$(".missing-list", mb).hidden; });
     const purge = $(".purge-missing", mb);
@@ -1847,7 +1864,7 @@ async function ask(question, reply) {
   const empty = $("#empty-state");
   if (empty) empty.remove();
   const el = msgElement(question);
-  // Thinking and searches are not shown in the chat: they are kept for Admin › Thinking and searches.
+  // Thinking and searches are not shown in the chat: they are kept for Settings › Thinking and searches.
   const trace = { question, at: new Date(), plan: "", reasoning: "", tools: [], sources: [], status: "" };
   // Every question is saved in the conversation it was asked in (Sohbetler), once it has an outcome.
   const conv = state.conv;
@@ -2611,6 +2628,8 @@ async function openSettings() {
   applyTheme(document.documentElement.dataset.theme);
   $("#settings-status").textContent = "";
   $$("#dlg-settings [data-i18n]").forEach((x) => { x.textContent = t(x.dataset.i18n); });
+  $("#admin-settings-hint").hidden = !isAdmin();
+  renderTraces();
   $("#dlg-settings").showModal();
   refreshPersonalStatus().catch(() => {});
 }
@@ -2740,6 +2759,8 @@ function renderOrgStatus() {
     const lib = (state.info || {}).library || "";
     $("#org-path").value = o.path ? o.path.replace(/[\\/][^\\/]+\.ya?ml$/i, "") : (lib.startsWith("\\\\") ? lib : "");
   }
+  $("#org-admins").value = (o.admins || []).join("\n");
+  $("#org-admins-me").innerHTML = t("orgAdminsMe", `<code>${esc((state.info || {}).user || "?")}</code>`);
   $("#org-save-status").textContent = "";
 }
 async function saveOrg() {
@@ -2748,10 +2769,19 @@ async function saveOrg() {
   if (!path) { $("#org-path").focus(); return; }
   try {
     const includeKey = $("#org-include-key").checked;
-    const r = await postJSON("/api/org/save", { path, others_read_only: $("#org-readonly").checked, include_key: includeKey });
+    const names = adminNames($("#org-admins").value);
+    const me = (state.info || {}).user || "";
+    if (names.length && !names.some((n) => normUser(n) === normUser(me))) {   // the server refuses it too
+      st.textContent = t("orgSelfNotListed", me);
+      $("#org-admins").focus();
+      return;
+    }
+    const r = await postJSON("/api/org/save", { path, others_read_only: $("#org-readonly").checked, include_key: includeKey,
+      admins: names });
     const folder = r.file.replace(/[\\/][^\\/]+$/, "");
     const lines = [t("orgSaved", r.file)];
     if (includeKey) lines.push(t(r.key_included ? "orgKeyIncluded" : "orgKeyMissing"));
+    lines.push(names.length ? t("orgAdminsSaved", names.join(", ")) : t("orgAdminsEveryone"));
     if (r.pointer) lines.push(t("orgPointer", r.pointer));
     else if (r.pointer_error === "no_exe") lines.push(t("orgPointerDev", folder));
     else lines.push(t("orgPointerFailed", r.pointer_error, folder));
@@ -2759,7 +2789,10 @@ async function saveOrg() {
     st.innerHTML = lines.map((x) => `<div>${esc(x)}</div>`).join("");
     await loadInfo();
     $("#org-status").textContent = orgLine(state.info.org);
-  } catch (e) { st.textContent = `${t("errorPrefix")}: ${e.message}`; }
+  } catch (e) {
+    const m = /^self_not_listed:(.*)$/.exec(e.message);
+    st.textContent = m ? t("orgSelfNotListed", m[1]) : `${t("errorPrefix")}: ${e.message}`;
+  }
 }
 // First start: nothing set up and no organization settings found - ask once where they are.
 let orgKeyAsked = false;
@@ -2923,9 +2956,35 @@ function fillLibrary() {
   $("#lib-legacy-text").textContent = legacy ? t("legacyNotice", legacy) : "";
 }
 
-// ------------------------------------------------------------------ Admin: shared library, thinking and searches,
-// evaluation, usage log (open to everyone: a separate place for what a normal question does not need)
+// ------------------------------------------------------------------ Admin: shared library, settings, evaluation,
+// usage log. Open to the users in the organization settings' admin list (everyone while it is empty); the server checks
+// it too. The thinking and searches of the session are in Settings, for everyone.
+function isAdmin() { return !state.info || state.info.admin !== false; }
+const normUser = (s) => String(s || "").normalize("NFKC").trim().split("\\").pop().split("@")[0].trim()
+  .replace(/İ/g, "I").toLowerCase();
+const adminNames = (text) => {
+  const seen = new Set();
+  return String(text || "").split(/[\r\n,;]+/).map((x) => x.trim()).filter((x) => {
+    const k = normUser(x);
+    if (!k || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+};
+function applyAdminLock() {
+  const locked = !isAdmin();
+  const btn = $("#btn-admin"), wrap = $("#admin-wrap");
+  btn.disabled = locked;
+  btn.classList.toggle("locked", locked);
+  wrap.classList.toggle("locked", locked);
+  wrap.dataset.tip = locked ? t("adminLocked") : "";
+  wrap.tabIndex = locked ? 0 : -1;
+  if (locked) { wrap.setAttribute("role", "note"); wrap.setAttribute("aria-label", `${t("admin")}: ${t("adminLocked")}`); }
+  else { wrap.removeAttribute("role"); wrap.removeAttribute("aria-label"); wrap.classList.remove("show-tip"); }
+  if (locked && $("#dlg-admin").open) $("#dlg-admin").close();
+}
 function openAdmin(page) {
+  if (!isAdmin()) return;
   const dlg = $("#dlg-admin");
   $$("#dlg-admin [data-i18n]").forEach((x) => { x.textContent = t(x.dataset.i18n); });
   if (!dlg.open) dlg.showModal();
@@ -2941,7 +3000,6 @@ function showAdminPage(page) {
   $$(".adm-page").forEach((x) => { x.hidden = x.id !== page; });
   if (page === "adm-library") { fillLibrary(); renderAdminLibrary(); }
   else if (page === "adm-settings") loadAdminSettings().catch((e) => { $("#adm-settings-status").textContent = `${t("errorPrefix")}: ${e.message}`; });
-  else if (page === "adm-trace") renderTraces();
   else if (page === "adm-eval") loadEvalPage();
   else if (page === "adm-usage") loadUsage();
 }
@@ -3353,6 +3411,13 @@ function bind() {
   ["#set-tls-system", "#set-tls-proxy", "#set-tls-ca"].forEach((id) => $(id).addEventListener("change", applyTls));
   $("#btn-pick-ca").addEventListener("click", pickCaFiles);
   $("#btn-admin").addEventListener("click", () => openAdmin());
+  $("#admin-wrap").addEventListener("click", () => {   // locked: the reason, also on a touch screen
+    const w = $("#admin-wrap");
+    if (!w.classList.contains("locked")) return;
+    w.classList.add("show-tip");
+    clearTimeout(w.tipTimer);
+    w.tipTimer = setTimeout(() => w.classList.remove("show-tip"), 3500);
+  });
   $$(".adm-tab").forEach((b) => b.addEventListener("click", () => showAdminPage(b.dataset.page)));
   $("#btn-usage-save").addEventListener("click", saveUsage);
   $("#btn-usage-open").addEventListener("click", () => postJSON("/api/usage/open", {})

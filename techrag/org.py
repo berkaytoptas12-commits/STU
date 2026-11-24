@@ -22,6 +22,8 @@ folder (usually the shared library's folder), so that the exe can be handed to o
   the organization's value applies. How the user opens the library (read-only or not) is always kept. See
   techrag.settings.follow_org.
 * When the folder cannot be reached (a laptop away from the network) the copy read last time is used.
+* "admins:" - the user names that may use Admin (techrag.admins). Only this file sets it; an empty or missing list
+  means everyone.
 """
 
 from __future__ import annotations
@@ -153,6 +155,11 @@ def _clean(data: Any) -> dict:
             out["paths"] = paths
     if isinstance(data.get("read_only"), bool):
         out["read_only"] = data["read_only"]
+    from techrag.admins import parse_list
+
+    admins = parse_list(data.get("admins"))
+    if admins:
+        out["admins"] = admins
     from techrag.config import upgrade_timeouts
 
     return upgrade_timeouts(out)   # an organization file exported before 0.15.4 says timeout: 300
@@ -225,7 +232,8 @@ def value(section: str, key: str) -> Any:
     return sec.get(key) if isinstance(sec, dict) else None
 
 
-def export(cfg: Config, others_read_only: bool = True, include_key: bool = False) -> dict:
+def export(cfg: Config, others_read_only: bool = True, include_key: bool = False,
+           admins: Optional[list[str]] = None) -> dict:
     d = cfg.to_dict()
     out = {section: {k: v for k, v in d[section].items() if k not in drop} for section, drop in EXPORT.items()
            if section != "auth"}
@@ -234,6 +242,8 @@ def export(cfg: Config, others_read_only: bool = True, include_key: bool = False
     out["paths"] = {k: d["paths"][k] for k in EXPORT_PATHS}
     out["paths"]["library_dir"] = str(cfg.library_dir.resolve()) if cfg.paths.library_dir else ""
     out["read_only"] = bool(others_read_only)
+    if admins:
+        out["admins"] = list(admins)
     return out
 
 
@@ -246,7 +256,8 @@ KEY_LINE = {True: "Ortak API anahtarı bu dosyada düz metin olarak durur: klas�
             False: "API anahtarı bu dosyada tutulmaz: her kullanıcı kendisi girer."}
 
 
-def save(folder: str | Path, cfg: Config, others_read_only: bool = True, include_key: bool = False) -> dict:
+def save(folder: str | Path, cfg: Config, others_read_only: bool = True, include_key: bool = False,
+         admins: Optional[list[str]] = None) -> dict:
     """Write the organization file into folder (atomically: others never read half a file) and the pointer file
     next to the exe. include_key: the shared API key goes in too (plain text). Returns where both went and whether
     the key was written; the pointer's error when it could not be written (e.g. the exe sits in a read-only
@@ -254,7 +265,7 @@ def save(folder: str | Path, cfg: Config, others_read_only: bool = True, include
     target = org_file(folder)
     if not target.parent.is_dir():
         raise FileNotFoundError(f"folder not found: {target.parent}")
-    data = export(cfg, others_read_only, include_key)
+    data = export(cfg, others_read_only, include_key, admins)
     with_key = "auth" in data
     text = HEADER.format(when=datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M"),
                          key_line=KEY_LINE[with_key]) + yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
@@ -286,4 +297,5 @@ def public_status(cfg: Config) -> dict:
             "ask": not STATUS["path"] and not cfg.org.asked and unconfigured,
             "needs_key": STATUS["loaded"] and not cfg.auth.api_key,
             "org_key": bool(value("auth", "api_key")),
+            "admins": list(STATUS["values"].get("admins") or []),
             "replaced": list(STATUS.get("replaced") or [])}

@@ -654,15 +654,18 @@ def test_answer_shows_where_its_time_went(ui):
     assert ui.is_hidden(".msg.assistant .timing-detail")
 
 
-def test_thinking_and_searches_are_in_admin_not_in_the_chat(ui):
+def test_thinking_and_searches_are_in_settings_not_in_the_chat(ui):
     assert ui.locator("#btn-library").count() == 0 and ui.locator("#btn-eval").count() == 0, \
         "library and evaluation live in Admin"
+    assert ui.locator(".adm-tab[data-page=adm-trace], #adm-trace").count() == 0, "no longer an Admin tab"
     _ask(ui, "DDR5 tRFC değeri nedir?")
     msg = ui.locator(".msg.assistant").last
     assert msg.locator(".reasoning, .tool-log, .plan").count() == 0, "the chat shows no thinking or search log"
     assert "295" in msg.locator(".body").inner_text()
-    _admin(ui, "adm-trace")
-    trace = ui.locator("#trace-list .trace").first
+    ui.click("#btn-settings")
+    ui.wait_for_selector("#dlg-settings[open] #trace-box")
+    assert "Düşünme ve aramalar" in ui.inner_text("#trace-box legend")
+    trace = ui.locator("#dlg-settings #trace-list .trace").first
     assert "DDR5 tRFC değeri nedir?" in trace.locator("summary").first.inner_text()
     assert trace.locator(".trace-thinking-box").count() == 1 and not trace.locator(".trace-thinking-box").get_attribute(
         "open"), "thinking is collapsed until opened"
@@ -671,6 +674,79 @@ def test_thinking_and_searches_are_in_admin_not_in_the_chat(ui):
     text = search.inner_text()
     assert "DDR5" in text and "atıf yapıldı" in text, "the sources the model got, cited ones marked"
     assert "search" in text or "Aramalar" in text
+
+
+def _org_admins(tmp_path, monkeypatch, names, who):
+    """Organization settings naming the admins, then the app as the user `who` sees it."""
+    from techrag import admins, org
+    from techrag.config import Config
+
+    share = tmp_path / "ortak"
+    share.mkdir(exist_ok=True)
+    monkeypatch.setattr(admins, "current", lambda: names[0] if names else who)
+    org.save(share, Config(), admins=names)
+    monkeypatch.setattr(admins, "current", lambda: who)
+    return share
+
+
+LOCKED = "Admin yetkiniz yok. Yetki için yöneticinize başvurun."
+
+
+def test_admin_is_locked_for_a_user_not_in_the_list(ui, tmp_path, monkeypatch):
+    assert not ui.is_disabled("#btn-admin"), "no list: everyone, as before"
+    _org_admins(tmp_path, monkeypatch, ["boss"], "veli")
+    ui.evaluate("() => loadInfo()")
+    ui.wait_for_function("() => document.querySelector('#btn-admin').disabled")
+    assert "locked" in ui.get_attribute("#admin-wrap", "class")
+    lock = ui.evaluate("() => getComputedStyle(document.querySelector('#btn-admin'), '::before').content")
+    assert "🔒" in lock
+    ui.hover("#admin-wrap")
+    tip = ui.evaluate("() => getComputedStyle(document.querySelector('#admin-wrap'), '::after').content")
+    assert LOCKED in tip, "the reason shows on hover"
+    ui.click("#admin-wrap")
+    assert ui.locator("#dlg-admin[open]").count() == 0, "a click opens nothing"
+    assert ui.evaluate("() => { openAdmin('adm-usage'); return document.querySelector('#dlg-admin').open; }") is False
+    # a refusal from the server is said in words
+    msg = ui.evaluate("async () => { try { await getJSON('/api/usage'); return ''; } catch (e) { return e.message; } }")
+    assert msg == LOCKED
+    # the Settings window stays open to them, with the thinking and searches, without the pointer to Admin › Ayarlar
+    ui.click("#btn-settings")
+    ui.wait_for_selector("#dlg-settings[open]")
+    assert ui.is_visible("#trace-box") and ui.is_hidden("#admin-settings-hint")
+    ui.click("#dlg-settings .theme[data-theme-choice=light]")
+    ui.wait_for_function("() => document.documentElement.dataset.theme === 'light'")
+    ui.click("#btn-save-settings")
+    ui.wait_for_selector("#dlg-settings", state="hidden")
+    # the language changes and the lock stays, in English
+    ui.click(".lang[data-lang=en]")
+    ui.hover("#admin-wrap")
+    tip = ui.evaluate("() => getComputedStyle(document.querySelector('#admin-wrap'), '::after').content")
+    assert "You have no Admin rights" in tip and ui.is_disabled("#btn-admin")
+    ui.click(".lang[data-lang=tr]")
+
+
+def test_admin_names_the_admins_in_the_organization_settings(ui, tmp_path, monkeypatch):
+    import yaml
+
+    from techrag import org
+
+    share = _org_admins(tmp_path, monkeypatch, ["boss"], "boss")
+    ui.evaluate("() => loadInfo()")
+    _admin(ui, "adm-settings")
+    ui.wait_for_function("() => document.querySelector('#org-admins').value === 'boss'")
+    assert "Sizin kullanıcı adınız: boss" in ui.inner_text("#org-box")
+    ui.fill("#org-path", str(share))
+    ui.fill("#org-admins", "ali\nveli")
+    ui.click("#btn-org-save")
+    ui.wait_for_function("() => document.querySelector('#org-save-status').textContent.includes('listede yok')")
+    assert "(boss)" in ui.inner_text("#org-save-status")
+    assert yaml.safe_load((share / org.ORG_FILE).read_text(encoding="utf-8"))["admins"] == ["boss"], "not saved"
+    ui.fill("#org-admins", "ali\nŞİRKET\\Boss")
+    ui.click("#btn-org-save")
+    ui.wait_for_function("() => document.querySelector('#org-save-status').textContent.includes('Kaydedildi')")
+    assert "Admin yetkisi: ali, ŞİRKET\\Boss." in ui.inner_text("#org-save-status")
+    assert yaml.safe_load((share / org.ORG_FILE).read_text(encoding="utf-8"))["admins"] == ["ali", "ŞİRKET\\Boss"]
+    assert not ui.is_disabled("#btn-admin")
 
 
 def test_personal_files_are_chosen_from_the_computer(ui, tmp_path, cfg):

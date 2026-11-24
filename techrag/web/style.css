@@ -478,3 +478,17 @@ button.btn-stop { background: var(--bad); border-color: var(--bad); }
 .timing-detail td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .timing-detail .calls { margin-top: 6px; color: var(--muted); }
 .notice.stopped { color: var(--warn); }
+
+/* Admin rights (0.15.7): for a user not in the organization's admin list the Admin button is locked; the reason shows
+   on hover, on keyboard focus and on a click (touch screens) */
+.admin-wrap { position: relative; display: inline-flex; }
+#btn-admin.locked { color: var(--muted); border-style: dashed; cursor: not-allowed; opacity: 1; pointer-events: none; }
+#btn-admin.locked::before { content: "🔒 "; }
+.admin-wrap.locked { cursor: not-allowed; border-radius: 8px; }
+.admin-wrap.locked:hover::after, .admin-wrap.locked:focus-visible::after, .admin-wrap.locked.show-tip::after {
+  content: attr(data-tip); position: absolute; top: calc(100% + 8px); right: 0; z-index: 20; width: 260px;
+  background: var(--panel); color: var(--text); border: 1px solid var(--border); border-left: 3px solid var(--warn);
+  border-radius: 8px; padding: 8px 10px; font-size: 12.5px; line-height: 1.4; white-space: normal; text-align: left;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .25); }
+#org-admins { width: 100%; font-family: var(--mono); font-size: 12.5px; resize: vertical; }
+#org-admins-me code { font-family: var(--mono); }

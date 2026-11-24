@@ -1,5 +1,30 @@
 ## Sayısal Tasarım Uzmanı — Windows masaüstü uygulaması
 
+### 0.15.7 — Admin yetkisi kullanıcı adına göre; Düşünme ve aramalar Ayarlar'da
+- **Admin yetkisi:** Admin › Ayarlar › Kurum ayarları'nda yeni alan: **"Admin yetkisi olan kullanıcı adları"** (her
+  satıra bir ad). Kurum ayarları kaydedilince `kurum-ayarlari.yaml` dosyasına `admins:` olarak yazılır ve herkesin
+  uygulaması açılışta okur. Listede olmayan kullanıcıda **Admin düğmesi 🔒 kilitli ve tıklanamaz**; üzerine gelince
+  "Admin yetkiniz yok. Yetki için yöneticinize başvurun." yazar. Kilitli olanlar Admin'in dört sekmesinin hepsi:
+  Ortak kütüphane, Ayarlar, Değerlendirme, Kullanım günlüğü.
+- **Liste boşsa herkes Admin'i kullanır** (bugüne kadar olduğu gibi): bu sürümü dağıtmak kimseyi kilitlemez; kilit,
+  yönetici listeye ad yazıp kurum ayarlarını kaydettiğinde başlar. Kendi adınız listede yoksa liste kaydedilmez
+  (kendinizi kilitlememeniz için); alanın altında sizin kullanıcı adınız yazar.
+- **Kullanıcı tanıma:** uygulamanın çalıştığı Windows hesabının adı (Windows'a sorulur, `USERNAME` ortam değişkenine
+  bakılmaz). Alan adı ve büyük-küçük harf dikkate alınmaz (`ŞİRKET\ahmet` = `ahmet@sirket.local` = `Ahmet`). Liste
+  yalnızca kurum ayarları dosyasından gelir (klasöre ulaşılamayan günlerde son okunan kopyasından); kullanıcının kendi
+  ayarları listeyi değiştiremez.
+- **Sunucu da denetler:** listede olmayan kullanıcının Admin işlemleri (ortak kütüphane, Admin › Ayarlar, kurum
+  ayarlarını kaydetme, değerlendirme, kullanım günlüğü) reddedilir.
+- **Ayarlar penceresi herkese açık kalır.** **Düşünme ve aramalar** artık Admin'in bir sekmesi değil, Ayarlar
+  penceresinin en altında; herkes kendi sorularının düşünmesini ve aranan belgeleri görebilir.
+- Bu, ortak ayarların yetkisiz ya da kazayla değiştirilmesini önler; bilerek aşmaya çalışana karşı bir duvar değildir.
+  Ortak kütüphaneyi ve kurum ayarları dosyasını asıl koruyan, o klasörlere kimin yazabildiğidir.
+- Doğrulanan: testler (ad eşleştirme: alan adı, büyük-küçük harf, Türkçe İ; liste boşken herkes; listede olan/olmayan;
+  listeyi yalnızca kurum dosyasının vermesi; klasöre ulaşılamayınca listenin yerel kopyadan gelmesi; listede olmayana
+  Admin işlemlerinde 403, Ayarlar penceresinin ayarlarına izin; kendini kilitleyen listenin kaydedilmemesi; kilitli
+  düğme, ipucu metni, Türkçe/İngilizce; Düşünme ve aramalar'ın Ayarlar'da olması). Gerçek bir Windows makinesinde ve
+  etki alanı hesabıyla elle denenmedi.
+
 ### 0.15.6 — kurum ayarlarıyla ortak API anahtarı, kilit, kullanım günlüğünde tek token ölçüsü
 (0.15.4 ve 0.15.5 yayınlanmadı; değişiklikleri bu sürümdedir: 15 dakikalık bekleme süresi ve Durdur düzeltmesi.)
 - **Ortak API anahtarı kurum ayarlarıyla herkese:** Admin › Ayarlar › Kurum ayarları'nda **"Ortak API anahtarını da

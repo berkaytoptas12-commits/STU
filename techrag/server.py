@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from techrag import __version__, askctx, mirror, org, tls
+from techrag import __version__, admins, askctx, mirror, org, tls
 from techrag.api import APIClient, check_service, configure_tls, current_tls, error_code, normalize_base_url
 from techrag.config import PERSONAL_INDEX_DIR, Config, ServiceConfig, _apply_env, apply_dict, resource_path, same_path
 from techrag.engine import RAGEngine
@@ -107,6 +107,7 @@ class FolderRequest(BaseModel):
 class OrgSaveRequest(BaseModel):
     path: str = Field(min_length=1, max_length=4000)
     others_read_only: bool = True
+    admins: list[str] = Field(default_factory=list, max_length=500)   # who may use Admin; empty: everyone
     include_key: bool = False   # the shared API key goes into the file too (the page ticks it by default)
 
 
@@ -265,6 +266,27 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             raise HTTPException(status_code=401, detail="invalid or missing API token")
 
     guard = [Depends(auth)]
+
+    def require_admin() -> None:
+        """Admin's own operations (the shared library, Admin › Ayarlar, the organization settings, evaluation and
+        the usage log): only for the users in the organization settings' admin list (everyone when it is empty)."""
+        if not admins.is_admin():
+            raise HTTPException(status_code=403, detail="admin_required")
+
+    admin_guard = [Depends(auth), Depends(require_admin)]
+    # What a user without Admin rights may still change (the Settings window, the language, their own folder):
+    # section -> keys (None: any key of it).
+    USER_SETTINGS = {"auth": None, "ui": None, "llm": {"base_url", "model", "verify_ssl"},
+                     "llm_fast": {"base_url", "model", "verify_ssl"}, "paths": {"personal_dir"}}
+
+    def user_may_set(patch: dict) -> bool:
+        for section, values in (patch or {}).items():
+            if section not in USER_SETTINGS:
+                return False
+            keys = USER_SETTINGS[section]
+            if keys is not None and (not isinstance(values, dict) or set(values) - keys):
+                return False
+        return True
     app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
 
     @app.middleware("http")
@@ -299,6 +321,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 if k not in e.domains.keys():
                     domains.append({"key": k, "name": k, **v})
         return {"version": __version__, "desktop": desktop, "library": str(c.library_dir.resolve()),
+                "user": admins.current(), "admin": admins.is_admin(), "admins_set": bool(admins.admin_list()),
                 "read_only": c.read_only, "language": c.ui.language, "theme": ui_theme(c),
                 "legacy_documents": stats.get("legacy_documents", 0),
                 "buckets": e.store.buckets() if e else [], "roots": e.store.roots() if e else [],
@@ -328,6 +351,8 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
 
     @app.put("/api/settings", dependencies=guard)
     def put_settings(patch: dict):
+        if not user_may_set(patch) and not admins.is_admin():
+            raise HTTPException(status_code=403, detail="admin_required")
         with engine_lock:
             try:
                 new_cfg = update_settings(state["cfg"], patch)
@@ -358,13 +383,17 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         configure_tls(new_cfg.tls)
         build_engine(new_cfg)
 
-    @app.post("/api/org/save", dependencies=guard)
+    @app.post("/api/org/save", dependencies=admin_guard)
     def org_save(req: OrgSaveRequest):
         """Admin: write the current settings as the organization's (the shared API key only when asked; never personal
         folders) into the given folder, and the pointer file next to the exe that is handed out with it."""
+        names = admins.parse_list(req.admins)
+        if names and not admins.is_admin(names=names):
+            # the list would lock out the one saving it: say so instead of writing it
+            raise HTTPException(400, f"self_not_listed:{admins.current()}")
         with engine_lock:
             try:
-                out = org.save(req.path, state["cfg"], req.others_read_only, req.include_key)
+                out = org.save(req.path, state["cfg"], req.others_read_only, req.include_key, names)
             except FileNotFoundError:
                 raise HTTPException(400, "folder not found")
             except OSError as exc:
@@ -507,14 +536,14 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         return result
 
     # --------------------------------------------------------------- library
-    @app.post("/api/library/open", dependencies=guard)
+    @app.post("/api/library/open", dependencies=admin_guard)
     def library_open(req: LibraryOpen):
         path = Path(req.path).expanduser()
         if req.read_only and not (path / "index.sqlite").exists():
             raise HTTPException(400, "no index.sqlite in that folder")
         return put_settings({"paths": {"library_dir": str(path)}, "read_only": req.read_only})
 
-    @app.post("/api/library/publish", dependencies=guard)
+    @app.post("/api/library/publish", dependencies=admin_guard)
     def library_publish(req: PublishRequest):
         c: Config = state["cfg"]
         dest = Path(req.dest).expanduser()
@@ -797,7 +826,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             docs = [d for d in docs if not Path(d.path).is_absolute()]
         return {"scan": scan.summary(), "plan": plan_summary(plan_changes(scan, docs, fp, root_id))}
 
-    @app.post("/api/folders/preview", dependencies=guard)
+    @app.post("/api/folders/preview", dependencies=admin_guard)
     def folder_preview(req: FolderRequest):
         """What a document folder contains (buckets, documents, unsupported files) and what indexing would do.
         Only reads the folder."""
@@ -808,7 +837,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         out["known"] = bool(known)
         return out
 
-    @app.post("/api/folders", dependencies=guard)
+    @app.post("/api/folders", dependencies=admin_guard)
     def folder_add(req: FolderRequest):
         """Register a document folder (read in place, nothing copied or written there) and index it."""
         c: Config = state["cfg"]
@@ -828,11 +857,11 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         root_id = known["id"] if known else store.add_root(str(path))
         return {"root_id": root_id, "job": start_job("folder", root_id=root_id)["id"]}
 
-    @app.get("/api/folders", dependencies=guard)
+    @app.get("/api/folders", dependencies=admin_guard)
     def folders():
         return eng().shared.roots()
 
-    @app.post("/api/rescan/preview", dependencies=guard)
+    @app.post("/api/rescan/preview", dependencies=admin_guard)
     def rescan_preview():
         c: Config = state["cfg"]
         e = eng()
@@ -845,12 +874,12 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 total[k] = total.get(k, 0) + v
         return {"roots": parts, "counts": total}
 
-    @app.post("/api/rescan", dependencies=guard)
+    @app.post("/api/rescan", dependencies=admin_guard)
     def rescan(req: IngestRequest = IngestRequest()):
         return {"job": start_job("rescan", rebuild=req.rebuild, everything=True)["id"]}
 
     # ------------------------------------------------------------ indexing quality
-    @app.get("/api/quality", dependencies=guard)
+    @app.get("/api/quality", dependencies=admin_guard)
     def quality():
         """The indexing quality report: the last runs and, per document, what its last processing produced.
         Documents indexed before this report existed have no record ("not available"); nothing is guessed.
@@ -884,12 +913,12 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 "vlm_enabled": bool(c.vision.enabled and c.vision_service().model),
                 "read_only": c.read_only}
 
-    @app.post("/api/quality/retry", dependencies=guard)
+    @app.post("/api/quality/retry", dependencies=admin_guard)
     def quality_retry(req: RetryRequest = RetryRequest()):
         """Retry what failed (only the failed VLM pages where possible; see Ingestor.retry_failed)."""
         return {"job": start_job("retry", retry=True, retry_paths=req.paths)["id"]}
 
-    @app.post("/api/documents/purge-missing", dependencies=guard)
+    @app.post("/api/documents/purge-missing", dependencies=admin_guard)
     def purge_missing():
         """Remove documents whose source file is gone from the index (explicit user action)."""
         if state["cfg"].read_only:
@@ -926,7 +955,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             raise HTTPException(403, "adding documents is switched off on this server (server.allow_upload)")
         eng()
 
-    @app.post("/api/sources/add", dependencies=guard)
+    @app.post("/api/sources/add", dependencies=admin_guard)
     def sources_add(req: PathsRequest):
         check_can_add()
         dest_dir = collection_dir(req.collection)
@@ -944,7 +973,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         readd(copied)
         return {"job": start_job("add", dest_dir)["id"], "copied": copied}
 
-    @app.post("/api/upload", dependencies=guard)
+    @app.post("/api/upload", dependencies=admin_guard)
     async def upload(file: UploadFile = File(...), domain: str = Form("general")):
         check_can_add()
         name = _safe_filename(file.filename or "upload")
@@ -967,7 +996,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 pass
 
     # -------------------------------------------------- removing shared library documents (Admin)
-    @app.delete("/api/library/documents/{doc_id}", dependencies=guard)
+    @app.delete("/api/library/documents/{doc_id}", dependencies=admin_guard)
     def library_remove(doc_id: int):
         """Take a document out of the shared library's index. Its file is not touched (in a document folder or in
         the library's sources folder alike) and later rescans leave it out, until it is restored."""
@@ -983,11 +1012,11 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         entry = e.shared.exclude_document(doc_id)
         return {"ok": True, "title": entry["title"], "path": entry["rel_path"]}
 
-    @app.get("/api/library/removed", dependencies=guard)
+    @app.get("/api/library/removed", dependencies=admin_guard)
     def library_removed():
         return eng().shared.excluded()
 
-    @app.post("/api/library/removed/restore", dependencies=guard)
+    @app.post("/api/library/removed/restore", dependencies=admin_guard)
     def library_restore(req: FolderRequest):
         """Bring a removed document back: it is indexed again by a scan of its folder (started here)."""
         if state["cfg"].read_only:
@@ -1049,7 +1078,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         return {"ok": True, "removed": chat_store().clear()}
 
     # ------------------------------------------------------------------ usage log
-    @app.get("/api/usage", dependencies=guard)
+    @app.get("/api/usage", dependencies=admin_guard)
     def usage_get():
         """Where the usage log is written and, per user, how many questions and tokens it holds."""
         c: Config = state["cfg"]
@@ -1058,7 +1087,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
                 "user": current_user(), "machine": current_machine(), "file": str(log_.path),
                 "last_error": log_.last_error, **log_.summary()}
 
-    @app.post("/api/usage/open", dependencies=guard)
+    @app.post("/api/usage/open", dependencies=admin_guard)
     def usage_open():
         """Desktop only: open the log folder in Explorer."""
         if not desktop:
@@ -1325,7 +1354,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         check_can_add_personal()
         return {"job": start_job("personal", personal=True)["id"]}
 
-    @app.post("/api/library/migrate", dependencies=guard)
+    @app.post("/api/library/migrate", dependencies=admin_guard)
     def library_migrate():
         """Update an index from an older version in place (no re-embedding, no VLM calls)."""
         from techrag.ingest.pipeline import migrate_index
@@ -1370,18 +1399,18 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             raise HTTPException(500, f"feedback could not be saved: {exc.__class__.__name__}")
         return {"ok": True, "id": rec["id"], "summary": feedback_store().summary()}
 
-    @app.get("/api/feedback", dependencies=guard)
+    @app.get("/api/feedback", dependencies=admin_guard)
     def list_feedback():
         fs = feedback_store()
         return {"items": list(reversed(fs.items()))[:500], "summary": fs.summary()}
 
-    @app.delete("/api/feedback/{fid}", dependencies=guard)
+    @app.delete("/api/feedback/{fid}", dependencies=admin_guard)
     def delete_feedback(fid: str):
         if not feedback_store().delete(fid):
             raise HTTPException(404, "feedback not found")
         return {"ok": True, "summary": feedback_store().summary()}
 
-    @app.get("/api/feedback/export", dependencies=guard)
+    @app.get("/api/feedback/export", dependencies=admin_guard)
     def export_feedback():
         from techrag.feedback import export_yaml
 
@@ -1392,7 +1421,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
     def eval_dir() -> Path:
         return state["cfg"].user_data_dir / "eval_reports"
 
-    @app.get("/api/eval", dependencies=guard)
+    @app.get("/api/eval", dependencies=admin_guard)
     def eval_info():
         from techrag.evaluation import bundled_questions, list_reports, load_items
         from techrag.feedback import candidate_items
@@ -1406,7 +1435,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         return {"sets": {"bundled": bundled, "feedback": len(candidate_items(feedback_store().items()))},
                 "reports": list_reports(eval_dir()), "running": running}
 
-    @app.get("/api/eval/questions", dependencies=guard)
+    @app.get("/api/eval/questions", dependencies=admin_guard)
     def eval_questions():
         """The bundled example question set, to check and complete it against the library and load it back as an
         own question file."""
@@ -1415,7 +1444,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         return Response(bundled_questions().read_text(encoding="utf-8"), media_type="text/yaml; charset=utf-8",
                         headers={"Content-Disposition": 'attachment; filename="questions.yaml"'})
 
-    @app.get("/api/eval/reports/{name}", dependencies=guard)
+    @app.get("/api/eval/reports/{name}", dependencies=admin_guard)
     def eval_report(name: str):
         from techrag.evaluation import read_report
 
@@ -1424,7 +1453,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
             raise HTTPException(404, "report not found")
         return rep
 
-    @app.post("/api/eval/run", dependencies=guard)
+    @app.post("/api/eval/run", dependencies=admin_guard)
     def eval_run(req: EvalRequest):
         """Runs a question set against the current library in the background (one evaluation at a time). The
         report is saved in the user data folder; nothing is written into the library."""
@@ -1482,7 +1511,7 @@ def create_app(cfg: Config, engine: Optional[RAGEngine] = None, warmup: bool = T
         job["cancel"] = True
         return {"ok": True}
 
-    @app.post("/api/ingest", dependencies=guard)
+    @app.post("/api/ingest", dependencies=admin_guard)
     def ingest_all(req: IngestRequest = IngestRequest()):
         return {"job": start_job("ingest", None, req.rebuild)["id"]}
 
